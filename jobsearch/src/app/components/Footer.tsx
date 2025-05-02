@@ -3,19 +3,17 @@ import React from "react";
 
 function Footer() {
   return (
-    <div className="py-6 bg-blue-900">
-      <footer>
-        <ul className="ml-3 text-white">
-          <li>Company</li>
-          <li>
-            <Link href="./About">About</Link>
-          </li>
-          <li>
-            <Link href="./TermsOfConditions">Terms Of Conditions</Link>
-          </li>
-        </ul>
-      </footer>
-    </div>
+    <footer className="py-2 bg-blue-900 sticky bottom-0 z-10">
+      <ul className="ml-10 text-white">
+        <li>Company</li>
+        <li>
+          <Link href="./About">About</Link>
+        </li>
+        <li>
+          <Link href="./TermsOfConditions">Terms Of Conditions</Link>
+        </li>
+      </ul>
+    </footer>
   );
 }
 

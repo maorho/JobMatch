@@ -70,18 +70,18 @@ function SignUp() {
 
   return (
     <div className="ml-3 p-2 items-center">
-      <h2 className="text-center w-1/2 pl-10 m-auto font-semibold text-2xl text-blue-600">
+      <h2 className="text-center w-1/2 pl-10 ml-70 font-semibold text-2xl text-blue-600">
         Want to accelerate your job search?
       </h2>
-      <h2 className="text-center w-1/2 pl-10 m-auto font-semibold text-2xl text-blue-600">
+      <h2 className="text-center w-1/2 pl-10 ml-70 font-semibold text-2xl text-blue-600">
         Sign Up Now
       </h2>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="ml-10">
         <div className="items-center mx-100">
           <input
             type="text"
-            className="text-center m-1 w-80 h-10 border border-gray-300 rounded"
+            className="text-center m-1 mt-2 w-80 h-10 border border-gray-300 rounded"
             placeholder="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -151,7 +151,7 @@ function SignUp() {
         <button
           type="submit"
           disabled={loading}
-          className="items-center mx-100 w-80 h-10 bg-blue-500 text-white p-1 rounded hover:bg-blue-600 mt-2"
+          className="items-center mx-101 w-80 h-10 bg-blue-500 text-white p-1 rounded hover:bg-blue-600 mt-1"
         >
           {loading ? "Submitting..." : "Submit"}
         </button>
