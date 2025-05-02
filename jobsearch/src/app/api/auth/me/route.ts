@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       id: user._id,
       email: user.email,
+      fullname:user.fullname,
       createdAt: user.createdAt,
     });
   } catch (err) {
