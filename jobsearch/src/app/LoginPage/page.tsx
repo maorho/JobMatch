@@ -20,7 +20,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: username, password }), // משתמש בשם המשתמש כשם אימייל לצורך בדיקות
+        body: JSON.stringify({ email: username, password }),
       });
 
       const data = await res.json();
@@ -38,56 +38,62 @@ function LoginForm() {
   }
 
   return (
-    <div className="ml-3 pt-20 h-110 items-center">
-      <h2 className="text-center w-1/2 pl-7 pb-5 ml-70 font-semibold text-2xl text-blue-600">
-        Great To See You Again!
-      </h2>
-      <form onSubmit={handleSubmit} className="ml-10">
-        <div className="items-center mx-100">
+    <div className="flex justify-center pt-40 min-h-screen p-4 bg-white">
+      <div className="w-full max-w-md">
+        <h2 className="text-center mb-6 font-semibold text-2xl text-blue-600">
+          Great To See You Again!
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"
-            className="text-center m-1  w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="password"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
-          <label className="ml-25">
-            <Link href="/PasswordReset" className="font-semibold">
+
+          <div className="text-center text-sm">
+            <Link
+              href="/PasswordReset"
+              className="font-semibold text-blue-600 hover:underline"
+            >
               Forgot Password?
             </Link>
-          </label>
-        </div>
+          </div>
 
-        {error && <p className="text-red-600 mt-2">{error}</p>}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="items-center mx-101 mt-6 w-80 h-10 bg-blue-500 text-white p-1 rounded hover:bg-blue-600"
-        >
-          {loading ? "Logging in..." : "Submit"}
-        </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full h-10 text-white rounded ${
+              loading
+                ? "bg-blue-300 cursor-not-allowed"
+                : "bg-blue-500 hover:bg-blue-600"
+            }`}
+          >
+            {loading ? "Logging in..." : "Submit"}
+          </button>
 
-        <div className="items-center mx-100">
-          <label className="ml-20">
+          <div className="text-center text-sm">
             Not signed in?{" "}
-            <Link href="/SignUp" className="font-semibold">
+            <Link
+              href="/SignUp"
+              className="font-semibold text-blue-600 hover:underline"
+            >
               Sign Up
             </Link>
-          </label>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

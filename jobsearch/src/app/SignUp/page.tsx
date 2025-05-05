@@ -51,7 +51,7 @@ function SignUp() {
           password,
           fullname: fullName,
           username,
-        }), // אפשר להוסיף גם fullName ו־username לפי הצורך
+        }),
       });
 
       const data = await res.json();
@@ -69,93 +69,96 @@ function SignUp() {
   }
 
   return (
-    <div className="ml-3 p-2 items-center">
-      <h2 className="text-center w-1/2 pl-10 ml-70 font-semibold text-2xl text-blue-600">
-        Want to accelerate your job search?
-      </h2>
-      <h2 className="text-center w-1/2 pl-10 ml-70 font-semibold text-2xl text-blue-600">
-        Sign Up Now
-      </h2>
+    <div className="flex justify-center pt-20 min-h-screen p-4 bg-white">
+      <div className="w-full max-w-md">
+        <h2 className="text-center font-semibold text-2xl text-blue-600 mb-2">
+          Want to accelerate your job search?
+        </h2>
+        <h2 className="text-center font-semibold text-2xl text-blue-600 mb-6">
+          Sign Up Now
+        </h2>
 
-      <form onSubmit={handleSubmit} className="ml-10">
-        <div className="items-center mx-100">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <input
             type="text"
-            className="text-center m-1 mt-2 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Full Name"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="text"
-            className="text-center m-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="email"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="email"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Confirm Email"
             value={confirmEmail}
             onChange={(e) => setConfirmEmail(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="password"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
+
           <input
             type="password"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
             placeholder="Confirm Password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
-        </div>
-        <div className="items-center mx-100">
-          <input
-            type="checkbox"
-            checked={agree}
-            onChange={() => setAgree(!agree)}
-          />
-          <label className="ml-1">
-            I agree to{" "}
-            <Link href="./TermsOfConditions" className="font-semibold">
-              Terms Of Conditions
-            </Link>
-          </label>
-        </div>
 
-        {error && <p className="text-red-600 mt-2">{error}</p>}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={agree}
+              onChange={() => setAgree(!agree)}
+            />
+            <label className="text-sm">
+              I agree to{" "}
+              <Link
+                href="/TermsOfConditions"
+                className="font-semibold text-blue-600 hover:underline"
+              >
+                Terms Of Conditions
+              </Link>
+            </label>
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="items-center mx-101 w-80 h-10 bg-blue-500 text-white p-1 rounded hover:bg-blue-600 mt-1"
-        >
-          {loading ? "Submitting..." : "Submit"}
-        </button>
-      </form>
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full h-10 text-white rounded ${
+              loading
+                ? "bg-blue-300 cursor-not-allowed"
+                : "bg-blue-500 hover:bg-blue-600"
+            }`}
+          >
+            {loading ? "Submitting..." : "Submit"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

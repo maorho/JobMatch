@@ -1,5 +1,9 @@
+"use client";
 import Link from "next/link";
-import React from "react";
+import React, { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import LogoutButton from "./Logout";
+import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 
 interface SideNavbarProps {
   closeNav: () => void;
@@ -7,29 +11,69 @@ interface SideNavbarProps {
 }
 
 const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
+  const pathname = usePathname();
+  const { user, loading } = useCurrentUser(); // ✅ כולל loading
+  const lastPathRef = useRef(pathname);
+  const initialLoad = useRef(true);
+
+  // ✅ סגירה אוטומטית רק אם היה מעבר עמוד אמיתי
+  useEffect(() => {
+    if (initialLoad.current) {
+      initialLoad.current = false;
+      lastPathRef.current = pathname;
+      return;
+    }
+
+    if (pathname !== lastPathRef.current) {
+      closeNav();
+      lastPathRef.current = pathname;
+    }
+  }, [pathname]);
+
+  // ✅ אם המידע עוד נטען, לא מציג את ה־SideNavbar בכלל
+  if (loading) return null;
+
   return (
     <div
-      className={`fixed top-0 right-0 h-full bg-blue-500 w-32 p-5 mt-13 transform transition-all duration-3000 ease-in-out
+      className={`fixed top-0 right-0 h-full bg-blue-500 w-32 p-5 mt-13 transform transition-all duration-300 ease-in-out
         ${isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}
       `}
     >
       <ul className="space-y-6">
-        <li>
-          <Link
-            href="./LoginPage"
-            className="text-lg font-semibold text-white hover:text-blue-400"
-          >
-            Login
-          </Link>
-        </li>
-        <li>
-          <Link
-            href="./SignUp"
-            className="text-lg font-semibold text-white hover:text-blue-400"
-          >
-            SignUp
-          </Link>
-        </li>
+        {user ? (
+          <>
+            <li>
+              <Link
+                href="/UserSettings"
+                className="text-lg font-semibold text-white hover:text-blue-400"
+              >
+                Settings
+              </Link>
+            </li>
+            <li>
+              <LogoutButton />
+            </li>
+          </>
+        ) : (
+          <>
+            <li>
+              <Link
+                href="/LoginPage"
+                className="text-lg font-semibold text-white hover:text-blue-400"
+              >
+                Login
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/SignUp"
+                className="text-lg font-semibold text-white hover:text-blue-400"
+              >
+                SignUp
+              </Link>
+            </li>
+          </>
+        )}
         <li>
           <button
             onClick={closeNav}

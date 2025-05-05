@@ -5,10 +5,11 @@ import React, { useState } from "react";
 import image from "./jobMatch.png";
 import { AiOutlineUser } from "react-icons/ai";
 import SideNavbar from "./SideNavbar";
+import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 
 function Header() {
   const [isOpen, setIsOpen] = useState(false);
-
+  const { user } = useCurrentUser();
   // פונקציה להפעלת והסרת ה-Side Navbar
   const toggleSidenav = () => {
     setIsOpen(!isOpen);
@@ -25,7 +26,7 @@ function Header() {
         <ul className="flex items-center text-black">
           {/* כפתור תמונה */}
           <li className="mr-2.5 mt-1.5">
-            <Link href="./">
+            <Link href="/">
               <Image src={image} alt="Job Match" className="h-20 w-20" />
             </Link>
           </li>
