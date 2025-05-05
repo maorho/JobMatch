@@ -6,6 +6,8 @@ import LogoutButton from "../components/Logout";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
 import { useRouter } from "next/navigation";
+import JobManagement from "./components/JobManagement";
+import { jobs } from "../components/jobs";
 
 const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
@@ -15,9 +17,9 @@ const DashboardPage: React.FC = () => {
 
   if (!user) {
     return (
-      <div className="text-center mt-10">
+      <div className="text-center min-h-screen">
         <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/login" className="text-blue-600 underline">
+        <Link href="/LoginPage" className="text-blue-600 underline">
           Go to Login
         </Link>
       </div>
@@ -25,16 +27,10 @@ const DashboardPage: React.FC = () => {
   }
 
   return (
-    <div className="p-6 h-110">
+    <div className="p-6 min-h-screen">
       <h2 className="text-xl font-semibold mb-4">Welcome, {user.fullname}!</h2>
-      <div className="flex">
-        <button
-          onClick={() => router.push("/UserSettings")}
-          className="mr-2 w-40 h-10 bg-blue-500 text-white rounded hover:bg-green-600"
-        >
-          Settings
-        </button>
-        <LogoutButton />
+      <div>
+        <JobManagement jobs={jobs} />
         <button
           onClick={() => setShowModal(true)}
           className="ml-2 w-40 h-10 bg-blue-500 text-white rounded hover:bg-green-600"
