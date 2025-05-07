@@ -12,6 +12,8 @@ function SignUp() {
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [recruiter, setRecruiter] = useState(false);
+  const [company, setCompany] = useState("");
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,7 +41,11 @@ function SignUp() {
       setError("Password must be at least 6 characters");
       return;
     }
-
+    if (recruiter) {
+      if (password.length < 1) {
+        setError("Please state your company");
+      }
+    }
     setLoading(true);
 
     try {
@@ -51,13 +57,17 @@ function SignUp() {
           password,
           fullname: fullName,
           username,
+          recruiter,
+          company,
         }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        router.push("/Dashboard");
+        data.recruiter
+          ? router.push("/RecruiterDashboard")
+          : router.push("/Dashboard");
       } else {
         setError(data.message || "Signup failed");
       }
@@ -126,7 +136,21 @@ function SignUp() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
-
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={recruiter}
+              onChange={() => setRecruiter(!recruiter)}
+            />
+            <label className="text-sm">I'm a recruiter</label>
+          </div>
+          <input
+            type="text"
+            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
+            placeholder="Company"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          />
           <div className="flex items-center gap-2">
             <input
               type="checkbox"

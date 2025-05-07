@@ -33,9 +33,6 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
           <h3 className="mr-2">{job.type}</h3>
           <h3>{job.location}</h3>
         </div>
-        <button className="mt-2 w-20 h-7 bg-blue-500 text-white rounded hover:bg-green-600">
-          Apply
-        </button>
       </div>
     </div>
   );
