@@ -1,18 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { mutate } from "swr";
 
-export default function LogoutButton() {
+export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
   const router = useRouter();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    mutate("/api/auth/me", null, false);
+    closeNav?.();
     router.push("/");
+    router.refresh();
   }
 
   return (
     <button
-      className="w-40 h-10 bg-blue-500 text-white rounded hover:bg-green-600"
+      className="text-lg font-semibold hover:text-blue-400"
       onClick={handleLogout}
     >
       Logout
