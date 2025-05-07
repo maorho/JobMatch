@@ -35,7 +35,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
 
   return (
     <div
-      className={`fixed top-0 right-0 h-full bg-blue-500 w-32 p-5 mt-13 transform transition-all duration-300 ease-in-out
+      className={`fixed top-0 right-0 h-full w-32 p-5 mt-13 transform transition-all duration-300 ease-in-out
         ${isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}
       `}
     >
@@ -45,13 +45,13 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
             <li>
               <Link
                 href="/UserSettings"
-                className="text-lg font-semibold text-white hover:text-blue-400"
+                className="text-lg font-semibold hover:text-blue-400"
               >
                 Settings
               </Link>
             </li>
             <li>
-              <LogoutButton />
+              <LogoutButton closeNav={closeNav} />
             </li>
           </>
         ) : (
@@ -59,7 +59,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
             <li>
               <Link
                 href="/LoginPage"
-                className="text-lg font-semibold text-white hover:text-blue-400"
+                className="text-lg font-semibold hover:text-blue-400"
               >
                 Login
               </Link>
@@ -67,7 +67,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
             <li>
               <Link
                 href="/SignUp"
-                className="text-lg font-semibold text-white hover:text-blue-400"
+                className="text-lg font-semibold hover:text-blue-400"
               >
                 SignUp
               </Link>

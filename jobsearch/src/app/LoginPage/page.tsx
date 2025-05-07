@@ -26,7 +26,9 @@ function LoginForm() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push("/Dashboard");
+        data.recruiter
+          ? router.push("/RecruiterDashboard")
+          : router.push("/Dashboard");
       } else {
         setError(data.message || "Login failed");
       }
@@ -38,7 +40,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex justify-center pt-40 min-h-screen p-4 bg-white">
+    <div className="flex justify-center pt-20 min-h-screen p-4 bg-white">
       <div className="w-full max-w-md">
         <h2 className="text-center mb-6 font-semibold text-2xl text-blue-600">
           Great To See You Again!
