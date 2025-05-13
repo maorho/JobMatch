@@ -42,6 +42,9 @@ export async function GET(req: NextRequest) {
       fullname: user.fullname,
       createdAt: user.createdAt,
       recruiter: user.recruiter,
+      phone: user.phone,
+      resumeUrl:user.resume,
+      company:user.company,
     };
 
     userCache.set(userId, userData);

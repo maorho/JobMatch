@@ -14,6 +14,7 @@ interface JobManagementProps {
 }
 
 const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
+  console.log(jobs);
   return (
     <div className="flex justify-center items-start min-h-screen bg-gray-100 py-10">
       <div className="w-full max-w-6xl bg-white rounded-lg shadow-lg p-6 overflow-x-auto">
@@ -37,10 +38,14 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
                 key={idx}
                 className={idx % 2 === 0 ? "bg-gray-50" : "bg-white"}
               >
-                <td className="px-6 py-4 border-b">{job.job}</td>
-                <td className="px-6 py-4 border-b">{job.company}</td>
-                <td className="px-6 py-4 border-b">{job.location}</td>
-                <td className="px-6 py-4 border-b capitalize">{job.type}</td>
+                <td className="px-6 py-4 border-b">{job.jobId.job}</td>
+                <td className="px-6 py-4 border-b">
+                  {job.jobId.company.companyName}
+                </td>
+                <td className="px-6 py-4 border-b">{job.jobId.location}</td>
+                <td className="px-6 py-4 border-b capitalize">
+                  {job.jobId.type}
+                </td>
                 <td className="px-6 py-4 border-b">
                   {job.link ? (
                     <a
