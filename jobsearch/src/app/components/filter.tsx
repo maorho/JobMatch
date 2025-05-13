@@ -30,11 +30,13 @@ const JobFilters: React.FC<JobFiltersProps> = ({
           className="p-2 border rounded w-64"
         >
           <option value="">All Companies</option>
-          {[...new Set(jobs.map((job) => job.company))].map((company) => (
-            <option key={company} value={company}>
-              {company}
-            </option>
-          ))}
+          {[...new Set(jobs.map((job) => job.company.companyName))].map(
+            (company) => (
+              <option key={company} value={company}>
+                {company}
+              </option>
+            )
+          )}
         </select>
 
         {/* Type Filter */}

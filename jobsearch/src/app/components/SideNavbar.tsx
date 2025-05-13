@@ -16,7 +16,6 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const lastPathRef = useRef(pathname);
   const initialLoad = useRef(true);
 
-  // ✅ סגירה אוטומטית רק אם היה מעבר עמוד אמיתי
   useEffect(() => {
     if (initialLoad.current) {
       initialLoad.current = false;
@@ -30,7 +29,6 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
     }
   }, [pathname]);
 
-  // ✅ אם המידע עוד נטען, לא מציג את ה־SideNavbar בכלל
   if (loading) return null;
 
   return (
