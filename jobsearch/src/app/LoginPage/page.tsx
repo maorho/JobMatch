@@ -40,59 +40,56 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex justify-center pt-20 min-h-screen p-4 bg-white">
+    <div className="pt-20 flex min-h-183 p-4 justify-center">
       <div className="w-full max-w-md">
-        <h2 className="text-center mb-6 font-semibold text-2xl text-blue-600">
+        <h2 className="text-center font-semibold text-2xl text-blue-600 mb-6">
           Great To See You Again!
         </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-
-          <input
-            type="password"
-            className="block w-full h-10 border border-gray-300 rounded px-3 text-center"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <div className="text-center text-sm">
-            <Link
-              href="/PasswordReset"
-              className="font-semibold text-blue-600 hover:underline"
-            >
-              Forgot Password?
-            </Link>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-flow-col justify-items-center">
+            <input
+              type="text"
+              className="text-center m-1 w-80 h-10 border border-gray-300 rounded"
+              placeholder="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-flow-col justify-items-center">
+            <input
+              type="password"
+              className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-flow-col justify-items-center">
+            <label>
+              <Link href="/PasswordReset" className="font-semibold">
+                Forgot Password?
+              </Link>
+            </label>
           </div>
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full h-10 text-white rounded ${
-              loading
-                ? "bg-blue-300 cursor-not-allowed"
-                : "bg-blue-500 hover:bg-blue-600"
-            }`}
-          >
-            {loading ? "Logging in..." : "Submit"}
-          </button>
-
-          <div className="text-center text-sm">
-            Not signed in?{" "}
-            <Link
-              href="/SignUp"
-              className="font-semibold text-blue-600 hover:underline"
+          {error && <p className="text-red-600 mt-2">{error}</p>}
+          <div className="grid grid-flow-col justify-items-center">
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 w-80 h-10 bg-blue-500 text-white p-1 rounded hover:bg-blue-600"
             >
-              Sign Up
-            </Link>
+              {loading ? "Logging in..." : "Submit"}
+            </button>
+          </div>
+
+          <div className="grid grid-flow-col justify-items-center">
+            <label>
+              Not signed in?{" "}
+              <Link href="/SignUp" className="font-semibold">
+                Sign Up
+              </Link>
+            </label>
           </div>
         </form>
       </div>
