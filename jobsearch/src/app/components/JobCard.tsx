@@ -13,8 +13,9 @@ interface JobCardProps {
 const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const router = useRouter();
   const handleClick = () => {
-    router.push(`/job/${jobIndex}`);
+    router.push(`/job/${job._id}`);
   };
+  console.log(job._id);
   return (
     <motion.div
       onClick={handleClick}
@@ -24,10 +25,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       className="shadow-xl px-2 h-20 w-200 font-semibold text-white border rounded-xl m-auto mt-2 bg-blue-300 cursor-pointer hover:scale-105 transition-transform"
     >
       <h2 className="ml-2">{job.job}</h2>
-      <h3 className="ml-2.5">{job.company}</h3>
+      <h3 className="ml-2.5">{job.company.companyName}</h3>
       <div className="flex ml-2.5 justify-between pr-2">
         <h3>{job.type}</h3>
-        <h3>{job.location}</h3>
+        <h3>
+          {job.country},{job.location}
+        </h3>
       </div>
     </motion.div>
   );

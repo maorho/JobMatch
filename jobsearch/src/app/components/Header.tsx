@@ -11,24 +11,21 @@ import { AiOutlineOpenAI } from "react-icons/ai";
 function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useCurrentUser();
-  // פונקציה להפעלת והסרת ה-Side Navbar
+
   const toggleSidenav = () => {
     setIsOpen(!isOpen);
   };
 
-  // פונקציה לסגירת ה-Side Navbar
   const closeNav = () => {
     setIsOpen(false);
   };
 
   return (
     <header className="h-15 flex items-center justify-between px-6 sticky top-0 z-50 bg-white/80 shadow-md backdrop-blur-md">
-      {/* לוגו בצד שמאל */}
       <Link href="/">
-        <Image src={image} alt="Job Match" className="h-20 w-auto" />
+        <Image src={image} alt="Job Match" className="h-20 w-auto" priority />
       </Link>
 
-      {/* קישורים במרכז */}
       <ul className="flex gap-15 text-black items-center justify-center mx-auto ">
         <li>
           <Link
@@ -50,7 +47,6 @@ function Header() {
         </li>
       </ul>
 
-      {/* כפתורי ימין */}
       <div className="flex gap-4 items-center">
         <Link
           href="/ResumeAI"
@@ -66,7 +62,6 @@ function Header() {
         </button>
       </div>
 
-      {/* Side Navbar */}
       {isOpen && <SideNavbar closeNav={closeNav} isOpen={isOpen} />}
     </header>
   );
