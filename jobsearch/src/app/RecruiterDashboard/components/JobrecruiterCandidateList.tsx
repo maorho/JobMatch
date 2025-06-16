@@ -1,19 +1,15 @@
 import React, { useEffect, useState } from "react";
-interface StatusChange {
-  userID: string;
-  status: string;
-}
 
 interface JobrecruiterCandidateListProps {
   jobId: string;
   company: string;
-  updateStatuses: StatusChange[];
-  setUpdatedStatuses: React.Dispatch<React.SetStateAction<StatusChange[]>>;
+  updateStatuses: Map<string, string>;
+  setUpdatedStatuses: React.Dispatch<React.SetStateAction<Map<string, string>>>;
 }
 
 interface Candidate {
   candidateId: {
-    id: string;
+    _id: string;
     fullname: string;
     email: string;
     phone: string;
@@ -47,7 +43,6 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
       }
 
       const data = await res.json();
-      console.log(`candidates:${JSON.stringify(data)}`);
       setCadidates(data);
     } catch {
       throw new Error("something went wrong");
@@ -57,18 +52,33 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
     candidateList();
   }, []);
 
+  useEffect(() => {
+    if (updateStatuses.size === 0) return;
+
+    const updated = candidates.map((candidate) => {
+      const newStatus = updateStatuses.get(candidate.candidateId._id);
+      if (newStatus && newStatus !== candidate.status) {
+        return {
+          ...candidate,
+          status: newStatus,
+        };
+      }
+      return candidate;
+    });
+
+    setCadidates(updated);
+  }, [updateStatuses]);
+
   const setStatus = (
     userID: string,
     newStatus: string,
     originalStatus: string
   ) => {
     if (newStatus !== originalStatus) {
-      const withoutCurrent = updateStatuses.filter((u) => u.userID !== userID);
-      setUpdatedStatuses([
-        ...withoutCurrent,
-        { userID: userID, status: newStatus },
-      ]);
-      console.log(updateStatuses);
+      const newMap = new Map(updateStatuses);
+      console.log(userID);
+      newMap.set(userID, newStatus);
+      setUpdatedStatuses(newMap);
     }
   };
   return (
@@ -95,6 +105,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
         </thead>
         <tbody>
           {candidates.map((candidate, ind) => {
+            console.log(candidate.candidateId);
             return (
               <tr
                 key={ind}
@@ -121,13 +132,12 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                   <select
                     className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
                     value={
-                      updateStatuses.find(
-                        (u) => u.userID === candidate.candidateId.id
-                      )?.status || candidate.status
+                      updateStatuses.get(candidate.candidateId._id) ||
+                      candidate.status
                     }
                     onChange={(e) =>
                       setStatus(
-                        candidate.candidateId.id,
+                        candidate.candidateId._id,
                         e.target.value,
                         candidate.status
                       )

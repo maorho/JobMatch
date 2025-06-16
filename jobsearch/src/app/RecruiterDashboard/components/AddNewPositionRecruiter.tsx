@@ -15,7 +15,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
   const [company, setCompany] = useState("");
   const [job_type, setJobType] = useState("");
   const [country, setCountry] = useState("");
-  const [location, setLocation] = useState("");
+  const [city, setCity] = useState("");
   const [description, setDescription] = useState("");
   const [qualifications, setQualifications] = useState("");
   const [publisher, setPublisher] = useState("");
@@ -41,7 +41,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
           setJob(data.job);
           setJobType(data.type);
           setCountry(data.country);
-          setLocation(data.location);
+          setCity(data.city);
           setDescription(data.description);
           setQualifications(data.qualifications);
         } else {
@@ -62,7 +62,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
     if (job === "") return setError("Job title is required");
     if (job_type === "") return setError("Job type is required");
     if (country === "") return setError("Country is required");
-    if (location === "") return setError("City is required");
+    if (city === "") return setError("City is required");
     if (description === "") return setError("Job description is required");
     if (qualifications === "")
       return setError("Job qualifications are required");
@@ -75,7 +75,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
               job,
               type: job_type,
               country,
-              location,
+              city,
               description,
               qualifications,
             },
@@ -84,7 +84,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
             job,
             company,
             type: job_type,
-            location,
+            city,
             country,
             link: null,
             outsidesource: false,
@@ -114,7 +114,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
           setJob("");
           setJobType("");
           setCountry("");
-          setLocation("");
+          setCity("");
           setDescription("");
           setQualifications("");
         }
@@ -167,8 +167,8 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
             type="text"
             className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
             placeholder="City"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
           />
         </div>
         <div className="items-center">
