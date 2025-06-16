@@ -5,24 +5,42 @@ interface JobFiltersProps {
   jobs: any[];
   company: string;
   setCompany: (value: string) => void;
-  jobType: string;
-  setJobType: (value: string) => void;
-  jobLocation: string;
-  setJobLocation: (value: string) => void;
+  country: string;
+  setCountry: (value: string) => void;
+  city: string;
+  setCity: (value: string) => void;
 }
 
 const JobFilters: React.FC<JobFiltersProps> = ({
   jobs,
   company,
   setCompany,
-  jobType,
-  setJobType,
-  jobLocation,
-  setJobLocation,
+  country,
+  setCountry,
+  city,
+  setCity,
 }) => {
+  const getUniqueValues = (arr: any[], key: string) => {
+    const values = arr
+      .map((job) => {
+        if (key === "company") {
+          return typeof job.company === "object"
+            ? job.company.companyName
+            : job.company;
+        }
+        return job[key];
+      })
+      .filter((value) => typeof value === "string" && value.trim() !== "");
+    return Array.from(new Set(values));
+  };
+
+  const uniqueCompanies = getUniqueValues(jobs, "company");
+  const uniqueCountries = getUniqueValues(jobs, "type");
+  const uniqueCities = getUniqueValues(jobs, "city");
+
   return (
     <div className="w-full flex justify-center mt-6">
-      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-center justify-center bg-white p-4 rounded  max-w-5xl w-full">
+      <div className="flex flex-col md:flex-row flex-wrap gap-4 items-center justify-center bg-white p-4 rounded max-w-5xl w-full">
         {/* Company Filter */}
         <select
           value={company}
@@ -30,39 +48,37 @@ const JobFilters: React.FC<JobFiltersProps> = ({
           className="p-2 border rounded w-64"
         >
           <option value="">All Companies</option>
-          {[...new Set(jobs.map((job) => job.company.companyName))].map(
-            (company) => (
-              <option key={company} value={company}>
-                {company}
-              </option>
-            )
-          )}
+          {uniqueCompanies.map((comp) => (
+            <option key={`company-${comp}`} value={comp}>
+              {comp}
+            </option>
+          ))}
         </select>
 
-        {/* Type Filter */}
+        {/* Country Filter */}
         <select
-          value={jobType}
-          onChange={(e) => setJobType(e.target.value)}
+          value={country}
+          onChange={(e) => setCountry(e.target.value)}
           className="p-2 border rounded w-64"
         >
           <option value="">All Types</option>
-          {[...new Set(jobs.map((job) => job.type))].map((type) => (
-            <option key={type} value={type}>
+          {uniqueCountries.map((type) => (
+            <option key={`type-${type}`} value={type}>
               {type}
             </option>
           ))}
         </select>
 
-        {/* Location Filter */}
+        {/* City Filter */}
         <select
-          value={jobLocation}
-          onChange={(e) => setJobLocation(e.target.value)}
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
           className="p-2 border rounded w-64"
         >
-          <option value="">All Locations</option>
-          {[...new Set(jobs.map((job) => job.location))].map((location) => (
-            <option key={location} value={location}>
-              {location}
+          <option value="">All Cities</option>
+          {uniqueCities.map((c) => (
+            <option key={`city-${c}`} value={c}>
+              {c}
             </option>
           ))}
         </select>
