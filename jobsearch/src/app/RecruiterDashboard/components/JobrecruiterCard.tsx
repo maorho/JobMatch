@@ -12,17 +12,15 @@ interface JobrecruiterCardProps {
   onSuccess?: () => void;
 }
 
-interface statusChange {
-  userID: string;
-  status: string;
-}
 const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   job,
   jobIndex,
   onSuccess,
 }) => {
   const [showModal, setShowModal] = useState(false);
-  const [updateStatuses, setUpdatedStatuses] = useState<statusChange[]>([]);
+  const [updateStatuses, setUpdatedStatuses] = useState<Map<string, string>>(
+    new Map()
+  );
 
   const { user } = useCurrentUser();
   const router = useRouter();
@@ -31,6 +29,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   const isPublisher = user.id.toString() === job.publisher.toString();
   const handleUpdate = async () => {
     try {
+      console.log("Sending updates:", Object.fromEntries(updateStatuses));
       const res = await fetch("/api/jobsDashboard/Recruiter/changeStatus", {
         method: "PUT",
         headers: {
@@ -38,7 +37,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
         },
         body: JSON.stringify({
           jobId: job._id,
-          updateStatuses,
+          updateStatuses: Object.fromEntries(updateStatuses),
         }),
       });
 
@@ -48,7 +47,8 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
       const result = await res.json();
       console.log("Update success:", result);
-      setUpdatedStatuses([]);
+      const newMap = new Map();
+      setUpdatedStatuses(newMap);
     } catch (err) {
       console.error("Error updating statuses:", err);
     }

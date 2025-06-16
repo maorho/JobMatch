@@ -1,12 +1,7 @@
 import Link from "next/link";
 import React from "react";
 
-interface EmployerProps {
-  username: string;
-  email: string;
-}
-
-const EmployerSettings: React.FC<EmployerProps> = ({ username, email }) => {
+const EmployerSettings = () => {
   return (
     <div>
       <h2>EmployerSettings</h2>

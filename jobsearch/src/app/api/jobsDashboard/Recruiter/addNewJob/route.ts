@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     job,
     company,
     type,
-    location,
+    city,
     country,
     link,
     outsidesource,
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     company:foundCompany._id,
     companyName:company,
     type,
-    location,
+    city,
     country,
     link: outsidesource ? link : "",         // אם מדובר במשרה מבחוץ
     outsidesource: !!outsidesource,          // ודא שזה Boolean

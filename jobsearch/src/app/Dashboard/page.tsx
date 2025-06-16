@@ -1,48 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import useSWR from "swr";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
 import JobManagement from "./components/JobManagement";
 
-const DashboardPage: React.FC = () => {
-  const { user, loading } = useCurrentUser();
+// fetcher שמקבל [url, body]
+const fetcher = async ([url, body]: [string, any]) => {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
-  const [showModal, setShowModal] = useState(false);
-  const [jobsSubmitted, setJobsSubmitted] = useState([]);
-  const [error, setError] = useState("");
-
-  async function fetchJobsSubmitted() {
-    console.log(user);
-    try {
-      const res = await fetch(
-        "/api/jobsDashboard/Candidate/allCandidatePositions",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: user.id }), // שליחה בשם ברור
-        }
-      );
-
-      if (!res.ok) throw new Error("Request failed");
-
-      const data = await res.json();
-      console.log(data);
-      setJobsSubmitted(data);
-    } catch (err) {
-      setError("Something went wrong");
-    }
+  if (!res.ok) {
+    throw new Error("Failed to fetch");
   }
 
-  // קריאה ל־fetch ברגע ש-user נטען
-  useEffect(() => {
-    if (user && !user.recruiter) {
-      fetchJobsSubmitted();
-    }
-  }, [user]);
+  return res.json();
+};
 
-  if (loading) return <p>Loading...</p>;
+const DashboardPage: React.FC = () => {
+  const { user, loading } = useCurrentUser();
+  const [showModal, setShowModal] = useState(false);
+
+  const {
+    data: jobsSubmitted,
+    error,
+    isLoading,
+  } = useSWR(
+    user && !user.recruiter
+      ? [
+          "/api/jobsDashboard/Candidate/allCandidatePositions",
+          { userId: user.id },
+        ]
+      : null,
+    fetcher,
+    {
+      refreshInterval: 10000,
+      revalidateOnFocus: true,
+    }
+  );
+
+  if (loading || isLoading) return <p>Loading...</p>;
 
   if (!user) {
     return (
@@ -70,9 +72,11 @@ const DashboardPage: React.FC = () => {
     <div className="p-6 min-h-screen">
       <h2 className="text-xl font-semibold mb-4">Welcome, {user.fullname}!</h2>
 
-      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+      {error && (
+        <p className="text-red-500 text-sm mb-4">Something went wrong</p>
+      )}
 
-      <JobManagement jobs={jobsSubmitted} />
+      {jobsSubmitted && <JobManagement jobs={jobsSubmitted} />}
 
       <button
         onClick={() => setShowModal(true)}

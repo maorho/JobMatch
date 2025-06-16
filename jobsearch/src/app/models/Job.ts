@@ -15,7 +15,7 @@ const JobSchema = new mongoose.Schema({
     enum: ['On Site', 'Hybrid', 'Remote'],
     required: true,
   },
-  location: {
+  city: {
     type: String,
     required: true, 
   },
