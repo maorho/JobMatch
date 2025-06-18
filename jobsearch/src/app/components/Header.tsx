@@ -21,7 +21,7 @@ function Header() {
   };
 
   return (
-    <header className="h-15 flex items-center justify-between px-6 sticky top-0 z-50 bg-white/80 shadow-md backdrop-blur-md">
+    <header className="h-15 flex items-center justify-between px-6 fixed w-full top-0 z-50 bg-white/80 shadow-md backdrop-blur-md">
       <Link href="/">
         <Image src={image} alt="Job Match" className="h-20 w-auto" priority />
       </Link>

@@ -2,20 +2,21 @@
 
 import React, { useEffect, useState } from "react";
 import Applybutton from "./Applybutton";
-import { Job } from "./JobTable";
+import { Job, JobType } from "./JobTable";
 
 interface JobDescriptionProps {
   job: any;
 }
-const checkJobType = (job: Job) => {
-  return job.company === "object";
+const checkJobType = (job: Job): job is JobType => {
+  return typeof job.company === "object" && job.company !== null;
 };
 const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const [modal, setShowModal] = useState(false);
   const qualifications_arr = job.qualifications?.split(", ") || [];
   const [finalUrl, setFinalUrl] = useState<string | null>(null);
+  const isInternal = checkJobType(job);
   useEffect(() => {
-    if (!checkJobType(job)) {
+    if (!isInternal) {
       fetch(
         `http://localhost:4000/api/open-job?url=${encodeURIComponent(job.url)}`
       )
@@ -25,24 +26,24 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         })
         .catch((err) => console.error("Prefetch error:", err));
     }
-  }, [job]);
+  }, [isInternal]);
   return (
     <div className="shadow-xl p-5 w-[90%] max-w-2xl m-auto bg-white rounded-lg mt-6">
       <h2 className="text-2xl font-semibold mb-2">{job.job}</h2>
       <div>
         <h3 className="mb-1">
           <span className="font-semibold">Company:</span>{" "}
-          {checkJobType(job) ? job.company.companyName : job.company}
+          {isInternal ? job.company.companyName : job.company}
         </h3>
 
-        {checkJobType(job) && (
+        {isInternal && (
           <div className="mb-4">
             <h3 className="font-semibold">Description:</h3>
             <p className="ml-1">{job.description}</p>
           </div>
         )}
 
-        {checkJobType(job)
+        {isInternal
           ? qualifications_arr.length > 0 && (
               <div className="mb-4">
                 <h3 className="font-semibold">Qualifications:</h3>
@@ -65,7 +66,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
             )}
 
         <div className="flex gap-4 font-semibold mb-4">
-          <h3>{checkJobType(job) ? job.type : "hybrid"}</h3>
+          <h3>{isInternal ? job.type : "hybrid"}</h3>
           <h3>
             {job.location}, {job.country}
           </h3>
@@ -73,7 +74,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
 
         <button
           onClick={() => {
-            if (checkJobType(job)) {
+            if (isInternal) {
               setShowModal(true);
             } else {
               if (finalUrl) {

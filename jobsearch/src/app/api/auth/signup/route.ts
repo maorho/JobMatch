@@ -29,7 +29,7 @@ async function uploadToS3(buffer: Buffer, fileName: string, mimeType: string): P
 
   await s3.send(new PutObjectCommand(uploadParams));
 
-  return `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  return key;
 }
 
 export async function POST(req: NextRequest) {
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const buffer = Buffer.from(await resumeFile.arrayBuffer());
-  const resumeUrl = await uploadToS3(buffer, resumeFile.name, resumeFile.type);
+  const resumeKey = await uploadToS3(buffer, resumeFile.name, resumeFile.type);
 
   const userData = {
     email,
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     recruiter,
     company: recruiter ? company : '',
     phone,
-    resume: resumeUrl,
+    resume: resumeKey,
   };
 
   const newUser = await User.create(userData);

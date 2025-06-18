@@ -18,7 +18,7 @@ export interface OutsideJob {
   skills: string[];
 }
 
-interface JobType {
+export interface JobType {
   _id: string;
   job: string;
   type: string;
@@ -32,10 +32,10 @@ interface JobType {
 }
 
 export type Job = JobType | OutsideJob;
-export function isInternalJob(job: Job): job is JobType {
-  return typeof job.company === "object";
-}
 
+export const isInternalJob = (job: Job): job is JobType => {
+  return typeof job.company === "object" && job.company !== null;
+};
 const CACHE_KEY = "cachedJobs";
 const CACHE_TIME_KEY = "cachedJobsTimestamp";
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 שעות
