@@ -11,12 +11,11 @@ interface JobCardProps {
 }
 
 const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
-  const jobID = isInternalJob(job) ? jobIndex : job.id;
+  const isInternal = isInternalJob(job);
+  const jobID = isInternal ? job._id : job.id;
   const router = useRouter();
   const handleClick = () => {
-    router.push(
-      `/job/${isInternalJob(job) ? "internal" : "external"}/${jobID}`
-    );
+    router.push(`/job/${isInternal ? "internal" : "external"}/${jobID}`);
   };
 
   return (
@@ -35,11 +34,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       </h3>
       <div className="flex ml-2.5 justify-between pr-2">
         <h3>{job.type}</h3>
-        <h3>
-          {isInternalJob(job)
-            ? job.city + "," + job.country
-            : job.city + "," + job.country}
-        </h3>
+        <h3>{job.city ? job.city + "," + job.country : job.country}</h3>
       </div>
     </motion.div>
   );

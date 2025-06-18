@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ResumeLink from "./ResumeLink";
 
 interface ApplybuttonProps {
   job: any;
@@ -68,7 +69,7 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
       </div>
     );
   }
-
+  console.log("User object:", user);
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
       <div>
@@ -100,14 +101,7 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
       </div>
       <div>
         <label>Resume:</label>
-        <a
-          href={resumefile}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-500 underline block"
-        >
-          View Resume
-        </a>
+        <ResumeLink resumeKey={resumefile} />
       </div>
       {error && <p className="text-red-500">{error}</p>}
       <div className="flex justify-between mt-4">

@@ -1,7 +1,7 @@
+"use client";
+
 import React from "react";
 
-function page() {
+export default function ContactUsPage() {
   return <div>Contact Us</div>;
 }
-
-export default page;
