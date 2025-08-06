@@ -19,7 +19,6 @@ const CandidateSchema = new mongoose.Schema({
   recruiterid:{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
   }
 }, { timestamps: true });
 

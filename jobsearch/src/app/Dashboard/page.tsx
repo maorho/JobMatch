@@ -7,7 +7,6 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
 import JobManagement from "./components/JobManagement";
 
-// fetcher שמקבל [url, body]
 const fetcher = async ([url, body]: [string, any]) => {
   const res = await fetch(url, {
     method: "POST",
@@ -67,7 +66,7 @@ const DashboardPage: React.FC = () => {
       </div>
     );
   }
-
+  console.log(jobsSubmitted);
   return (
     <div className="p-6 min-h-screen">
       <h2 className="text-xl font-semibold mb-4">Welcome, {user.fullname}!</h2>

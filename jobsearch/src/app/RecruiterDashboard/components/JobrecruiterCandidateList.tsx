@@ -1,3 +1,4 @@
+import ResumeLink from "@/app/components/ResumeLink";
 import React, { useEffect, useState } from "react";
 
 interface JobrecruiterCandidateListProps {
@@ -121,12 +122,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                   {candidate.candidateId.phone}
                 </td>
                 <td className="px-6 py-4 border-b text-center">
-                  <a
-                    href={candidate.candidateId.resume}
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    Resume
-                  </a>
+                  <ResumeLink resumeKey={candidate.candidateId.resume} />
                 </td>
                 <td className="px-6 py-4 border-b text-center">
                   <select

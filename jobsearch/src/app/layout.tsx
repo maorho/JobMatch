@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
   subsets: ["latin"],
 });
 
@@ -30,10 +24,10 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.png" sizes="32x32" />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased w-full`}
+        className={`${inter.className} antialiased w-full min-h-screen flex flex-col`}
       >
         <Header />
-        {children}
+        <main className="flex-1 pt-20">{children}</main>
         <Footer />
       </body>
     </html>

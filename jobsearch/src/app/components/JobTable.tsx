@@ -85,6 +85,7 @@ function JobTable() {
     const data = await res.json();
     const externalRaw = await fetchSheetAsJson();
     const external = normalizeExternalJobs(externalRaw);
+    setExternalJobs(external);
     const all = [...data, ...external];
     if (typeof window !== "undefined") {
       saveJobsToCache(all);

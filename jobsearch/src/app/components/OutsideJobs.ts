@@ -1,13 +1,13 @@
 import { OutsideJob } from "./JobTable";
 
-export default async function fetchSheetAsJson(): Promise<any[]> {
-  const csvUrl =
-    "https://docs.google.com/spreadsheets/d/1N3zI928i-fd_VgRAE0PnGZBqsJToiKesTD-K6CJoMkM/export?format=csv&gid=232532044";
 
-  
+export default async function fetchSheetAsJson(): Promise<any[]> {
+  const csvUrl = process.env.NEXT_PUBLIC_CSV_URL;
+  if (!csvUrl) {
+    throw new Error("❌ CSV_URL is not defined in environment variables");
+  }
   const res = await fetch(csvUrl);
   const csvText = await res.text();
-
   const lines = csvText.trim().split("\n");
 
   // 🔍 מחפש את שורת הכותרת האמיתית – לדוג' אם יש "Title" ו-"Company"
@@ -23,7 +23,7 @@ export default async function fetchSheetAsJson(): Promise<any[]> {
     .map(h => h.trim().replace(/\r/g, ""));
 
   const dataLines = lines.slice(headerIndex + 1);
-
+  
   const json = dataLines.map(line => {
     const values = line.split(",");
     const obj: Record<string, string> = {};

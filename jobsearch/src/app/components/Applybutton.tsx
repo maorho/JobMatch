@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import ResumeLink from "./ResumeLink";
 
 interface ApplybuttonProps {
   job: any;
@@ -58,17 +58,6 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
     }
   }
 
-  if (!user) {
-    return (
-      <div className="text-center">
-        <h2 className="text-red-600 font-semibold">You are not logged in</h2>
-        <Link href="/LoginPage" className="text-blue-500 underline">
-          Go to Login
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
       <div>
@@ -100,14 +89,7 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
       </div>
       <div>
         <label>Resume:</label>
-        <a
-          href={resumefile}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-500 underline block"
-        >
-          View Resume
-        </a>
+        <ResumeLink resumeKey={resumefile} />
       </div>
       {error && <p className="text-red-500">{error}</p>}
       <div className="flex justify-between mt-4">

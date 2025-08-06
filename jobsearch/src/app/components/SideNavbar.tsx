@@ -33,13 +33,22 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
 
   return (
     <div
-      className={`fixed top-0 right-0 h-full w-32 p-5 mt-13 transform transition-all duration-300 ease-in-out
-        ${isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}
-      `}
+      className={`fixed top-0 right-0 h-screen bg-white/90 w-32 p-5 mt-15 shadow-lg z-50
+    transform transition-all duration-300 ease-in-out
+    ${isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}
+  `}
     >
       <ul className="space-y-6">
         {user ? (
           <>
+            <li>
+              <Link
+                href="/Dashboard"
+                className="text-lg font-semibold hover:text-blue-400"
+              >
+                Jobs
+              </Link>
+            </li>
             <li>
               <Link
                 href="/UserSettings"

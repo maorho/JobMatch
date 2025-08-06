@@ -38,10 +38,14 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
                 key={idx}
                 className={idx % 2 === 0 ? "bg-gray-50" : "bg-white"}
               >
-                <td className="px-6 py-4 border-b">hello</td>
-                <td className="px-6 py-4 border-b">hello</td>
-                <td className="px-6 py-4 border-b">hello</td>
-                <td className="px-6 py-4 border-b capitalize">hello</td>
+                <td className="px-6 py-4 border-b">{job.jobId.job}</td>
+                <td className="px-6 py-4 border-b">
+                  {job.jobId.company.companyName}
+                </td>
+                <td className="px-6 py-4 border-b">{job.jobId.country}</td>
+                <td className="px-6 py-4 border-b capitalize">
+                  {job.jobId.type}
+                </td>
                 <td className="px-6 py-4 border-b">
                   {job.link ? (
                     <a
