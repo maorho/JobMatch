@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import ResumeLink from "./ResumeLink";
 
 interface ApplybuttonProps {
@@ -59,17 +58,6 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
     }
   }
 
-  if (!user) {
-    return (
-      <div className="text-center">
-        <h2 className="text-red-600 font-semibold">You are not logged in</h2>
-        <Link href="/LoginPage" className="text-blue-500 underline">
-          Go to Login
-        </Link>
-      </div>
-    );
-  }
-  console.log("User object:", user);
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
       <div>

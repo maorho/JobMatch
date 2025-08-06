@@ -7,11 +7,22 @@ import { AiOutlineUser } from "react-icons/ai";
 import SideNavbar from "./SideNavbar";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { AiOutlineOpenAI } from "react-icons/ai";
+import { FiMessageCircle } from "react-icons/fi";
+import { IoMdNotificationsOutline } from "react-icons/io";
+import { useRouter } from "next/navigation";
 
 function Header() {
   const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
   const { user } = useCurrentUser();
 
+  const handleNotification = () => {
+    router.push(`/notifications/${user.id}`);
+  };
+
+  const handleMessaging = () => {
+    router.push(`/messages/${user.id}`);
+  };
   const toggleSidenav = () => {
     setIsOpen(!isOpen);
   };
@@ -54,6 +65,22 @@ function Header() {
         >
           <AiOutlineOpenAI className="h-6 w-6 text-black" />
         </Link>
+        {user && (
+          <button
+            onClick={handleMessaging}
+            className="bg-white rounded-full p-1 hover:bg-blue-200 transition-colors"
+          >
+            <FiMessageCircle className="h-6 w-6 text-black" />
+          </button>
+        )}
+        {user && (
+          <button
+            onClick={handleNotification}
+            className="bg-white rounded-full p-1 hover:bg-blue-200 transition-colors"
+          >
+            <IoMdNotificationsOutline className="h-6 w-6 text-black" />
+          </button>
+        )}
         <button
           onClick={toggleSidenav}
           className="bg-white rounded-full p-1 hover:bg-blue-200 transition-colors"

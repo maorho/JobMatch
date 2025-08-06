@@ -26,9 +26,7 @@ function LoginForm() {
       const data = await res.json();
 
       if (res.ok) {
-        data.recruiter
-          ? router.push("/RecruiterDashboard")
-          : router.push("/Dashboard");
+        data.recruiter ? router.push("/RecruiterDashboard") : router.push("/");
       } else {
         setError(data.message || "Login failed");
       }
