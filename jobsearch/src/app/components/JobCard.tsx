@@ -11,7 +11,7 @@ interface JobCardProps {
 }
 
 const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
-  const jobID = isInternalJob(job) ? jobIndex : job.id;
+  const jobID = isInternalJob(job) ? job._id : job.id;
   const router = useRouter();
   const handleClick = () => {
     router.push(
