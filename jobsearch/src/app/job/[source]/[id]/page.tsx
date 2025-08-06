@@ -14,6 +14,7 @@ export default function JobPage() {
 
   useEffect(() => {
     async function fetchJob() {
+      console.log(source);
       try {
         if (source === "internal") {
           const res = await fetch(
