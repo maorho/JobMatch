@@ -11,30 +11,11 @@ interface JobDescriptionProps {
 
 const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const [modal, setShowModal] = useState(false);
-  const [isNotLoggedIn, setIsNotLoggedIn] = useState(false);
+  const [isNotLoggedIn, setIsNotLoggedIn] = useState(true);
   const [didYouApplied, setDidYouApplied] = useState(false);
   const { user } = useCurrentUser();
   const qualifications_arr = job.qualifications?.split(", ") || [];
-  const [finalUrl, setFinalUrl] = useState<string | null>(null);
   const checkJobType = isInternalJob(job);
-  useEffect(() => {
-    if (!checkJobType) {
-      //const final = finalUrlsMap.get(job.url)
-      //if(final){
-      //    setFinalUrl(final)
-      //}
-      //else{
-      fetch(
-        `http://localhost:4000/api/open-job?url=${encodeURIComponent(job.url)}`
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.finalUrl) setFinalUrl(data.finalUrl);
-        })
-        .catch((err) => console.error("Prefetch error:", err));
-      //}
-    }
-  }, [job]);
 
   const appliedExternalJob = () => {};
   return (
@@ -85,13 +66,13 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         <button
           onClick={() => {
             if (!user) {
-              setIsNotLoggedIn(true);
+              setIsNotLoggedIn(false);
             } else {
               if (checkJobType) {
                 setShowModal(true);
               } else {
-                if (finalUrl) {
-                  window.open(finalUrl, "_blank");
+                if (job.finalUrl) {
+                  window.open(job.finalUrl, "_blank");
                   setDidYouApplied(true);
                 } else {
                   alert("הקישור עדיין נטען... נסה שוב בעוד רגע");
@@ -105,7 +86,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         </button>
       </div>
 
-      {isNotLoggedIn && (
+      {!isNotLoggedIn && (
         <div className="text-center">
           <h2 className="text-red-600 font-semibold">You are not logged in</h2>
           <Link href="/LoginPage" className="text-blue-500 underline">
