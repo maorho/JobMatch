@@ -1,5 +1,5 @@
 // lib/server/externalJobs.ts
-import { OutsideJob } from "../../components/JobTable"; // או עדכן לנתיב הנכון
+import { ExternalJob } from "../../components/JobTable"; // או עדכן לנתיב הנכון
 
 export async function fetchSheetAsJson(): Promise<any[]> {
   const csvUrl =
@@ -28,7 +28,7 @@ export async function fetchSheetAsJson(): Promise<any[]> {
   });
 }
 
-export function normalizeExternalJobs(jobs: any[]): OutsideJob[] {
+export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
   function generateIdFromFields(job: any): string {
     const base = `${job.Title}-${job.Company}-${job["Posted time"]}`;
     return btoa(unescape(encodeURIComponent(base))).slice(0, 16);
@@ -65,7 +65,7 @@ export function normalizeExternalJobs(jobs: any[]): OutsideJob[] {
 
   return jobs
     .filter(job => job && job.Title && job.Company && job.Location && job["Posted time"])
-    .map((job): OutsideJob => {
+    .map((job): ExternalJob => {
       const postedRaw = new Date(job["Posted time"]);
       const id = isNaN(postedRaw.getTime()) ? new Date() : postedRaw;
 

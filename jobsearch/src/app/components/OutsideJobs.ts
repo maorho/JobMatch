@@ -1,4 +1,6 @@
-import { OutsideJob } from "./JobTable";
+import { ExternalJob } from "./JobTable";
+
+
 
 
 export default async function fetchSheetAsJson(): Promise<any[]> {
@@ -36,7 +38,7 @@ export default async function fetchSheetAsJson(): Promise<any[]> {
   return json;
 }
 
-export function normalizeExternalJobs(jobs: any[]): OutsideJob[] {
+export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
   function generateIdFromFields(job: any): string {
   const base = `${job.Title}-${job.Company}-${job["Posted time"]}`;
   return btoa(unescape(encodeURIComponent(base))).slice(0, 16); // קיצוץ לאורך סביר
@@ -75,7 +77,7 @@ export function normalizeExternalJobs(jobs: any[]): OutsideJob[] {
 
   return jobs
     .filter((job) => job && job.Title && job.Company && job.Location && job["Posted time"]) // הגנה בסיסית
-    .map((job): OutsideJob => {
+    .map((job): ExternalJob => {
       // תאריך בטוח
       const postedRaw = new Date(job["Posted time"]);
       const id = isNaN(postedRaw.getTime())

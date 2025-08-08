@@ -4,35 +4,35 @@ import React, { useMemo, useState, useEffect } from "react";
 import JobCard from "./JobCard";
 import JobFilters from "./filter";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import fetchSheetAsJson, { normalizeExternalJobs } from "./OutsideJobs";
 import { setExternalJobs } from "../lib/Externaljobs";
 
-export interface OutsideJob {
-  id: string;
+interface BaseJob {
   job: string;
-  company: string;
   city: string;
   country: string;
-  seniority: string[];
-  url: string;
-  skills: string[];
 }
 
-interface JobType {
+export interface ExternalJob extends BaseJob {
   _id: string;
-  job: string;
-  type: string;
-  city: string;
-  country: string;
-  seniority: string;
+  company: string;
+  url: string;
+  skills: string[];
+  seniority: string[];
+}
+
+export interface InternalJob extends BaseJob {
+  _id: string;
   company: {
     _id: string;
     companyName: string;
   };
+  seniority: string;
+  type: string;
 }
 
-export type Job = JobType | OutsideJob;
-export function isInternalJob(job: Job): job is JobType {
+export type Job = ExternalJob | InternalJob;
+
+export function isInternalJob(job: Job): job is InternalJob {
   return typeof job.company === "object";
 }
 
@@ -67,6 +67,13 @@ function JobTable() {
   const [visibleCount, setVisibleCount] = useState(50);
   const [initialJobs, setInitialJobs] = useState<Job[] | null>(null);
 
+  // ✅ סנכרון ברקע אם צריך
+  useEffect(() => {
+    fetch("api/external-jobs/sync-if-stale").catch((err) =>
+      console.warn("⚠️ Failed to sync external jobs in background:", err)
+    );
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined" && isCacheValid()) {
       const cached = loadCachedJobs();
@@ -83,14 +90,18 @@ function JobTable() {
   const fetcher = async (): Promise<Job[]> => {
     const res = await fetch(url);
     const data = await res.json();
-    const externalRaw = await fetchSheetAsJson();
-    const external = normalizeExternalJobs(externalRaw);
+
+    const externalRaw = await fetch(
+      "api/external-jobs/fetch-all-external-jobs"
+    );
+    const external = await externalRaw.json();
+    console.log(`external:`, external);
     setExternalJobs(external);
+
     const all = [...data, ...external];
     if (typeof window !== "undefined") {
       saveJobsToCache(all);
     }
-    setExternalJobs(external);
     return all;
   };
 
