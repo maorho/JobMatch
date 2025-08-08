@@ -3,15 +3,15 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { isInternalJob } from "./JobTable";
+import { isInternalJob, Job } from "./JobTable";
 
 interface JobCardProps {
-  job: any;
+  job: Job;
   jobIndex: number;
 }
 
 const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
-  const jobID = isInternalJob(job) ? job._id : job.id;
+  const jobID = job._id;
   const router = useRouter();
   const handleClick = () => {
     router.push(
@@ -34,7 +34,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           : job.company}
       </h3>
       <div className="flex ml-2.5 justify-between pr-2">
-        <h3>{job.type}</h3>
+        {isInternalJob(job) && <h3>{job.type}</h3>}
         <h3>
           {isInternalJob(job)
             ? job.city + "," + job.country

@@ -27,7 +27,7 @@ export default function JobPage() {
             setError(data.message || "Job not found");
           }
         } else if (source === "external") {
-          console.log(id);
+          console.log(`externalJobId:`, id);
           const externalJob = getExternalJobById(id);
           if (externalJob) {
             setJob(externalJob);
