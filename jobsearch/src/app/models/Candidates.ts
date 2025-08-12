@@ -6,9 +6,14 @@ const CandidateSchema = new mongoose.Schema({
     enum: ['Rejected', 'HR Phone Interview', 'Technical Interview', 'Accepted','Final Interview','Recived an Offer','Submitted Resume'],
     default: 'Submitted Resume',
   },
+  jobModel: {
+    type: String,
+    enum: ['Job', 'ExternalJobs'],
+    required: true,
+  },
   jobId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Job',
+    refPath: 'jobModel', 
     required: true,
   },
   candidateId:{
