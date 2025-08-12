@@ -1,5 +1,4 @@
-import { ExternalJob } from "../components/JobTable";
-
+import type { ExternalJob } from "@/app/components/JobTable";
 
 let externalJobsCache: ExternalJob[] = [];
 
@@ -11,12 +10,7 @@ export function getExternalJobs(): ExternalJob[] {
   return externalJobsCache;
 }
 
-/**
- * מחזיר משרה חיצונית לפי מזהה (url או מזהה אחר)
- * @param id - מזהה ייחודי של המשרה (url)
- * @returns ExternalJob או undefined אם לא נמצאה
- */
 export function getExternalJobById(id: string): ExternalJob | undefined {
-  console.log(`externalJobsCache`,externalJobsCache);
-  return externalJobsCache.find((job) => job._id === id);
+  // many external jobs are now coming from Mongo, include _id on type or cast
+  return externalJobsCache.find((job: any) => String(job._id) === String(id));
 }

@@ -12,7 +12,7 @@ interface SideNavbarProps {
 
 const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const pathname = usePathname();
-  const { user, loading } = useCurrentUser(); // ✅ כולל loading
+  const { user, loading } = useCurrentUser();
   const lastPathRef = useRef(pathname);
   const initialLoad = useRef(true);
 
@@ -81,14 +81,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
             </li>
           </>
         )}
-        <li>
-          <button
-            onClick={closeNav}
-            className="text-lg font-semibold text-red-500 hover:text-red-400"
-          >
-            Close
-          </button>
-        </li>
+        <li></li>
       </ul>
     </div>
   );

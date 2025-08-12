@@ -15,33 +15,39 @@ const fetcher = async ([url, body]: [string, any]) => {
   });
 
   if (!res.ok) {
-    throw new Error("Failed to fetch");
+    // אופציונלי: לקרוא את השגיאה מהשרת
+    let errMsg = "Failed to fetch";
+    try {
+      const e = await res.json();
+      if (e?.message) errMsg = e.message;
+    } catch {}
+    throw new Error(errMsg);
   }
 
-  return res.json();
+  const data = await res.json(); // ⬅️ לקרוא פעם אחת
+  return data; // ⬅️ להחזיר את אותו אובייקט
 };
 
 const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
   const [showModal, setShowModal] = useState(false);
 
-  const {
-    data: jobsSubmitted,
-    error,
-    isLoading,
-  } = useSWR(
+  const swrKey =
     user && !user.recruiter
       ? [
           "/api/jobsDashboard/Candidate/allCandidatePositions",
           { userId: user.id },
         ]
-      : null,
-    fetcher,
-    {
-      refreshInterval: 10000,
-      revalidateOnFocus: true,
-    }
-  );
+      : null;
+
+  const {
+    data: jobsSubmitted,
+    error,
+    isLoading,
+  } = useSWR(swrKey, fetcher, {
+    refreshInterval: 10000,
+    revalidateOnFocus: true,
+  });
 
   if (loading || isLoading) return <p>Loading...</p>;
 
@@ -66,7 +72,7 @@ const DashboardPage: React.FC = () => {
       </div>
     );
   }
-  console.log(jobsSubmitted);
+  console.log(`jobsSubmitted:`, jobsSubmitted);
   return (
     <div className="p-6 min-h-screen">
       <h2 className="text-xl font-semibold mb-4">Welcome, {user.fullname}!</h2>

@@ -102,7 +102,7 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
         <button
           type="button"
           onClick={() => setShowModal(false)}
-          className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-gray-500"
         >
           Cancel
         </button>

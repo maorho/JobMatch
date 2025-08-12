@@ -6,43 +6,62 @@ import JobDescription from "@/app/components/JobDescription";
 import { getExternalJobById } from "@/app/lib/Externaljobs";
 
 export default function JobPage() {
-  const params = useParams();
-  const { source, id } = params as { source: string; id: string };
+  const { source, id } = useParams() as { source: string; id: string };
 
   const [job, setJob] = useState<any>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchJob() {
-      console.log(source);
       try {
         if (source === "internal") {
           const res = await fetch(
-            `/api/jobsDashboard/getJobDetails?jobId=${id}`
+            `/api/jobsDashboard/getJobDetails?jobId=${id}`,
+            {
+              cache: "no-store",
+            }
           );
           const data = await res.json();
-          if (res.ok) {
-            setJob(data);
-          } else {
-            setError(data.message || "Job not found");
+          if (!cancelled) {
+            res.ok ? setJob(data) : setError(data.message || "Job not found");
           }
-        } else if (source === "external") {
-          console.log(`externalJobId:`, id);
-          const externalJob = getExternalJobById(id);
-          if (externalJob) {
-            setJob(externalJob);
-          } else {
-            setError("External job not found");
-          }
-        } else {
-          setError("Invalid job source");
+          return;
         }
-      } catch (err) {
-        setError("Failed to fetch job details");
+
+        if (source === "external") {
+          // 1) Try client cache first (populated when coming from JobTable)
+          const cached = getExternalJobById(id);
+          if (cached && !cancelled) {
+            setJob(cached);
+            return;
+          }
+
+          // 2) Fallback to server by Mongo _id
+          const res = await fetch(
+            `/api/jobsDashboard/getExternalJobDetails?jobId=${id}`,
+            { cache: "no-store" }
+          );
+          const data = await res.json();
+          if (!cancelled) {
+            res.ok
+              ? setJob(data)
+              : setError(data.message || "External job not found");
+          }
+          return;
+        }
+
+        if (!cancelled) setError("Invalid job source");
+      } catch (e) {
+        if (!cancelled) setError("Failed to fetch job details");
       }
     }
 
     fetchJob();
+    return () => {
+      cancelled = true;
+    };
   }, [id, source]);
 
   if (error) return <div className="p-6 text-red-600">{error}</div>;
