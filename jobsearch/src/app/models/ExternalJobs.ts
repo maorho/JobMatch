@@ -5,6 +5,10 @@ const ExternalJobSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    company_description:{
+        type: String,
+        default:'',
+    },
     company:{
         type: String,
         required: true,
@@ -20,11 +24,11 @@ const ExternalJobSchema = new mongoose.Schema({
     url:{
         type: String,
         required: true,
-        unique:true,
     },
     finalUrl:{
         type: String,
         required: true,
+        unique:true,
     },
     description:{
         type: String,
@@ -33,6 +37,9 @@ const ExternalJobSchema = new mongoose.Schema({
     skills:{
         type: [String],
         required: true,
+    },
+    prefered_qualifications:{
+        type: [String]
     },
     seniority:{
         type: [String],

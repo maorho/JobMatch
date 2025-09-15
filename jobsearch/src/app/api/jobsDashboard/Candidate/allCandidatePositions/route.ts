@@ -16,8 +16,8 @@ export async function POST(req: NextRequest) {
   })
     .populate({
       path: "jobId",
-      // אל תגדיר model כדי לאפשר refPath (Job / ExternalJobs)
-      select: "job company type city country link url finalUrl description skills seniority",
+      model:"Job",
+      select: "job company type city country link description qualifications",
       populate: [
         // ירוץ רק כשהמודל הוא Job (company כ-ObjectId); יתעלם ב-ExternalJobs (company:string)
         { path: "company", select: "companyName" },
@@ -34,8 +34,6 @@ export async function POST(req: NextRequest) {
       select: "job company city country finalUrl"
     })
     .lean();
-  const externalApplication2 = externalApplication.filter((a: any) => a.jobId != null);
-  const applications2 = applications.filter((a: any) => a.jobId != null);
   const resp = [
   ...applications
     .filter((a: any) => a.jobId != null)
