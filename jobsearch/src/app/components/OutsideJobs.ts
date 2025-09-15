@@ -1,9 +1,32 @@
 import { ExternalJob } from "./JobTable";
 
+const isDBUpdated = async (): Promise<boolean> => {
+  try {
+    const res = await fetch("/api/external-jobs/last-updated");
+    if (!res.ok) {
+      console.error("❌ Failed to fetch last update info");
+      return false;
+    }
 
+    const data = await res.json();
+
+    const lastUpdate = new Date(data.lastUpdated).getTime();
+    const now = Date.now();
+
+    const diffInHours = (now - lastUpdate) / (1000 * 60 * 60);
+
+    // true אם עודכן ב־12 השעות האחרונות
+    return diffInHours <= 12;
+  } catch (err) {
+    console.error("❌ Error checking DB update status:", err);
+    return false;
+  }
+};
 
 
 export default async function fetchSheetAsJson(): Promise<any[]> {
+  
+  const lastUpdated = new Date();
   const csvUrl = process.env.NEXT_PUBLIC_CSV_URL;
   if (!csvUrl) {
     throw new Error("❌ CSV_URL is not defined in environment variables");
