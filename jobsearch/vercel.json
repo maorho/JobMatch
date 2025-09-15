@@ -6,15 +6,11 @@
     "api/external-jobs/sync-if-stale/route.ts": {
       "runtime": "nodejs20.x"
     }
-  },
+  }, 
   "crons": [
-    {
-      "path": "/api/external-jobs/cleanup-now",
-      "schedule": "0 0 */2 * *"
-    },
-    {
-      "path": "/api/external-jobs/sync-if-stale",
-      "schedule": "0 */6 * * *"
-    }
+    { "path": "/api/external-jobs/cleanup-now", "schedule": "0 0 */2 * *" },
+    { "path": "/api/external-jobs/sync-if-stale", "schedule": "0 3 * * *" }
   ]
 }
+
+
