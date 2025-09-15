@@ -1,11 +1,13 @@
 {
-  "functions": {
-    "api/external-jobs/cleanup-now": {
+  "crons": [
+    {
+      "path": "/api/external-jobs/cleanup-now",
       "schedule": "0 */48 * * *"
     },
-    "api/external-jobs/sync-if-stale": {
+    {
+      "path": "/api/external-jobs/sync-if-stale",
       "schedule": "0 */6 * * *"
     }
-  }
+  ]
 }
 
