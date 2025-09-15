@@ -1,10 +1,11 @@
 {
   "functions": {
-    "api/external-jobs/cleanup-now/route.ts": {
+    "api/external-jobs/cleanup-now": {
       "schedule": "0 */48 * * *"
     },
-    "api/external-jobs/sync-if-stale/route.ts": {
+    "api/external-jobs/sync-if-stale": {
       "schedule": "0 */6 * * *"
     }
   }
 }
+
