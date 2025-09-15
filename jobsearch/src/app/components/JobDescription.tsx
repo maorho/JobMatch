@@ -94,8 +94,13 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
             <span className="font-semibold">Company:</span>{" "}
             {internal ? job?.company?.companyName : job?.company}
           </h3>
-
-          {internal && job?.description && (
+          {!internal && job?.company_description && (
+            <div className="mb-4">
+              <h3 className="font-semibold">About Us:</h3>
+              <p className="ml-1">{job.company_description}</p>
+            </div>
+          )}
+          {job?.description && (
             <div className="mb-4">
               <h3 className="font-semibold">Description:</h3>
               <p className="ml-1">{job.description}</p>

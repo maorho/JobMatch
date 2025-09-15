@@ -88,6 +88,15 @@ function SignUp() {
           </div>
           <div className="grid grid-flow-col justify-items-center">
             <input
+              type="text"
+              placeholder="Full Name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="text-center m-1 w-80 h-10 border border-gray-300 rounded"
+            />
+          </div>
+          <div className="grid grid-flow-col justify-items-center">
+            <input
               type="email"
               placeholder="Email"
               value={email}

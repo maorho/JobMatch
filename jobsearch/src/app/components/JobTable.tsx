@@ -1,10 +1,8 @@
 "use client";
-import useSWR from "swr";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import JobCard from "./JobCard";
 import JobFilters from "./filter";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import { setExternalJobs } from "../lib/Externaljobs";
 
 interface BaseJob {
   job: string;
@@ -18,6 +16,7 @@ export interface ExternalJob extends BaseJob {
   url: string;
   skills: string[];
   seniority: string[];
+  source: "external";
 }
 
 export interface InternalJob extends BaseJob {
@@ -28,113 +27,90 @@ export interface InternalJob extends BaseJob {
   };
   seniority: string;
   type: string;
+  source: "internal";
 }
 
 export type Job = ExternalJob | InternalJob;
 
 export function isInternalJob(job: Job): job is InternalJob {
-  return typeof job.company === "object";
-}
-
-const CACHE_KEY = "cachedJobs";
-const CACHE_TIME_KEY = "cachedJobsTimestamp";
-const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 שעות
-
-function isCacheValid(): boolean {
-  const t = localStorage.getItem(CACHE_TIME_KEY);
-  if (!t) return false;
-  return Date.now() - parseInt(t) < CACHE_TTL;
-}
-
-function loadCachedJobs(): Job[] | null {
-  try {
-    return JSON.parse(localStorage.getItem(CACHE_KEY) || "[]");
-  } catch {
-    return null;
-  }
-}
-
-function saveJobsToCache(jobs: Job[]) {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(jobs));
-  localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  return job.source === "internal";
 }
 
 function JobTable() {
   const { user } = useCurrentUser();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [company, setCompany] = useState("");
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
-  const [visibleCount, setVisibleCount] = useState(50);
-  const [initialJobs, setInitialJobs] = useState<Job[] | null>(null);
 
-  // ✅ סנכרון ברקע אם צריך
-  useEffect(() => {
-    fetch("api/external-jobs/sync-if-stale").catch((err) =>
-      console.warn("⚠️ Failed to sync external jobs in background:", err)
-    );
-  }, []);
+  // ✅ מביא את המשרות מהשרת
+  const fetchJobs = async (pageNum: number) => {
+    try {
+      setLoading(true);
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && isCacheValid()) {
-      const cached = loadCachedJobs();
-      if (cached) {
-        setInitialJobs(cached);
-      }
+      // internal jobs
+      const internalUrl = user
+        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id}&page=${pageNum}&limit=50`
+        : `/api/jobsDashboard/Alljobs?page=${pageNum}&limit=50`;
+
+      const resInternal = await fetch(internalUrl);
+      const internalData = await resInternal.json();
+      console.log(internalData);
+      // external jobs
+      const resExternal = await fetch(
+        `/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=50`
+      );
+      const externalData = await resExternal.json();
+
+      // הוספת source לזיהוי
+      const internalJobs = (internalData.jobs || []).map((j: any) => ({
+        ...j,
+        source: "internal",
+      }));
+      const externalJobs = (externalData.jobs || []).map((j: any) => ({
+        ...j,
+        source: "external",
+      }));
+
+      // מאחדים
+      const merged = [...internalJobs, ...externalJobs];
+
+      setJobs((prev) => (pageNum === 1 ? merged : [...prev, ...merged]));
+      setTotalPages(Math.max(internalData.pages || 1, externalData.pages || 1));
+    } catch (err) {
+      console.error("❌ Failed to fetch jobs:", err);
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  const url = user
-    ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id}`
-    : "/api/jobsDashboard/Alljobs";
-
-  const fetcher = async (): Promise<Job[]> => {
-    const res = await fetch(url);
-    const data = await res.json();
-
-    const externalRaw = await fetch(
-      "api/external-jobs/fetch-all-external-jobs"
-    );
-    const external = await externalRaw.json();
-    console.log(`external:`, external);
-    setExternalJobs(external);
-
-    const all = [...data, ...external];
-    if (typeof window !== "undefined") {
-      saveJobsToCache(all);
-    }
-    return all;
   };
 
-  const {
-    data: jobs = [],
-    isLoading,
-    error,
-  } = useSWR<Job[]>(initialJobs ? null : url, fetcher, {
-    fallbackData: initialJobs || undefined,
-    refreshInterval: CACHE_TTL,
-    revalidateOnFocus: false,
+  // טוען כשעמוד מתחלף
+  useEffect(() => {
+    fetchJobs(page);
+  }, [page]);
+
+  // מסנן לפי בחירות המשתמש
+  const filteredJobs = jobs.filter((job) => {
+    if (isInternalJob(job)) {
+      return (
+        (company === "" || job.company.companyName === company) &&
+        (city === "" || job.city === city) &&
+        (country === "" || job.country === country)
+      );
+    } else {
+      return (
+        (company === "" || job.company === company) &&
+        (city === "" || job.city === city) &&
+        (country === "" || job.country === country)
+      );
+    }
   });
 
-  const filteredJobs = useMemo(() => {
-    return jobs.filter((job) => {
-      if (isInternalJob(job)) {
-        return (
-          (company === "" || job.company.companyName === company) &&
-          (city === "" || job.city === city) &&
-          (country === "" || job.country === country)
-        );
-      } else {
-        return (
-          (company === "" || job.company === company) &&
-          (city === "" || job.city === city) &&
-          (country === "" || job.country === country)
-        );
-      }
-    });
-  }, [jobs, company, city, country]);
-
   const loadMore = () => {
-    setVisibleCount((prev) => Math.min(prev + 50, filteredJobs.length));
+    if (page < totalPages) setPage((prev) => prev + 1);
   };
 
   return (
@@ -148,26 +124,25 @@ function JobTable() {
         city={city}
         setCity={setCity}
       />
-      {isLoading ? (
+
+      {loading && page === 1 ? (
         <p className="text-center mt-4">Loading jobs...</p>
-      ) : error ? (
-        <p className="text-center mt-4 text-red-500">
-          Error loading jobs: {error.message}
-        </p>
       ) : filteredJobs.length === 0 ? (
         <p className="text-center mt-4">No jobs match your criteria.</p>
       ) : (
         <>
-          {filteredJobs.slice(0, visibleCount).map((job, i) => (
-            <JobCard key={i} job={job} jobIndex={i} />
+          {filteredJobs.map((job, i) => (
+            <JobCard key={job._id || i} job={job} jobIndex={i} />
           ))}
-          {visibleCount < filteredJobs.length && (
+
+          {page < totalPages && (
             <div className="text-center mt-4">
               <button
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
                 onClick={loadMore}
+                disabled={loading}
               >
-                Load More
+                {loading ? "Loading..." : "Load More"}
               </button>
             </div>
           )}

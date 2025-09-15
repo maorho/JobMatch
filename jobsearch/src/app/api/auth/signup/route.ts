@@ -48,7 +48,24 @@ export async function POST(req: NextRequest) {
   const resumeFile = form.get('resume') as File;
 
   if (!email || !password || !fullname || !username || !phone || !resumeFile) {
-    return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+    if(!email){
+      return NextResponse.json({ message: 'Missing email' }, { status: 400 });
+    }
+    else if(!password){
+      return NextResponse.json({ message: 'Missing password' }, { status: 400 });
+    }
+    else if(!fullname){
+      return NextResponse.json({ message: 'Missing Full Name' }, { status: 400 });
+    }
+    else if(!username){
+      return NextResponse.json({ message: 'Missing username' }, { status: 400 });
+    }
+    else if(!phone){
+      return NextResponse.json({ message: 'Missing phone number' }, { status: 400 });
+    }
+    else if(!resumeFile){
+      return NextResponse.json({ message: 'Missing resume file' }, { status: 400 });
+    }
   }
 
   const existingUser = await User.findOne({ email });
