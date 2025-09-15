@@ -10,7 +10,7 @@
   "crons": [
     {
       "path": "/api/external-jobs/cleanup-now",
-      "schedule": "0 */48 * * *"
+      "schedule": "0 0 */2 * *"
     },
     {
       "path": "/api/external-jobs/sync-if-stale",
