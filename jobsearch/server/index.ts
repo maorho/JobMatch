@@ -1,11 +1,95 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
-import puppeteer from "puppeteer";
+import puppeteer, { Browser, Page } from "puppeteer";
 
 const app = express();
 const PORT = 4000;
 
 app.use(cors());
+
+// ------------ extractors (עוטפים page.evaluate) ------------
+async function extractDescripton(page: Page) {
+  return page.evaluate(() => {
+    const norm = (s: string) =>
+      (s || "")
+        .replace(/\u00A0/g, " ")
+        .replace(/\s{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+
+    const startTexts = [
+          "Description","Job Description","תיאור המשרה",
+          "About Us","About the Company","About the job","Role Description","Role Overview","Overview","Position Overview"
+        ];
+    const stopTexts = ["About The Team", "Basic Qualifications", "Preferred Qualifications", "Company"];
+
+    const findStart = (): Element | null => {
+      const isMatch = (el: Element) => startTexts.map(t => t.toLowerCase()).includes(norm(el.textContent || "").toLowerCase());
+      let start = Array.from(document.querySelectorAll<HTMLElement>("h1,h2,h3")).find(isMatch) || null;
+      if (!start) {
+        start = Array.from(document.querySelectorAll<HTMLElement>("h1,h2,h3,div,span")).find(isMatch) || null;
+      }
+      return start;
+    };
+
+    const isStopHeading = (el: Element) => {
+      if (!el.matches("h1,h2,h3")) return false;
+      const t = norm(el.textContent || "").toLowerCase();
+      return stopTexts.map(s => s.toLowerCase()).includes(t);
+    };
+
+    const start = findStart();
+    if (!start) return null;
+
+    const parts: string[] = [];
+    let node: ChildNode | null = start.nextSibling; // כולל TEXT NODES
+
+    while (node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        if (isStopHeading(el)) break;
+
+        if (el.matches("ul,ol")) {
+          const items = Array.from(el.querySelectorAll("li"))
+            .map(li => "• " + norm(li.textContent || ""))
+            .filter(Boolean);
+          if (items.length) parts.push(...items);
+        } else {
+          const t = norm((el as HTMLElement).innerText || el.textContent || "");
+          if (t) parts.push(t);
+        }
+      } else if (node.nodeType === Node.TEXT_NODE) {
+        const t = norm(node.textContent || "");
+        if (t) parts.push(t);
+      }
+      node = node.nextSibling;
+    }
+
+    const result = parts.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    return result || null;
+  });
+}
+
+async function findOpenRef(page: Page) {
+  return page.evaluate(() => {
+    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"));
+    for (const a of anchors) {
+      const txt = (a.innerText || a.textContent || "").toLowerCase().trim();
+      if (/(apply|apply now|open|read more|submit|שלח|הגש|להגשה|קרא עוד|פרטים)/.test(txt)) {
+        return a.href;
+      }
+    }
+    const mui = Array.from(document.querySelectorAll<HTMLAnchorElement>("a.MuiButtonBase-root"));
+    for (const link of mui) {
+      const text = (link.textContent || "").toLowerCase().trim();
+      if (text.includes("open") || text.includes("apply") || text.includes("קרא") || text.includes("הגש")) {
+        if (link.href) return link.href;
+      }
+    }
+    return null;
+  });
+}
+// ------------------------------------------------------------
 
 app.get("/api/open-job", async (req: Request, res: Response): Promise<void> => {
   const jobUrl = req.query.url as string;
@@ -15,48 +99,41 @@ app.get("/api/open-job", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  let browser: Browser | null = null;
+
   try {
-    const browser = await puppeteer.launch({ headless: true });
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
     const page = await browser.newPage();
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    );
 
     console.log(`🌐 Navigating to: ${jobUrl}`);
-    await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.goto(jobUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+    // תן זמן קצר ל־SPA לרנדר
+    try {
+      await page.waitForFunction(
+        () => !!document.querySelector("h1,h2,h3") || !!document.querySelector("a.MuiButtonBase-root"),
+        { timeout: 8000 }
+      );
+    } catch {}
 
-    // ממתין לטעינת כל הכפתורים
-    await page.waitForSelector("a.MuiButtonBase-root", { timeout: 10000 });
+    const description = await extractDescripton(page);
+    const openRef = await findOpenRef(page);
 
-    // ניסיון לקרוא את href של כפתור "Open" עם timeout של 5 שניות
-    const openHref = await Promise.race([
-      page.evaluate(() => {
-        const links = Array.from(document.querySelectorAll("a.MuiButtonBase-root"));
-        for (const link of links) {
-          const text = link.textContent?.trim().toLowerCase();
-          if ((text === "open" || text === "apply")&& link instanceof HTMLAnchorElement) {
-            return link.href;
-          }
-        }
-        return null;
-      }),
-      new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("⏱️ Timeout extracting href")), 5000)
-      ),
-    ]);
+    res.json({
+      finalUrl: openRef || null,
+      jobdescription: description || null
+    });
 
-    await browser.close();
-
-    if (openHref) {
-      console.log("✅ Found Open button href:", openHref);
-      res.json({ finalUrl: openHref });
-      return;
-    } else {
-      console.warn("⚠️ Open button not found or no href");
-      res.status(404).json({ error: "Open button not found or has no href" });
-      return;
-    }
   } catch (err: any) {
-    console.error("❌ Error in Puppeteer:", err.message);
+    console.error("❌ Puppeteer error:", err?.message || err);
     res.status(500).json({ error: "Failed to process job URL" });
-    return;
+  } finally {
+    await browser?.close();
   }
 });
 
