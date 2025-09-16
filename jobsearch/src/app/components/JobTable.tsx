@@ -11,7 +11,8 @@ interface BaseJob {
 }
 
 export interface ExternalJob extends BaseJob {
-  _id: string;
+  _id?: string;
+  id?: string;
   company: string;
   url: string;
   skills: string[];
@@ -20,7 +21,8 @@ export interface ExternalJob extends BaseJob {
 }
 
 export interface InternalJob extends BaseJob {
-  _id: string;
+  _id?: string;
+  id?: string;
   company: {
     _id: string;
     companyName: string;
@@ -132,7 +134,7 @@ function JobTable() {
       ) : (
         <>
           {filteredJobs.map((job, i) => (
-            <JobCard key={job._id || i} job={job} jobIndex={i} />
+            <JobCard key={job.id || i} job={job} jobIndex={i} />
           ))}
 
           {page < totalPages && (
