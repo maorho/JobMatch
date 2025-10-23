@@ -13,7 +13,7 @@ const SignUpImage = () => (
     alt="Singup background"
     width={780}
     height={1163}
-    className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] h-full"
+    className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] lg:h-screen h-auto"
     priority
   />
 );
