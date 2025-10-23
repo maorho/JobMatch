@@ -141,7 +141,7 @@ export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
         url: job.URL?.trim() || "",
         skills,
         createdAt: new Date(),            // ✅ חייב להיות כאן
-        description: job.Description || "", // ✅ חייב להיות כאן
+        description: job?.Description ?? "", // ✅ חייב להיות כאן
         source: "external",
       };
     });

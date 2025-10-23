@@ -10,8 +10,8 @@ interface BaseJob {
   job: string;
   city: string;
   country: string;
-  createdAt: Date;
-  description: string;
+  createdAt?: Date;
+  description?: string;
 }
 
 export interface ExternalJob extends BaseJob {
