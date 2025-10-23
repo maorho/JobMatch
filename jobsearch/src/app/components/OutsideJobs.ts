@@ -140,6 +140,8 @@ export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
         seniority,
         url: job.URL?.trim() || "",
         skills,
+        createdAt: new Date(), 
+        description: job.Description || "",
         source: "external"
       };
     });
