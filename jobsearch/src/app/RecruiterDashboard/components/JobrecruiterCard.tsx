@@ -5,6 +5,9 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
 import JobrecruiterCandidateList from "./JobrecruiterCandidateList";
+import { GoogleIcon } from "@/app/components/JobCard";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime.js";
 
 interface JobrecruiterCardProps {
   job: any;
@@ -24,7 +27,8 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
   const { user } = useCurrentUser();
   const router = useRouter();
-
+  dayjs.extend(relativeTime);
+  const time = dayjs(job.createdAt).fromNow();
   if (!user) return null;
   const isPublisher = user.id.toString() === job.publisher.toString();
   const handleUpdate = async () => {
@@ -87,13 +91,69 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
         initial={{ opacity: 0, x: -40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: jobIndex * 0.05, duration: 0.5 }}
-        className="shadow-xl px-2 h-20 w-200 font-semibold text-white border rounded-xl m-auto mt-2 bg-blue-300 cursor-pointer hover:scale-105 transition-transform"
+        className="
+          relative
+          px-4 py-3
+          w-full max-w-[360px]
+          h-[320px] sm:h-[320px]
+          font-outfit
+          border border-[#000000]/10
+          rounded-[30px]
+          m-auto mb-6
+          cursor-pointer
+          hover:scale-105
+          transition-transform
+          overflow-hidden
+          box-border
+          bg-white
+          flex flex-col justify-between
+        "
       >
-        <h2 className="ml-2">{job.job}</h2>
-        <h3 className="ml-2.5">{job.company.companyName}</h3>
-        <div className="flex ml-2.5 justify-between pr-2">
-          <h3>{job.type}</h3>
-          <h3>{job.location}</h3>
+        {/* כותרת עליונה */}
+        <div>
+          <div className="flex justify-between items-center px-3 pt-3">
+            <h2 className="text-base sm:text-lg font-semibold truncate max-w-[70%]">
+              {job.job}
+            </h2>
+            <GoogleIcon />
+          </div>
+
+          {/* מיקום וזמן */}
+          <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
+            <h3 className="truncate">
+              {job.city}, {job.country}
+            </h3>
+            <h3 className="whitespace-nowrap">{time}</h3>
+          </div>
+
+          {/* תיאור */}
+          <p className="line-clamp-3 mx-3 mt-4 mb-2 text-[#232323] text-xs sm:text-sm leading-relaxed">
+            {job.description}
+          </p>
+
+          {/* תגיות */}
+          <div className="grid grid-cols-3 gap-2 px-3 mb-4">
+            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+              Project Strategy
+            </span>
+            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+              Cloud
+            </span>
+            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+              AWS
+            </span>
+          </div>
+          <div className="border-b-[1px] border-[#000000]/10 mb-5"></div>
+        </div>
+
+        {/* כפתורים בתחתית */}
+        <div className="grid grid-cols-2 gap-3 px-3 pb-4 mt-auto">
+          <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-gray-100 transition-colors">
+            Learn More
+          </button>
+          <button className="font-outfit rounded-[14px] text-white bg-[#11AEFF] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
+            Apply
+          </button>
         </div>
       </motion.div>
 
