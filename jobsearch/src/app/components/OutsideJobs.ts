@@ -132,7 +132,7 @@ export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
         .filter(Boolean);
 
       return {
-        id:generateIdFromFields(job),
+        id: generateIdFromFields(job),
         job: job.Title.trim(),
         company: job.Company.trim(),
         city,
@@ -140,7 +140,9 @@ export function normalizeExternalJobs(jobs: any[]): ExternalJob[] {
         seniority,
         url: job.URL?.trim() || "",
         skills,
-        source: "external"
+        createdAt: new Date(),            // ✅ חייב להיות כאן
+        description: job?.Description ?? "", // ✅ חייב להיות כאן
+        source: "external",
       };
     });
 }
