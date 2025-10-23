@@ -19,41 +19,46 @@ export default function JobPage() {
         if (source === "internal") {
           const res = await fetch(
             `/api/jobsDashboard/getJobDetails?jobId=${id}`,
-            {
-              cache: "no-store",
-            }
+            { cache: "no-store" }
           );
           const data = await res.json();
           if (!cancelled) {
-            res.ok ? setJob(data) : setError(data.message || "Job not found");
+            if (res.ok) {
+              // ⬅️ הוספת source כדי isInternalJob יעבוד נכון
+              setJob({ ...data, source: "internal" });
+            } else {
+              setError(data.message || "Job not found");
+            }
           }
           return;
         }
 
         if (source === "external") {
-          // 1) Try client cache first (populated when coming from JobTable)
+          // נסה cache מקומי קודם
           const cached = getExternalJobById(id);
           if (cached && !cancelled) {
-            setJob(cached);
+            setJob({ ...cached, source: "external" }); // ⬅️ הוספת source פה גם
             return;
           }
 
-          // 2) Fallback to server by Mongo _id
+          // נפילה לשרת
           const res = await fetch(
             `/api/jobsDashboard/getExternalJobDetails?jobId=${id}`,
             { cache: "no-store" }
           );
           const data = await res.json();
           if (!cancelled) {
-            res.ok
-              ? setJob(data)
-              : setError(data.message || "External job not found");
+            if (res.ok) {
+              setJob({ ...data, source: "external" }); // ⬅️ הוספת source
+            } else {
+              setError(data.message || "External job not found");
+            }
           }
           return;
         }
 
         if (!cancelled) setError("Invalid job source");
-      } catch (e) {
+      } catch {
         if (!cancelled) setError("Failed to fetch job details");
       }
     }
