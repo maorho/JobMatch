@@ -45,7 +45,7 @@ function LoginForm() {
       alt="Singin background"
       width={780}
       height={1024}
-      className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] h-screen"
+      className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] lg:h-screen h-auto"
       priority
     />
   );
