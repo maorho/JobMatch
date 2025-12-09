@@ -8,10 +8,16 @@ export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    mutate("/api/auth/me", null, false);
-    closeNav?.();
-    router.push("/");
+
+    // מחיקת קוקי
+    document.cookie = "token=; Max-Age=0; path=/";
+
+    // לעדכן SWR שהמשתמש התנתק
+    await mutate("/api/auth/me", null, false);
+
+    if (closeNav) closeNav();
     router.refresh();
+    router.push("/");
   }
 
   return (

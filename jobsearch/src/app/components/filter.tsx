@@ -1,8 +1,9 @@
 "use client";
 import React from "react";
+import { Job } from "./JobTable";
 
 interface JobFiltersProps {
-  jobs: any[];
+  jobs: Job[];
   company: string;
   setCompany: (value: string) => void;
   country: string;
@@ -20,22 +21,28 @@ const JobFilters: React.FC<JobFiltersProps> = ({
   city,
   setCity,
 }) => {
-  const getUniqueValues = (arr: any[], key: string) => {
-    const values = arr
-      .map((job) => {
-        if (key === "company") {
-          return typeof job.company === "object"
-            ? job.company.companyName
-            : job.company;
-        }
-        return job[key];
-      })
-      .filter((value) => typeof value === "string" && value.trim() !== "");
-    return Array.from(new Set(values));
-  };
+  const getUniqueValues = <K extends keyof Job>(arr: Job[], key: K): string[] => {
+  const values = arr
+    .map((job) => {
+      if (key === "company") {
+        // InternalJob -> יש אובייקט עם companyName
+        return typeof job.company === "object"
+          ? job.company.companyName
+          : job.company;
+      }
+      // כל שאר השדות ניגשים ישירות
+      const value = job[key];
+      return typeof value === "string" ? value : "";
+    })
+    .filter((value) => value.trim() !== "");
+
+  // מחזיר רק ערכים ייחודיים
+  return Array.from(new Set(values));
+};
+
 
   const uniqueCompanies = getUniqueValues(jobs, "company");
-  const uniqueCountries = getUniqueValues(jobs, "type");
+  const uniqueCountries = getUniqueValues(jobs, "country");
   const uniqueCities = getUniqueValues(jobs, "city");
 
   return (

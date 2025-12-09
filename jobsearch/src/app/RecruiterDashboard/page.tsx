@@ -3,22 +3,12 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import { useRouter } from "next/navigation";
 import JobrecruiterCard from "./components/JobrecruiterCard";
 import AddNewPositionRecruiter from "./components/AddNewPositionRecruiter";
-import Image from "next/image";
+import { RecruiterHeroImage } from "../components/HeroImages";
 
-const RecruiterHeroImage = () => (
-  <div className="relative w-full h-[526px] mt-4 lg:mt-5">
-    <Image
-      src="/recruiter_hero.jpg"
-      alt="recruiter image"
-      fill
-      className="object-cover rounded-[20px] lg:rounded-[60px]"
-      priority
-    />
-  </div>
-);
+
+
 const RecruiterDashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
   const [jobs, setJobs] = useState([]);
@@ -26,11 +16,10 @@ const RecruiterDashboardPage: React.FC = () => {
   const [jobLength, setjobLength] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [loadingJobs, setLoadingJobs] = useState(true);
-  const router = useRouter();
   async function loadJobs() {
     setError("");
     setLoadingJobs(true); // התחלת טעינה
-
+    console.log("user:",user);
     try {
       const res = await fetch("/api/jobsDashboard/Company/allCompanyJobs", {
         method: "POST",
@@ -62,14 +51,14 @@ const RecruiterDashboardPage: React.FC = () => {
     return (
       <div className="text-center min-h-screen">
         <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/LoginPage" className="text-blue-600 underline">
+        <Link href="/Login" className="text-blue-600 underline">
           Go to Login
         </Link>
       </div>
     );
   }
 
-  if (!user.recruiter) {
+  if (!user.recruiter && !user.admin) {
     return (
       <div className="text-center min-h-screen">
         <p className="text-red-500 text-lg">You are not a recruiter.</p>
@@ -90,12 +79,15 @@ const RecruiterDashboardPage: React.FC = () => {
           <label className="text-3xl lg:text-7xl font-semibold mb-4">
             Welcome, {user.fullname}! 👋
           </label>
-          <button
+          
+          {user.approved && (
+            <button
             onClick={() => setShowModal(true)}
-            className="font-outfit text-[18px] mt-12 py-[10px] px-10 bg-[#11AEFF] rounded-[8px] lg:rounded-[14px] hover:bg-green-600"
+            className="font-outfit text-[18px] mt-12 py-[10px] px-10 bg-[#11AEFF] rounded-[8px] lg:rounded-[14px] hover:bg-[#24A8A2]"
           >
             Add New Job +
           </button>
+          )}
         </div>
 
         <RecruiterHeroImage />
@@ -109,7 +101,8 @@ const RecruiterDashboardPage: React.FC = () => {
             <h2>Your Board is Empty</h2>
           </div>
         ) : (
-          <div>
+          user.approved?(
+            <div>
             <div className="pb-16">
               <label className="font-medium font-outfit text-[#222222] text-[20px] lg:text-[45px]">
                 You Have {jobLength} Active Job Posts
@@ -128,24 +121,24 @@ const RecruiterDashboardPage: React.FC = () => {
               })}
             </div>
           </div>
+          ):(
+            <div className="text-center min-h-screen">
+              <p className="text-red-500 text-lg">Your recruiter account is not approved yet. Please wait for admin approval.</p>
+            </div>
+          )
         )}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white p-6 rounded-lg w-[500px] max-w-full">
+        <div className="fixed inset-0 flex items-center justify-center bg-[#000000]/70 bg-opacity-50 z-50">
+          <div className="bg-white max-h-[90vh] p-6 rounded-[16px] lg:rounded-4xl  w-[400px] lg:w-[650px] max-w-full flex flex-col">
             <AddNewPositionRecruiter
               onSuccess={() => {
                 setShowModal(false);
                 loadJobs();
               }}
+              setShowModal={setShowModal}
             />
-            <button
-              onClick={() => setShowModal(false)}
-              className="mt-4 bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-            >
-              Close
-            </button>
           </div>
         </div>
       )}

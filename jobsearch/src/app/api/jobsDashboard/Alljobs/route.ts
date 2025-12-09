@@ -1,9 +1,8 @@
 import { connectToDatabase } from "@/app/lib/db";
-import mongoose from "mongoose";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company"; 
 import { NextRequest, NextResponse } from "next/server";
-import { Jobs } from "openai/resources/fine-tuning/jobs/jobs.mjs";
+
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +20,7 @@ export async function GET(req: NextRequest) {
     })
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limit);;
+    .limit(limit);
 
     return NextResponse.json({
       jobs:alljobs,

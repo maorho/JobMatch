@@ -12,7 +12,7 @@ const SignUpImage = () => (
     src="/signup_image.png"
     alt="Singup background"
     width={780}
-    height={1163}
+    height={1500}
     className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] lg:h-screen h-auto"
     priority
   />
@@ -28,6 +28,7 @@ function SignUp() {
   const [phone, setPhone] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [recruiter, setRecruiter] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const [company, setCompany] = useState("");
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +45,7 @@ function SignUp() {
       return setError("Password must be at least 6 characters");
     if (recruiter && company.trim() === "")
       return setError("Please enter your company name");
-    if (!resumeFile) return setError("Please upload your resume");
+    if (!resumeFile && !admin) return setError("Please upload your resume");
 
     setLoading(true);
 
@@ -55,8 +56,10 @@ function SignUp() {
     formData.append("username", username);
     formData.append("phone", phone);
     formData.append("recruiter", String(recruiter));
+    formData.append("admin", String(admin));
     formData.append("company", company);
-    formData.append("resume", resumeFile);
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    resumeFile && formData.append("resume", resumeFile);
 
     try {
       const res = await fetch("/api/auth/signup", {
@@ -67,7 +70,13 @@ function SignUp() {
       const data = await res.json();
 
       if (res.ok) {
-        router.push(data.recruiter ? "/RecruiterDashboard" : "/Dashboard");
+        router.push(
+          data.recruiter
+            ? "/RecruiterDashboard"
+            : data.admin
+            ? "/AdminDashboard"
+            : "/Dashboard"
+        );
       } else {
         setError(data.message || "Signup failed");
       }
@@ -167,7 +176,6 @@ function SignUp() {
               <input
                 type="file"
                 accept=".pdf,.doc,.docx"
-                required
                 onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
                 className="hidden"
                 id="resumeUpload"
@@ -211,11 +219,19 @@ function SignUp() {
                 checked={recruiter}
                 onChange={() => setRecruiter(!recruiter)}
               />
-              <label className="text-sm font-medium">I'm a recruiter</label>
+              <label className="text-sm font-medium">I&apos;m a recruiter</label>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="checkbox"
+                checked={admin}
+                onChange={() => setAdmin(!admin)}
+              />
+              <label className="text-sm font-medium">I&apos;m an Admin</label>
             </div>
           </div>
           <div className="grid grid-flow-col">
-            {recruiter && (
+            {(recruiter || admin) && (
               <input
                 type="text"
                 placeholder="Company"
@@ -261,7 +277,7 @@ function SignUp() {
               <p className="font-outfit text-[#22222299]/60 font-normal">
                 Already Have an Account?  
                 <Link
-                  href="/LoginPage"
+                  href="/Login"
                   className="text-[15px] font-medium lg:text-[18px] text-[#11AEFF]"
                 >
                   Sign In
@@ -302,7 +318,7 @@ function SignUp() {
                 whitespace-nowrap w-full sm:w-[48%] max-w-full
                 hover:bg-gray-50 transition-all duration-200 overflow-hidden"
                 >
-                  <FaFacebook className="text-[#1877F2] w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                  <FaFacebook className="text-[#1877F2] w-6 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
                   <span className="leading-none">Sign up with Facebook</span>
                 </button>
               </div>

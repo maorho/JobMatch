@@ -124,7 +124,7 @@ function deterministicSplit(input: string): SplitResult {
 
   // 3) jobDescription:
   //    א. אם יש כותרת Job-Start לפני הדרישות—ניקח ממנה ועד ה־hardEnd
-  let jobStart = findFirstLabel(text, JOB_START_LABELS);
+  const jobStart = findFirstLabel(text, JOB_START_LABELS);
   let jobDesc = "";
   if (jobStart && jobStart.index < hardEnd) {
     jobDesc = text.slice(jobStart.index + jobStart.matchLength, hardEnd).trim();

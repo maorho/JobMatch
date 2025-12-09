@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
@@ -8,6 +8,22 @@ import JobrecruiterCandidateList from "./JobrecruiterCandidateList";
 import { GoogleIcon } from "@/app/components/JobCard";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
+import { CloseIcon, EditIcon, UpdateIcon } from "@/app/components/icons";
+import { DeleteIcon } from "lucide-react";
+import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
+
+interface TagCompProps {
+  headline: string;
+  number: number;
+}
+const TagComp: React.FC<TagCompProps> = ({ headline, number }) => (
+  <div className="flex justify-between items-center py-4 px-6 bg-white rounded-[12px] border border-black/30 shadow-sm w-full max-w-[250px]">
+    <div className="flex flex-col">
+      <label className="font-outfit font-medium text-[14px]">{headline}</label>
+      <label className="font-outfit font-bold text-[30px]">{number}</label>
+    </div>
+  </div>
+);
 
 interface JobrecruiterCardProps {
   job: any;
@@ -21,38 +37,73 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   onSuccess,
 }) => {
   const [showModal, setShowModal] = useState(false);
+  const [totalCandidates, setTotalCandidates] = useState(0);
+  const [underReview, setUnderReview] = useState(0);
+  const [shortlisted, setShortlisted] = useState(0);
+  const [rejected, setRejected] = useState(0);
+  const isMobile = useIsMobile();
+  const [refreshCandidates, setRefreshCandidates] = useState<
+    () => Promise<{
+      total: number;
+      underReview: number;
+      shortlisted: number;
+      rejected: number;
+    } | null>
+  >(() => Promise.resolve(null));
+  
   const [updateStatuses, setUpdatedStatuses] = useState<Map<string, string>>(
     new Map()
+  );
+  const handleRegisterRefresh = useCallback(
+    (
+      fn: () => Promise<{
+        total: number;
+        underReview: number;
+        shortlisted: number;
+        rejected: number;
+      } | null>
+    ) => setRefreshCandidates(() => fn),
+    []
   );
 
   const { user } = useCurrentUser();
   const router = useRouter();
   dayjs.extend(relativeTime);
   const time = dayjs(job.createdAt).fromNow();
+  const tag_json: { headline: string; number: number }[] = [
+    { headline: "Total Candidates", number: totalCandidates },
+    { headline: "Under reviews", number: underReview },
+    { headline: "Shortlisted", number: shortlisted },
+    { headline: "Rejected", number: rejected },
+  ];
   if (!user) return null;
-  const isPublisher = user.id.toString() === job.publisher.toString();
+  const isPublisher = user.id.toString() === job.publisher.toString()|| user.admin === true;
   const handleUpdate = async () => {
     try {
-      console.log("Sending updates:", Object.fromEntries(updateStatuses));
       const res = await fetch("/api/jobsDashboard/Recruiter/changeStatus", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           jobId: job._id,
           updateStatuses: Object.fromEntries(updateStatuses),
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to update candidate statuses");
-      }
+      if (!res.ok) throw new Error("Failed to update candidate statuses");
 
       const result = await res.json();
       console.log("Update success:", result);
       const newMap = new Map();
       setUpdatedStatuses(newMap);
+
+      // ✅ עכשיו נקבל מהבן את הנתונים המעודכנים
+      const refreshed = await refreshCandidates();
+      if (refreshed) {
+        setTotalCandidates(refreshed.total);
+        setUnderReview(refreshed.underReview);
+        setShortlisted(refreshed.shortlisted);
+        setRejected(refreshed.rejected);
+      }
     } catch (err) {
       console.error("Error updating statuses:", err);
     }
@@ -68,10 +119,9 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
     );
     if (!confirmed) return;
 
-    const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob`, {
+    const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob?jobId=${job._id}`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: job._id }),
     });
 
     if (res.ok) {
@@ -148,60 +198,88 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
         {/* כפתורים בתחתית */}
         <div className="grid grid-cols-2 gap-3 px-3 pb-4 mt-auto">
-          <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-gray-100 transition-colors">
-            Learn More
+          <button 
+          onClick={() => {
+                    setShowModal(false);
+                    router.push(`/RecruiterDashboard/Edit/${job._id}`);
+                  }}
+          className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-gray-100 transition-colors">
+            Edit Position
           </button>
-          <button className="font-outfit rounded-[14px] text-white bg-[#11AEFF] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
-            Apply
+          <button
+            onClick={handleDelete}
+           className="font-outfit rounded-[14px] text-white bg-[#ff1111] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
+            Delete Job
           </button>
         </div>
       </motion.div>
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
-          <div className="bg-white p-4 rounded-lg shadow-lg w-[1000px] max-w-full">
-            <h2 className="text-lg font-semibold mb-2 text-center">
-              Manage Job
-            </h2>
-            <p className="mb-4 text-center">{job.job}</p>
-            <div className="flex justify-between">
-              <button
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-                onClick={() => {
-                  setShowModal(false);
-                  router.push(`/RecruiterDashboard/Edit/${job._id}`);
-                }}
-              >
-                Edit
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-green-600"
-                onClick={() => {
-                  handleUpdate();
-                }}
-              >
-                Update Candidates Statuses
-              </button>
-              <button
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-                onClick={handleDelete}
-              >
-                Delete
-              </button>
-              <button
-                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
-                onClick={() => setShowModal(false)}
-              >
-                Cancel
-              </button>
+        <div className="fixed inset-0 flex items-center justify-center bg-[#000000]/70 bg-opacity-40 z-[10000]">
+          <div className="bg-white max-h-full p-4 rounded-lg shadow-lg w-[1000px] max-w-full">
+            {/* כותרת + כפתורים */}
+            <div className="flex justify-between items-center w-full mb-5">
+              <label className="lg:text-2xl text-[16px] font-outfit font-bold">
+                {job.job}
+              </label>
+
+              <div className="flex gap-3">
+                <button
+                  className="flex px-2 md:px-4 py-2 bg-[#2563EB] text-white rounded-[8px] hover:bg-green-600"
+                  onClick={() => {
+                    setShowModal(false);
+                    router.push(`/RecruiterDashboard/Edit/${job._id}`);
+                  }}
+                >
+                  <EditIcon />
+                  {!isMobile&&'Edit Position'}
+                </button>
+                <button
+                  className="flex px-2 md:px-4 py-2 bg-[#16A34A] text-white rounded-[8px] hover:bg-blue-600"
+                  onClick={handleUpdate}
+                >
+                  <UpdateIcon />
+                  {!isMobile&&'Update Statuses'}
+                </button>
+                <button
+                  className="px-2 md:px-4 py-2 bg-red-500 rounded-[8px] hover:bg-red-600"
+                  onClick={handleDelete}
+                >
+                  <DeleteIcon
+                    color="#FFFFFF"
+                    className="bg-red-500 border-[1px] border-red-500"
+                  />
+                </button>
+                <button
+                  className="px-4 py-2 text-white"
+                  onClick={() => setShowModal(false)}
+                >
+                  <CloseIcon color="#6B7280" className="hover:bg-gray-500" />
+                </button>
+              </div>
             </div>
-            <JobrecruiterCandidateList
-              jobId={job._id}
-              company={job.company.companyName}
-              updateStatuses={updateStatuses}
-              setUpdatedStatuses={setUpdatedStatuses}
-            />
+            <div className="w-full bg-[#E5E7EB]/20 px-8 py-8">
+              <div className="flex justify-center">
+                <div className="grid grid-cols-2 md:gap-x-20 lg:grid-cols-4 gap-4">
+                {
+                  tag_json.map((x,idx)=>(<TagComp key={idx} headline={x.headline} number={x.number} />))
+                }
+                </div>
+              </div>
+              {/* רשימת מועמדים */}
+              <JobrecruiterCandidateList
+                jobId={job._id}
+                company={job.company.companyName}
+                updateStatuses={updateStatuses}
+                setUpdatedStatuses={setUpdatedStatuses}
+                setTotalCandidates={setTotalCandidates}
+                setUnderReview={setUnderReview}
+                setShortlisted={setShortlisted}
+                setRejected={setRejected}
+                onRegisterRefresh={handleRegisterRefresh}
+              />
+            </div>
           </div>
         </div>
       )}

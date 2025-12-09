@@ -1,15 +1,15 @@
 import mongoose from 'mongoose';
-
-const MONGO_URI = process.env.MONGO_URI || '';
-
-if (!MONGO_URI) {
-  throw new Error('Please define the MONGO_URI environment variable');
-}
+// ...existing code...
 
 let isConnected = false;
 
 export async function connectToDatabase() {
-  if (isConnected) return;
+  if (isConnected || mongoose.connection.readyState === 1) return;
+
+  const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI || '';
+  if (!MONGO_URI) {
+    throw new Error('Please define the MONGO_URI environment variable');
+  }
 
   try {
     await mongoose.connect(MONGO_URI);

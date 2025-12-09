@@ -1,4 +1,5 @@
 import { connectToDatabase } from "@/app/lib/db";
+import AddedJobs from "@/app/models/AddedJobs";
 import Candidates from "@/app/models/Candidates";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
       select: "job company city country finalUrl"
     })
     .lean();
+  const selfAdding = await AddedJobs.find({candidateId:userId});
   const resp = [
   ...applications
     .filter((a: any) => a.jobId != null)
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest) {
   ...externalApplication
     .filter((a: any) => a.jobId != null)
     .map((e) => ({ ...e, source: "external" })),
+  ...selfAdding
 ];
 
   return NextResponse.json(resp);

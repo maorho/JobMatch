@@ -1,26 +1,23 @@
-'use client';
-import { useState, useEffect } from 'react';
+"use client";
+
+import useSWR from "swr";
+
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json();
+};
 
 export function useCurrentUser() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, error, isLoading, mutate } = useSWR("/api/auth/me", fetcher, {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+  });
 
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (!res.ok) throw new Error('Not logged in');
-        const data = await res.json();
-        setUser(data);
-      } catch {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchUser();
-  }, []);
-
-  return { user, loading };
+  return {
+    user: data,
+    loading: isLoading,
+    mutateUser: mutate,
+    isError: error,
+  };
 }

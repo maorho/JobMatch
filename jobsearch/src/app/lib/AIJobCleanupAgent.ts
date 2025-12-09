@@ -13,7 +13,7 @@ export class AIJobCleanupAgent {
     const jobs = await ExternalJobs.find();
     let deletedCount = 0;
     let checkedCount = 0;
-    let errors: string[] = [];
+    const errors: string[] = [];
 
     for (const job of jobs) {
       const url = job.finalUrl || job.url;
@@ -29,9 +29,14 @@ export class AIJobCleanupAgent {
         } else {
           console.log(`✅ Job still active: ${job._id} (${url})`);
         }
-      } catch (err: any) {
-        errors.push(`❌ ${url}: ${err.message}`);
-        console.error(`⚠️ Error checking ${url}`, err);
+      } catch (err) {
+        if (err instanceof Error) {
+          errors.push(`❌ ${url}: ${err.message}`);
+          console.error(`⚠️ Error checking ${url}`, err);
+        } else {
+          errors.push(`❌ ${url}: Unknown error`);
+          console.error(`⚠️ Unknown error checking ${url}`, err);
+        }
       }
     }
 

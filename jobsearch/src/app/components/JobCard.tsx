@@ -3,7 +3,6 @@ import React from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { isInternalJob, type Job } from "./JobTable";
-import Applybutton from "./Applybutton";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 
@@ -55,7 +54,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
     } else {
       // IMPORTANT: external jobs must navigate with Mongo _id so refresh works
       // Ensure ExternalJob type includes _id from DB
-      const extId = (job as any)._id;
+      const extId = (job as Job)._id;
       router.push(`/job/external/${extId}`);
     }
   };
@@ -71,7 +70,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
     relative
     px-4 py-3
     w-full max-w-[440px]
-    h-[400px] sm:h-[320px]
+    lg:h-[320px] h-[320px]
     font-outfit
     border border-[#000000]/10
     rounded-[30px]
@@ -119,12 +118,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             AWS
           </span>
         </div>
-        <div className="border-b-[1px] border-[#000000]/10 mb-5"></div>
+        <div className="border-b-[1px] border-[#000000]/10"></div>
       </div>
 
       {/* כפתורים בתחתית */}
-      <div className="grid grid-cols-2 gap-3 px-3 pb-4 mt-auto">
-        <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-gray-100 transition-colors">
+      <div className="grid grid-cols-2 gap-3 px-3 pb-4">
+        <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#24A8A2] transition-colors">
           Learn More
         </button>
         <button className="font-outfit rounded-[14px] text-white bg-[#11AEFF] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">

@@ -2,7 +2,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
 import Candidates from "@/app/models/Candidates";
 import { NextRequest, NextResponse } from "next/server";
-import { verifyToken } from "@/app/lib/jwt";
+import { AppJwtPayload, verifyJwt } from "@/app/lib/jwt";
 
 export async function DELETE(req: NextRequest) {
   await connectToDatabase();
@@ -15,12 +15,18 @@ export async function DELETE(req: NextRequest) {
 
   let decoded;
   try {
-    decoded = verifyToken(token); // כולל את decoded.id
+    decoded = await verifyJwt<AppJwtPayload>(token);
   } catch {
     return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
   }
 
-  const { jobId } = await req.json();
+  if (!decoded) {
+    return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const jobId = searchParams.get("jobId");
+
   if (!jobId) {
     return NextResponse.json({ message: "Missing jobId" }, { status: 400 });
   }
@@ -29,8 +35,7 @@ export async function DELETE(req: NextRequest) {
   if (!job) {
     return NextResponse.json({ message: "Job not found" }, { status: 404 });
   }
-
-  if (job.publisher.toString() !== decoded.id) {
+  if (job.publisher.toString() !== decoded.id && !decoded.admin) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 403 });
   }
 

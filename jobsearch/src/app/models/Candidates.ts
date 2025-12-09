@@ -8,7 +8,7 @@ const CandidateSchema = new mongoose.Schema({
   },
   jobModel: {
     type: String,
-    enum: ['Job', 'ExternalJobs'],
+    enum: ['Job', 'ExternalJobs','AddedJobs'],
     required: true,
   },
   jobId: {
