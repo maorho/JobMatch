@@ -48,7 +48,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
 
   return (
     <div
-      className={`fixed top-0 right-0 bg-white w-60 ${user?"h-110":"h-80"} lg:h-40 rounded-3xl lg:rounded-b-3xl p-5 lg:mt-18 mt-[95px] shadow-lg z-50
+      className={`fixed top-0 right-0 bg-white w-60 ${user?"h-110":"h-80"} lg:h-40 rounded-3xl lg:rounded-b-3xl p-5 lg:mt-18 mt-[90px] shadow-lg z-50
     transform transition-all duration-300 ease-in-out
     ${isOpen ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"}
   `}
