@@ -10,7 +10,7 @@ import { CandidateHeroImage } from "../components/HeroImages";
 import { SearchIcon } from "../components/icons";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 
-export const isSelfAddedJob = (job:any)=>{
+const isSelfAddedJob = (job:any)=>{
   return job.jobType?true:false
 }
 const fetcher = async ([url, body]: [string, any]) => {
