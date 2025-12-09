@@ -9,10 +9,8 @@ import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
 import { SearchIcon } from "../components/icons";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
+import { isSelfAddedJob } from "../../../utils/isSelfAddedJob";
 
-const isSelfAddedJob = (job:any)=>{
-  return job.jobType?true:false
-}
 const fetcher = async ([url, body]: [string, any]) => {
   const res = await fetch(url, {
     method: "POST",

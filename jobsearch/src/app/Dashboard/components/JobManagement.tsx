@@ -1,6 +1,6 @@
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
 import React, { useState } from "react";
-import { isSelfAddedJob } from "../page";
+import { isSelfAddedJob } from "../../../../utils/isSelfAddedJob";
 import { DeleteIcon } from "@/app/components/icons";
 
 interface Job {
