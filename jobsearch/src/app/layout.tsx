@@ -1,13 +1,9 @@
 import type { Metadata } from "next";
-import { Inter, Outfit } from "next/font/google";
+import { Outfit } from "next/font/google";
 import "./globals.css";
-import Header from "./components/Header";
-import Footer from "./components/Footer";
 import LayoutWrapper from "./components/LayoutWrapper";
 
-const inter = Inter({
-  subsets: ["latin"],
-});
+
 const outfit = Outfit({
   subsets: ["latin"],
   weight: ["400", "600", "700"],

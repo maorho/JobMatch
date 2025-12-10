@@ -1,97 +1,267 @@
-// 📁 File: /app/api/chat/download-resume/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
+interface StructuredResume {
+  header?: {
+    name?: string;
+    title?: string;
+    contact?: string[];
+  };
+  summary?: string;
+  skills?: string[];
+  experience?: {
+    company?: string;
+    role?: string;
+    period?: string;
+    bullets?: string[];
+  }[];
+  projects?: {
+    name?: string;
+    description?: string[];
+  }[];
+  education?: {
+    school?: string;
+    degree?: string;
+    period?: string;
+  }[];
+  certifications?: string[];
+  tools?: string[];
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { structuredResume } = await req.json();
+    const { structuredResume }: { structuredResume: StructuredResume } =
+      await req.json();
+
+    if (!structuredResume) {
+      return NextResponse.json(
+        { error: "Missing structured resume" },
+        { status: 400 }
+      );
+    }
 
     const pdfDoc = await PDFDocument.create();
-    const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const fontSize = 12;
-    const headingSize = 15;
-    const titleSize = 13;
-    const lineHeight = fontSize + 4;
+    const pageSize: [number, number] = [595, 842]; // A4
+    let page = pdfDoc.addPage(pageSize);
+
     const marginX = 50;
-    const marginBottom = 50;
+    const maxWidth = pageSize[0] - marginX * 2;
+    let y = 800;
 
-    let page = pdfDoc.addPage();
-    let y = page.getHeight() - 60;
-
-    const ensureSpace = (linesNeeded = 1) => {
-      if (y - linesNeeded * lineHeight < marginBottom) {
-        page = pdfDoc.addPage();
-        y = page.getHeight() - 60;
+    const ensureSpace = (lineHeight: number) => {
+      if (y - lineHeight < 50) {
+        page = pdfDoc.addPage(pageSize);
+        y = 800;
       }
     };
 
-    for (const section of structuredResume) {
-      ensureSpace();
-      page.drawText(section.heading, {
+    const drawLine = (
+      text: string,
+      {
+        size = 11,
+        gap = 16,
+        bold = false,
+      }: { size?: number; gap?: number; bold?: boolean } = {}
+    ) => {
+      if (!text || !text.trim()) return;
+      ensureSpace(gap);
+      page.drawText(text, {
         x: marginX,
         y,
-        font: bold,
-        size: headingSize,
-        color: rgb(0, 0, 0),
+        size,
+        font: bold ? fontBold : font,
       });
-      y -= 25;
+      y -= gap;
+    };
 
-      for (const item of section.items) {
-        if (item.title) {
-          ensureSpace();
-          page.drawText(item.title, {
+    const drawWrapped = (
+      text: string,
+      {
+        size = 11,
+        gap = 16,
+        bold = false,
+      }: { size?: number; gap?: number; bold?: boolean } = {}
+    ) => {
+      if (!text || !text.trim()) return;
+
+      const words = text.split(/\s+/);
+      let line = "";
+
+      for (const word of words) {
+        const testLine = line ? line + " " + word : word;
+        const width = (bold ? fontBold : font).widthOfTextAtSize(
+          testLine,
+          size
+        );
+
+        if (width > maxWidth) {
+          ensureSpace(gap);
+          page.drawText(line, {
             x: marginX,
             y,
-            font: bold,
-            size: titleSize,
-            color: rgb(0, 0, 0),
+            size,
+            font: bold ? fontBold : font,
           });
-          y -= lineHeight;
+          y -= gap;
+          line = word;
+        } else {
+          line = testLine;
         }
-
-        for (const line of item.lines) {
-          ensureSpace();
-          const words = line.split(/(\s+)/);
-          let x = marginX;
-
-          for (const word of words) {
-            const cleanWord = word.replace(/[\*\[\]\(\)\-]/g, "").trim();
-            const isTech = [
-              "JavaScript", "TypeScript", "Python", "SQL", "Node.js", "React", "Next.js",
-              "Git", "Postman", "Unity", "REST", "MongoDB", "MySQL", "API"
-            ].some(tech => cleanWord.toLowerCase() === tech.toLowerCase());
-
-            const font = isTech ? bold : helvetica;
-            const wordWidth = font.widthOfTextAtSize(word, fontSize);
-
-            if (x + wordWidth > page.getWidth() - marginX) {
-              y -= lineHeight;
-              ensureSpace();
-              x = marginX;
-            }
-
-            page.drawText(word, { x, y, font, size: fontSize });
-            x += wordWidth;
-          }
-          y -= lineHeight;
-        }
-        y -= 10;
       }
-      y -= 10;
+
+      if (line) {
+        ensureSpace(gap);
+        page.drawText(line, {
+          x: marginX,
+          y,
+          size,
+          font: bold ? fontBold : font,
+        });
+        y -= gap;
+      }
+    };
+
+    const drawSectionTitle = (title: string) => {
+      if (!title) return;
+      drawLine(title.toUpperCase(), { size: 12, bold: true, gap: 20 });
+      ensureSpace(10);
+      page.drawLine({
+        start: { x: marginX, y: y + 6 },
+        end: { x: marginX + 150, y: y + 6 },
+        thickness: 1,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+      y -= 14;
+    };
+
+    // -------- HEADER --------
+    if (structuredResume.header) {
+      const { name, title, contact } = structuredResume.header;
+
+      if (name) {
+        drawLine(name, { size: 22, bold: true, gap: 26 });
+      }
+      if (title) {
+        drawLine(title, { size: 14, gap: 20 });
+      }
+      if (contact?.length) {
+        drawWrapped(contact.join(" • "), { size: 10, gap: 22 });
+      }
+      y -= 8;
+    }
+
+    // -------- SUMMARY --------
+    if (structuredResume.summary) {
+      drawSectionTitle("Summary");
+      drawWrapped(structuredResume.summary, { size: 11, gap: 16 });
+      y -= 6;
+    }
+
+    // -------- SKILLS --------
+    if (structuredResume.skills?.length) {
+      drawSectionTitle("Skills");
+
+      const skills = structuredResume.skills;
+      const half = Math.ceil(skills.length / 2);
+      const row1 = skills.slice(0, half).join(" • ");
+      const row2 = skills.slice(half).join(" • ");
+
+      drawWrapped(row1, { size: 11, gap: 14 });
+      if (row2) drawWrapped(row2, { size: 11, gap: 16 });
+
+      y -= 6;
+    }
+
+    // -------- EXPERIENCE --------
+    if (structuredResume.experience?.length) {
+      drawSectionTitle("Professional Experience");
+
+      for (const job of structuredResume.experience) {
+        const headerLine = `${job.role ?? ""}${
+          job.company ? " – " + job.company : ""
+        }${job.period ? " (" + job.period + ")" : ""}`;
+
+        if (headerLine.trim()) {
+          drawWrapped(headerLine, { size: 11, bold: true, gap: 18 });
+        }
+
+        if (job.bullets?.length) {
+          for (const b of job.bullets) {
+            drawWrapped(`• ${b}`, { size: 11, gap: 14 });
+          }
+        }
+        y -= 6;
+      }
+    }
+
+    // -------- PROJECTS --------
+    if (structuredResume.projects?.length) {
+      drawSectionTitle("Projects");
+
+      for (const proj of structuredResume.projects) {
+        if (proj.name) {
+          drawWrapped(proj.name, { size: 11, bold: true, gap: 18 });
+        }
+        if (proj.description?.length) {
+          for (const d of proj.description) {
+            drawWrapped(`• ${d}`, { size: 11, gap: 14 });
+          }
+        }
+        y -= 6;
+      }
+    }
+
+    // -------- EDUCATION --------
+    if (structuredResume.education?.length) {
+      drawSectionTitle("Education");
+
+      for (const edu of structuredResume.education) {
+        const line = `${edu.degree ?? ""}${
+          edu.school ? " – " + edu.school : ""
+        }${edu.period ? " (" + edu.period + ")" : ""}`;
+        if (line.trim()) {
+          drawWrapped(line, { size: 11, gap: 18 });
+        }
+      }
+      y -= 6;
+    }
+
+    // -------- CERTIFICATIONS --------
+    if (structuredResume.certifications?.length) {
+      drawSectionTitle("Certifications");
+
+      for (const c of structuredResume.certifications) {
+        drawWrapped(`• ${c}`, { size: 11, gap: 14 });
+      }
+      y -= 6;
+    }
+
+    // -------- TOOLS --------
+    if (structuredResume.tools?.length) {
+      drawSectionTitle("Tools & Technologies");
+      drawWrapped(structuredResume.tools.join(" • "), {
+        size: 11,
+        gap: 16,
+      });
     }
 
     const pdfBytes = await pdfDoc.save();
-    return new NextResponse(Buffer.from(pdfBytes), {
+
+    return new NextResponse(pdfBytes, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": "attachment; filename=Improved_Resume.pdf",
+        "Content-Disposition": "attachment; filename=Resume-Improved.pdf",
       },
     });
-  } catch (error) {
-    console.error("❌ Error generating PDF:", error);
-    return NextResponse.json({ error: "Failed to generate PDF", details: String(error) }, { status: 500 });
+  } catch (err: unknown) {
+    console.error("❌ download-resume error:", err);
+    return NextResponse.json(
+      { error: "Internal Server Error", details: (err as Error).message },
+      { status: 500 }
+    );
   }
 }
