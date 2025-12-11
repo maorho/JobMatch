@@ -4,7 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import {Job} from "../components/JobTable"; 
-import { IUserModel } from "../models/User";
+import { IUser } from "../models/User";
 import { motion } from "framer-motion";
 import JobrecruiterCard from "../RecruiterDashboard/components/JobrecruiterCard";
 import { AdminHero } from "../components/HeroImages";
@@ -59,7 +59,7 @@ const Jobs = ({ jobs }: { jobs: Job[] }) => (
 
 
 interface RecruitersProps {
-  recruiters: IUserModel[];
+  recruiters: IUser[];
   refreshRecruiters: () => void;
 }
 const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }) => {
@@ -94,7 +94,7 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
 }
 function EmployerDashboard() {
   const { user } = useCurrentUser();
-  const [recruitersList, setRecruitersList] = useState<IUserModel[]>([]);
+  const [recruitersList, setRecruitersList] = useState<IUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<number>(0);
