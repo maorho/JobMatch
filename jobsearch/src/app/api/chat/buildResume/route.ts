@@ -25,7 +25,15 @@ export async function POST(req: NextRequest) {
       )
       .join("\n");
 
-    const memory = user?.memory || {};
+    const memory = {
+      skills: Array.isArray(user?.memory?.skills) ? user.memory.skills : [],
+      experience: Array.isArray(user?.memory?.experience) ? user.memory.experience : [],
+      preferences:
+        user?.memory?.preferences && typeof user.memory.preferences === "object"
+          ? user.memory.preferences
+          : {}
+    };
+
 
     const systemPrompt = `
 You are a world-class resume writer and ATS optimization expert.
