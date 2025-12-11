@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import pdfParse from "pdf-parse";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,21 +7,23 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json(
-        { error: "No file uploaded" },
+        { error: "No file provided" },
         { status: 400 }
       );
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await pdfParse(buffer);
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    return NextResponse.json({
-      rawText: parsed.text,
-    });
-  } catch (err: unknown) {
+    const pdfParseModule: any = await import("pdf-parse");
+    const pdfData = await pdfParseModule.default(buffer);
+    const rawText: string = pdfData.text || "";
+
+    return NextResponse.json({ rawText });
+  } catch (err: any) {
     console.error("❌ upload-resume error:", err);
     return NextResponse.json(
-      { error: "Failed to parse PDF" },
+      { error: "Failed to parse PDF", details: String(err?.message || err) },
       { status: 500 }
     );
   }

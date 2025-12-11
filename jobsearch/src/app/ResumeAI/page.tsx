@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 
 type Role = "user" | "assistant" | "system";
 
@@ -9,170 +9,126 @@ type Message = {
   content: string;
 };
 
-export default function ResumeAI() {
+export default function ResumeAIPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "היי! אני ResumeAI 🤖\nתעלה קובץ קורות חיים בפורמט PDF, ואחר כך אעשה איתך שיחה קצרה כדי לשפר אותם בצורה הכי טובה עבורך.",
+        "היי, אני ResumeAI 🤖\nאני אעזור לך לבנות או לשפר קורות חיים – גם אם אין לך קובץ מוכן.\nתוכל לספר לי קצת על עצמך, או להעלות קובץ קורות חיים קיים.",
     },
   ]);
-
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [rawResumeText, setRawResumeText] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [rawResumeText, setRawResumeText] = useState<string | null>(null);
+  const [score, setScore] = useState<number | null>(null);
+  const [issues, setIssues] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // מזהה אם המשתמש ביקש במפורש לייצר קובץ משופר
-  function userRequestedBuild(text: string) {
-    const triggers = [
-      "תבנה",
-      "תייצר",
-      "תוציא",
-      "תייצר קובץ",
-      "תוציא קובץ",
-      "יאללה תבנה",
-      "תוציא לי קורות חיים",
-      "סיימתי",
-      "אפשר את הקובץ",
-    ];
-    return triggers.some((t) => text.includes(t));
-  }
+  // מושך את המשתמש המחובר (בהנחה ש /api/auth/me מחזיר user._id)
+  useEffect(() => {
+    const fetchMe = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.user?._id) {
+          setUserId(data.user._id);
+        }
+      } catch (err) {
+        console.error("❌ failed to load me:", err);
+      }
+    };
+    fetchMe();
+  }, []);
 
-  async function sendMessage() {
+  const appendMessage = (msg: Message) =>
+    setMessages((prev) => [...prev, msg]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
-
-    const userMsg: Message = { role: "user", content: input.trim() };
-    const newMessages = [...messages, userMsg];
+    const userMessage: Message = { role: "user", content: input.trim() };
+    const newMessages = [...messages, userMessage];
 
     setMessages(newMessages);
     setInput("");
     setLoading(true);
-
-    // אם המשתמש מבקש במפורש – נייצר אחרי התגובה
-    const explicitBuildRequest = userRequestedBuild(userMsg.content);
+    setDownloadUrl(null); // אם יש PDF קודם – נסתיר אותו
+    setScore(null);
+    setIssues([]);
 
     try {
+      // 1️⃣ שיחת AI
       const res = await fetch("/api/chat/resume-conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({ messages: newMessages, userId }),
       });
 
       const data = await res.json();
-      const replyText: string = data.reply ?? "";
-
-      const shouldAutoBuild =
-        replyText.includes("###READY_TO_BUILD###") || explicitBuildRequest;
-
-      const cleanReply = replyText.replace("###READY_TO_BUILD###", "").trim();
-
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: cleanReply },
-      ]);
-
-      // אם יש קובץ קורות חיים והגיע הזמן – נתחיל תהליך בנייה
-      if (shouldAutoBuild && rawResumeText) {
-        await buildAndDownloadResume(rawResumeText, [...newMessages, { role: "assistant", content: cleanReply }]);
-      }
-    } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ קרתה שגיאה בעיבוד השיחה. נסה שוב עוד רגע.",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    setDownloadUrl(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("resume", file);
-
-      const res = await fetch("/api/chat/upload-resume", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
       if (data.error) {
-        throw new Error(data.error);
+        appendMessage({
+          role: "assistant",
+          content: "⚠️ אירעה שגיאה. נסה שוב בעוד רגע.",
+        });
+        return;
       }
 
-      setRawResumeText(data.rawText);
+      let reply: string = data.reply || "";
+      const readyToken = "###READY_TO_BUILD###";
+      const shouldBuild = reply.includes(readyToken);
+      reply = reply.replace(readyToken, "").trim();
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "system",
-          content: "RESUME_UPLOADED",
-        },
-        {
-          role: "assistant",
-          content:
-            "קיבלתי את הקורות חיים שלך ✅\nתרצה שנשפר אותם לשימוש כללי, או למשרה ספציפית? אם למשרה – תכתוב גם את התפקיד, לינק (אם יש) ודגשים חשובים.",
-        },
-      ]);
+      appendMessage({ role: "assistant", content: reply });
+
+      // 2️⃣ אם ה-AI החליט שיש מספיק מידע → נייצר קורות חיים
+      if (shouldBuild) {
+        await buildAndDownloadResume([...newMessages, { role: "assistant", content: reply }]);
+      }
     } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "⚠️ קרתה שגיאה בקריאת הקובץ. נסה שוב עם PDF תקין.",
-        },
-      ]);
+      console.error("❌ resume conversation error:", err);
+      appendMessage({
+        role: "assistant",
+        content: "⚠️ שגיאה בתקשורת עם השרת. נסה שוב.",
+      });
     } finally {
       setLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }
+  };
 
-  async function buildAndDownloadResume(
-    resumeText: string,
-    conversationMessages: Message[]
-  ) {
+  const buildAndDownloadResume = async (conversation: Message[]) => {
     try {
       setLoading(true);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "מעבד את קורות החיים שלך ובונה גרסה משופרת... ⏳",
-        },
-      ]);
+      appendMessage({
+        role: "assistant",
+        content: "מעולה! אני בונה עכשיו עבורך קורות חיים משופרים באנגלית…",
+      });
 
-      // 1) בניית JSON משופר
+      // 1️⃣ יצירת structuredResume + score + issues
       const buildRes = await fetch("/api/chat/buildResume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          rawResumeText: resumeText,
-          messages: conversationMessages,
+          userId,
+          messages: conversation,
+          rawResumeText,
         }),
       });
 
       const buildData = await buildRes.json();
-
-      if (!buildRes.ok || !buildData.structuredResume) {
-        throw new Error(buildData.error || "Failed to build resume JSON");
+      if (buildData.error) {
+        appendMessage({
+          role: "assistant",
+          content: "⚠️ לא הצלחתי לבנות קורות חיים. נסה שוב מאוחר יותר.",
+        });
+        return;
       }
 
-      // 2) יצירת PDF מה-JSON
+      setScore(buildData.score ?? null);
+      setIssues(Array.isArray(buildData.issues) ? buildData.issues : []);
+
+      // 2️⃣ יצירת PDF
       const pdfRes = await fetch("/api/chat/download-resume", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -180,38 +136,143 @@ export default function ResumeAI() {
       });
 
       if (!pdfRes.ok) {
-        throw new Error("Failed to generate PDF");
+        appendMessage({
+          role: "assistant",
+          content: "⚠️ הייתה בעיה ביצירת קובץ ה-PDF.",
+        });
+        return;
       }
 
       const blob = await pdfRes.blob();
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "סיימתי! ✨ הנה קובץ קורות החיים המשופר שלך להורדה.",
-        },
-      ]);
+      appendMessage({
+        role: "assistant",
+        content:
+          "📄 סיימתי לבנות את קורות החיים המשופרים שלך! אפשר להוריד אותם בלחיצה על הכפתור למטה.",
+      });
     } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "⚠️ קרתה שגיאה בזמן יצירת הקובץ המשופר. נסה שוב עוד רגע, או העלה מחדש את הקובץ.",
-        },
-      ]);
+      console.error("❌ build & download error:", err);
+      appendMessage({
+        role: "assistant",
+        content: "⚠️ אירעה שגיאה בתהליך הבנייה. נסה שוב.",
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  setLoading(true);
+  setDownloadUrl(null);
+  setScore(null);
+  setIssues([]);
+
+  try {
+    // 1️⃣ העלאה וקריאת PDF
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    const res = await fetch("/api/chat/upload-resume", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (data.error) {
+      appendMessage({
+        role: "assistant",
+        content: "⚠️ שגיאה בקריאת קובץ ה-PDF. נסה קובץ אחר.",
+      });
+      return;
+    }
+
+    const rawText = data.rawText || "";
+    setRawResumeText(rawText);
+
+    appendMessage({
+      role: "assistant",
+      content: "📄 קיבלתי את קובץ הקורות חיים. משפר אותם עבורך עכשיו…",
+    });
+
+    // 2️⃣ בניית קורות חיים משופרים אוטומטית (buildResume)
+    const buildRes = await fetch("/api/chat/buildResume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        messages: [{ role: "user", content: "Auto improve uploaded resume" }],
+        rawResumeText: rawText,
+      }),
+    });
+
+    const buildData = await buildRes.json();
+    console.log("🚀 structuredResume:", buildData.structuredResume);
+    if (buildData.error) {
+      appendMessage({
+        role: "assistant",
+        content:
+          "⚠️ לא הצלחתי לשפר את קובץ הקו״ח. נסה שוב בעוד רגע.",
+      });
+      return;
+    }
+
+    setScore(buildData.score ?? null);
+    setIssues(buildData.issues ?? []);
+
+    // 3️⃣ יצירת PDF משופר
+    const pdfRes = await fetch("/api/chat/download-resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredResume: buildData.structuredResume,
+      }),
+    });
+
+    if (!pdfRes.ok) {
+      appendMessage({
+        role: "assistant",
+        content: "⚠️ הייתה בעיה ביצירת קובץ ה-PDF.",
+      });
+      return;
+    }
+
+    const blob = await pdfRes.blob();
+    const url = URL.createObjectURL(blob);
+    setDownloadUrl(url);
+
+    appendMessage({
+      role: "assistant",
+      content:
+        "✨ סיימתי לשפר את קורות החיים שהעלית! אפשר להוריד אותם עכשיו בלחיצה על הכפתור למטה.",
+    });
+  } catch (err) {
+    console.error("❌ upload+improve error:", err);
+    appendMessage({
+      role: "assistant",
+      content: "⚠️ שגיאה בעיבוד הקובץ. נסה שוב.",
+    });
+  } finally {
+    setLoading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
+};
+
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
-      <div className="border rounded-lg p-4 h-[500px] overflow-y-auto bg-gray-50">
+    <div className="max-w-3xl mx-auto p-4 space-y-4">
+      <h1 className="text-2xl font-bold mb-2 text-center">
+        ResumeAI – בניית ושיפור קורות חיים
+      </h1>
+      <p className="text-center text-gray-600 text-sm mb-4">
+        אתה יכול לנהל שיחה חופשית, להעלות קובץ קורות חיים קיים, או לבנות קורות חיים מאפס.
+      </p>
+
+      <div className="border rounded-lg p-4 h-[520px] overflow-y-auto bg-gray-50">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -219,30 +280,45 @@ export default function ResumeAI() {
               msg.role === "user" ? "text-right" : "text-left"
             }`}
           >
-            {msg.role !== "system" && (
-              <div
-                className={`inline-block px-4 py-2 rounded-xl ${
-                  msg.role === "user"
-                    ? "bg-blue-500 text-white"
-                    : "bg-gray-200"
-                }`}
-              >
-                {msg.content}
-              </div>
-            )}
+            <div
+              className={`inline-block px-4 py-2 rounded-xl whitespace-pre-line ${
+                msg.role === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white border border-gray-200 text-gray-900"
+              }`}
+            >
+              {msg.content}
+            </div>
           </div>
         ))}
+
         {loading && (
-          <div className="text-left text-gray-400 italic">מעבד... ⏳</div>
+          <div className="text-left text-gray-400 italic">המערכת חושבת…</div>
         )}
+
+        {score !== null && (
+          <div className="mt-4 bg-white border rounded-lg p-3 text-sm">
+            <div className="font-semibold mb-1">
+              ⭐ Resume Score: {score}/100
+            </div>
+            {issues.length > 0 && (
+              <ul className="list-disc list-inside text-gray-700">
+                {issues.map((issue, idx) => (
+                  <li key={idx}>{issue}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         {downloadUrl && (
           <div className="text-center mt-4">
             <a
               href={downloadUrl}
-              download="Improved_Resume.pdf"
-              className="inline-block px-6 py-2 bg-green-600 text-white rounded shadow"
+              download="Improved_Resume_ATS.pdf"
+              className="inline-block px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded shadow text-sm"
             >
-              📄 הורד קורות חיים משופרים
+              📄 הורד קורות חיים משופרים (ATS Ready)
             </a>
           </div>
         )}
@@ -250,28 +326,30 @@ export default function ResumeAI() {
 
       <div className="flex gap-2">
         <input
-          className="flex-1 border rounded px-3 py-2"
+          className="flex-1 border rounded px-3 py-2 text-sm"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="כתוב כאן..."
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          placeholder="כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
         />
         <button
-          onClick={sendMessage}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
+          onClick={handleSend}
+          disabled={loading}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
         >
           שלח
         </button>
         <input
           type="file"
           accept="application/pdf"
-          onChange={handleUpload}
           ref={fileInputRef}
+          onChange={handleUpload}
           className="hidden"
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="bg-green-600 text-white px-4 py-2 rounded"
+          disabled={loading}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
         >
           📄 העלה קו״ח
         </button>

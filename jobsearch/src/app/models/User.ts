@@ -14,12 +14,20 @@ export interface IUser extends Document {
   resume?: string;
   currentJob?: string;
 
-  // ✅ תוסיף את אלה כדי ש-TypeScript יכיר בהם
+  memory?: {
+    skills: string[];
+    experience: string[];
+    preferences: {
+      preferredLanguage?: "he" | "en";
+      preferredResumeStyle?: string;
+      hideSections?: string[];
+    };
+  };
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export type IUserModel = IUser;
 const UserSchema = new Schema<IUser>(
   {
     username: { type: String, required: true, unique: true },
@@ -42,8 +50,21 @@ const UserSchema = new Schema<IUser>(
 
     phone: { type: String, required: true },
     currentJob: { type: String, default: "" },
+
+    memory: {
+      skills: { type: [String], default: [] },
+      experience: { type: [String], default: [] },
+      preferences: {
+        type: Object,
+        default: {
+          preferredLanguage: "he",
+          preferredResumeStyle: "ats",
+          hideSections: [],
+        },
+      },
+    },
   },
-  { timestamps: true } // ✅ זה מוסיף createdAt ו-updatedAt למסד הנתונים
+  { timestamps: true }
 );
 
 const User: Model<IUser> =
