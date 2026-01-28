@@ -84,8 +84,8 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
               <p className="text-gray-600">Email:{recruiter.email}</p>
               <p className="text-gray-600">Company: {recruiter.company}</p>
               <p className="text-gray-600">Approved: {recruiter.approved ? "Yes" : "No"}</p>
-              <button className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => handleApprove(recruiter._id as string)}>Approve</button>
-              <button className="mt-2 ml-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onClick={() => handleDecline(recruiter._id as string)}>Reject</button>
+              <button className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
+              <button className="mt-2 ml-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
             </motion.div>
         ))}
   </div>
