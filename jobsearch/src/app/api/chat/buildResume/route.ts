@@ -3,11 +3,12 @@ import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import mongoose from "mongoose";
 import User from "@/app/models/User";
+import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, messages, rawResumeText } = await req.json();
-
+    const { messages, rawResumeText } = await req.json();
+    const userId = await getUserIdFromRequest(req);
     if (mongoose.connection.readyState === 0) {
       if (!process.env.MONGO_URI) {
         console.error("❌ MONGODB_URI is not defined");

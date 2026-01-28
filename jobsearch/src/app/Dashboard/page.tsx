@@ -160,12 +160,12 @@ const DashboardPage: React.FC = () => {
           <div className="flex gap-4">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white">
             <option className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white" value="">Filter by Status</option>
-            {jobsSubmitted.
+            {jobsSubmitted?.
               map((job: any) => <option key={job._id} value={job.status}>{job.status}</option>)}
           </select>
           <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white">
             <option className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white" value="">Filter by Type</option>
-            {jobsSubmitted.
+            {jobsSubmitted?.
               map((job: any) => <option key={job._id} value={isSelfAddedJob(job)?job.jobType:job.jobId.type}>{isSelfAddedJob(job)?job.jobType:job.jobId.type}</option>)}
           </select>
           </div>

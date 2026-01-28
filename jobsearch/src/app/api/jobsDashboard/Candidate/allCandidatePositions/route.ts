@@ -1,5 +1,11 @@
 import { connectToDatabase } from "@/app/lib/db";
 import AddedJobs from "@/app/models/AddedJobs";
+import "@/app/models/Job";
+import "@/app/models/ExternalJobs";
+import "@/app/models/Candidates";
+import "@/app/models/AddedJobs";
+import "@/app/models/Company";
+import "@/app/models/User";
 import Candidates from "@/app/models/Candidates";
 import { NextRequest, NextResponse } from "next/server";
 

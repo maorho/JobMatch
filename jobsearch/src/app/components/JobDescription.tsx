@@ -184,7 +184,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       {!user && (
         <div className="text-center bg-white shadow-xl p-5 w-[90%] max-w-2xl m-auto rounded-b-lg">
           <h2 className="text-red-600 font-semibold">You are not logged in</h2>
-          <Link href="/LoginPage" className="text-blue-500 underline">
+          <Link href="/Login" className="text-blue-500 underline">
             Go to Login
           </Link>
         </div>
