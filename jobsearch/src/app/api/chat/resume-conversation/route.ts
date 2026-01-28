@@ -15,6 +15,21 @@ type ExtractedMemory = {
   preferredLanguage?: "he" | "en";
   preferredStyle?: string;
 };
+type UserLean = {
+  _id: any;
+  fullname?: string;
+  email?: string;
+  phone?: string;
+  currentJob?: string;
+  resume?: string;
+  admin?: boolean;
+  recruiter?: boolean;
+  memory?: {
+    skills?: string[];
+    experience?: string[];
+    preferences?: Record<string, any>;
+  };
+};
 
 function detectLanguage(text: string): "he" | "en" {
   if (!text) return "he";
@@ -113,7 +128,7 @@ async function updateUserMemory(
 }
 
 // האם יש מידע מינימלי לבניית קו״ח?
-function hasMinimalResumeInfo(user: IUser | null, mem: ExtractedMemory) {
+function hasMinimalResumeInfo(user: UserLean | null, mem: ExtractedMemory) {
   const skillsCount =
     (user?.memory?.skills?.length || 0) + (mem.skills?.length || 0);
   const expCount =
@@ -146,9 +161,10 @@ export async function POST(req: NextRequest) {
       await updateUserMemory(userId, extractedMemory);
     }
 
-    const user: IUser | null = userId
-      ? await User.findById(userId).lean()
-      : null;
+    const user: UserLean | null = userId
+    ? ((await User.findById(userId).lean()) as unknown as UserLean)
+    : null;
+
 
     const isAdmin = !!user?.admin;
     const hasResumeFile = !!user?.resume;
