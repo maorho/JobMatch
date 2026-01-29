@@ -15,6 +15,14 @@ export async function GET(req: NextRequest) {
   if (!expected || secret !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const debug = req.nextUrl.searchParams.get("debug") === "1";
+  const dry = req.nextUrl.searchParams.get("dry") === "1";
+  const limit = Number(req.nextUrl.searchParams.get("limit") ?? "0") || 0;
+  const sample = Number(req.nextUrl.searchParams.get("sample") ?? "0") || 0;
+
+  const t0 = Date.now();
+  const log = (...args: any[]) => debug && console.log("[sync-if-stale]", ...args);
+
   try {
     
     await connectToDatabase();
@@ -62,7 +70,9 @@ export async function GET(req: NextRequest) {
         console.error("Failed to crawl:", job.url, err);
       }
     }
-
+    
+    log("existing_matches:", existing.length);
+    log("new_jobs_detected:", newJobs.length);
     return NextResponse.json({ message: `Sync complete. ${createdCount} new jobs added.` });
   } catch (err) {
     console.error("❌ Sync error:", err);
