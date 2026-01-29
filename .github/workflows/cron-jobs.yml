@@ -14,14 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call sync-if-stale
-        run: >
-          curl -fsS
-          "${{ env.PROD_BASE_URL }}/api/external-jobs/sync-if-stale?cron_secret=${{ secrets.CRON_SECRET }}"
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/sync-if-stale" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
 
   cleanup_now:
     runs-on: ubuntu-latest
     steps:
       - name: Call cleanup-now
-        run: >
-          curl -fsS
-          "${{ env.PROD_BASE_URL }}/api/external-jobs/cleanup-now?cron_secret=${{ secrets.CRON_SECRET }}"
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/cleanup-now" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
