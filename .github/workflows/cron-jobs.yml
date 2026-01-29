@@ -2,8 +2,8 @@ name: JobMatch Cron
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # כל 6 שעות (UTC)
-    - cron: "0 */12 * * *"  # כל 12 שעות (UTC)
+    - cron: "0 */6 * * *"   # every 6 hours (UTC)
+    - cron: "0 */12 * * *"  # every 12 hours (UTC)
   workflow_dispatch:
 
 jobs:
@@ -11,12 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call sync-if-stale
+        shell: bash
         run: |
-          curl -fsS "${{ secrets.PROD_BASE_URL }}/api/external-jobs/sync-if-stale?cron_secret=${{ secrets.CRON_SECRET }}"
+          BASE_URL="$(echo -n '${{ secrets.PROD_BASE_URL }}' | tr -d '\r\n')"
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS "${BASE_URL}/api/external-jobs/sync-if-stale?cron_secret=${{ secrets.CRON_SECRET }}"
 
   cleanup_now:
     runs-on: ubuntu-latest
     steps:
       - name: Call cleanup-now
+        shell: bash
         run: |
-          curl -fsS "${{ secrets.PROD_BASE_URL }}/api/external-jobs/cleanup-now?cron_secret=${{ secrets.CRON_SECRET }}"
+          BASE_URL="$(echo -n '${{ secrets.PROD_BASE_URL }}' | tr -d '\r\n')"
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS "${BASE_URL}/api/external-jobs/cleanup-now?cron_secret=${{ secrets.CRON_SECRET }}"
