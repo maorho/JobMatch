@@ -3,8 +3,10 @@ import { AIJobCleanupAgent } from "@/app/lib/AIJobCleanupAgent";
 import { connectToDatabase } from "@/app/lib/db";
 
 export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get("cron_secret");
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
+  const expected = (process.env.CRON_SECRET ?? "").trim();
+
+  if (!expected || secret !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
