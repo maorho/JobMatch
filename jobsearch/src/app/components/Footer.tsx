@@ -43,7 +43,7 @@ function Footer() {
     </svg>
   );
   return (
-    <footer className="bg-white pt-[120px]">
+    <footer className="bg-white pt-[120px] mb-10">
       <div className="flex justify-center items-center mb-10">
         <div className="my-28 lg:my-32 w-[508px] h-[289px] flex flex-col justify-center items-center">
           <div>
@@ -56,7 +56,7 @@ function Footer() {
               style={{ height: "auto", width: "auto" }}
             />
           </div>
-          <div>
+          <div className="md:ml-10">
             <ul className="gap-[50px] items-center flex flex-col md:flex-row lg:flex-row  ">
               <li className="hover:text-blue-500 font-outfit text-[16px]">
                 <Link
@@ -93,7 +93,7 @@ function Footer() {
             </ul>
           </div>
           <div>
-            <ul className="gap-[50px] flex py-[40px] ">
+            <ul className="gap-[50px] flex py-[40px] mb-30">
               <li className="hover:text-blue-500 font-outfit w-[48px] h-[48px] rounded-full  border-1 border-[#102B39]">
                 <Link
                   className="flex justify-center items-center py-[15px]"

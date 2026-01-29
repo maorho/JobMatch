@@ -62,15 +62,15 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const time = dayjs(job.createdAt).fromNow();
   return (
     <motion.div
-      onClick={handleClick}
-      initial={{ opacity: 0, x: -40 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: jobIndex * 0.05, duration: 0.5 }}
-      className="
+  onClick={handleClick}
+  initial={{ opacity: 0, x: -40 }}
+  animate={{ opacity: 1, x: 0 }}
+  transition={{ delay: jobIndex * 0.05, duration: 0.5 }}
+  className="
     relative
     px-4 py-3
     w-full max-w-[440px]
-    lg:h-[320px] h-[320px]
+    h-[320px]
     font-outfit
     border border-[#000000]/10
     rounded-[30px]
@@ -81,56 +81,57 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
     overflow-hidden
     box-border
     bg-white
-    flex flex-col justify-between
+    flex flex-col
   "
-    >
-      {/* כותרת עליונה */}
-      <div>
-        <div className="flex justify-between items-center px-3 pt-3">
-          <h2 className="text-base sm:text-lg font-semibold truncate max-w-[70%]">
-            {job.job}
-          </h2>
-          <GoogleIcon />
-        </div>
+>
+  {/* תוכן עליון - חייב להיות shrinkable כדי לא לדחוף כפתורים */}
+  <div className="flex-1 min-h-0 overflow-hidden">
+    <div className="flex justify-between items-center px-3 pt-3">
+      <h2 className="text-base sm:text-lg font-semibold truncate max-w-[70%]">
+        {job.job}
+      </h2>
+      <GoogleIcon />
+    </div>
 
-        {/* מיקום וזמן */}
-        <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
-          <h3 className="truncate">
-            {job.city}, {job.country}
-          </h3>
-          <h3 className="whitespace-nowrap">{time}</h3>
-        </div>
+    <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
+      <h3 className="truncate">
+        {job.city}, {job.country}
+      </h3>
+      <h3 className="whitespace-nowrap">{time}</h3>
+    </div>
 
-        {/* תיאור */}
-        <p className="line-clamp-3 mx-3 mt-4 mb-2 text-[#232323] text-xs sm:text-sm leading-relaxed">
-          {job.description}
-        </p>
+    {/* תיאור: כשמתחת ל-xl הכפתורים בעמודה אחת => פחות מקום => מקלמים פחות שורות */}
+    <p className="mx-3 mt-4 mb-2 text-[#232323] text-xs sm:text-sm leading-relaxed line-clamp-2 xl:line-clamp-3">
+      {job.description}
+    </p>
 
-        {/* תגיות */}
-        <div className="grid grid-cols-3 gap-2 px-3 mb-4">
-          <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-            Project Strategy
-          </span>
-          <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-            Cloud
-          </span>
-          <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-            AWS
-          </span>
-        </div>
-        <div className="border-b-[1px] border-[#000000]/10"></div>
-      </div>
+    <div className="grid grid-cols-3 gap-2 px-3 mb-4">
+      <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+        Project Strategy
+      </span>
+      <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+        Cloud
+      </span>
+      <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
+        AWS
+      </span>
+    </div>
 
-      {/* כפתורים בתחתית */}
-      <div className="grid grid-cols-2 gap-3 px-3 pb-4">
-        <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#24A8A2] transition-colors">
-          Learn More
-        </button>
-        <button className="font-outfit rounded-[14px] text-white bg-[#11AEFF] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
-          Apply
-        </button>
-      </div>
-    </motion.div>
+    <div className="border-b-[1px] border-[#000000]/10"></div>
+  </div>
+
+  {/* כפתורים - תמיד נשארים מוצגים */}
+  <div className="shrink-0 grid grid-cols-1 xl:grid-cols-2 gap-3 px-3 pb-4 my-5">
+    <button className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#24A8A2] transition-colors">
+      Learn More
+    </button>
+    <button className="font-outfit rounded-[14px] text-white bg-[#11AEFF] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
+      Apply
+    </button>
+  </div>
+</motion.div>
+
+
   );
 };
 

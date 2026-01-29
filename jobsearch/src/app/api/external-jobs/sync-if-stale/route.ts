@@ -1,15 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextResponse,NextRequest } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import fetchSheetAsJson, { normalizeExternalJobs } from "@/app/components/OutsideJobs";
 import { getFinalUrl } from "@/app/lib/crawler/finalUrl"; // מחזיר OpenJobResponse
 import { agentSplitJobText } from "@/app/lib/agentJobSplitter";
-import { maybeRunExternalJobsCleanup } from "@/app/lib/maybeRunExternalJobsCleanup";
 
 
 
-export async function GET() {
+
+export async function GET(req: NextRequest) {
+  const secret = req.nextUrl.searchParams.get("cron_secret");
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
+    
     await connectToDatabase();
     console.log("got here:api/external-jobs/sync-if-stale");
 

@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse,NextRequest } from "next/server";
 import { AIJobCleanupAgent } from "@/app/lib/AIJobCleanupAgent";
 import { connectToDatabase } from "@/app/lib/db";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const secret = req.nextUrl.searchParams.get("cron_secret");
+  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   try {
     await connectToDatabase();
     const agent = new AIJobCleanupAgent();
