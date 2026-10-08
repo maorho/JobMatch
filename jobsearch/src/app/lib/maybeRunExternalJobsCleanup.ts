@@ -1,8 +1,11 @@
 import { connectToDatabase } from "@/app/lib/db";
 import Maintenance from "@/app/models/Maintenance";
-import { AIJobCleanupAgent } from "@/app/lib/AIJobCleanupAgent";
+import { sweepStaleExternalJobs } from "@/app/lib/staleJobsSweep";
 
-const INTERVAL_MS = 48 * 60 * 60 * 1000; // 48 שעות
+const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 שעות
+// A held lock older than this is considered stale (crashed/frozen run) and may
+// be taken over, so a lost run can't deadlock cleanup forever.
+const LOCK_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export async function maybeRunExternalJobsCleanup() {
   await connectToDatabase();
@@ -10,16 +13,27 @@ export async function maybeRunExternalJobsCleanup() {
   const key = "externalJobsCleanup";
   const now = Date.now();
   const threshold = new Date(now - INTERVAL_MS);
+  const staleLock = new Date(now - LOCK_TTL_MS);
 
   let locked: any;
   try {
     locked = await Maintenance.findOneAndUpdate(
       {
         _id: key,
-        running: { $ne: true },
-        $or: [
-          { lastRunAt: { $lt: threshold } },
-          { lastRunAt: { $exists: false } },
+        // Acquire when not running, OR when a held lock has gone stale.
+        $and: [
+          {
+            $or: [
+              { running: { $ne: true } },
+              { running: true, updatedAt: { $lt: staleLock } },
+            ],
+          },
+          {
+            $or: [
+              { lastRunAt: { $lt: threshold } },
+              { lastRunAt: { $exists: false } },
+            ],
+          },
         ],
       },
       {
@@ -45,8 +59,7 @@ export async function maybeRunExternalJobsCleanup() {
   // מריצים ברקע כדי לא לחסום את ה־API
   (async () => {
     try {
-      const agent = new AIJobCleanupAgent();
-      await agent.run();
+      await sweepStaleExternalJobs();
 
       await Maintenance.updateOne(
         { _id: key },

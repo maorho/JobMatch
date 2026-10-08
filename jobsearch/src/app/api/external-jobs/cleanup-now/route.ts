@@ -1,6 +1,9 @@
 import { NextResponse,NextRequest } from "next/server";
-import { AIJobCleanupAgent } from "@/app/lib/AIJobCleanupAgent";
-import { connectToDatabase } from "@/app/lib/db";
+import { sweepStaleExternalJobs } from "@/app/lib/staleJobsSweep";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
@@ -10,9 +13,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    await connectToDatabase();
-    const agent = new AIJobCleanupAgent();
-    const report = await agent.run(); // 👈 רץ מיד, בלי מגבלת זמן
+    const raw = parseInt(req.nextUrl.searchParams.get("staleDays") ?? "", 10);
+    const staleDays = Number.isFinite(raw) && raw > 0 ? raw : undefined;
+    const report = await sweepStaleExternalJobs(staleDays); // runs immediately
     return NextResponse.json(report);
   } catch (err: any) {
     console.error("❌ Cleanup-now failed:", err);
