@@ -6,7 +6,8 @@ import SideNavbar from "./SideNavbar";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
 import { FiAlignRight } from "react-icons/fi";
-import { MessageIcon, NotificationIcon, ResumeAIIcon, UserIcon } from "./icons";
+import { MessageIcon, ResumeAIIcon, UserIcon } from "./icons";
+import NotificationBell from "./NotificationBell";
 
 
 
@@ -16,13 +17,8 @@ function Header() {
   const router = useRouter();
   const { user } = useCurrentUser();
 
-
-  const handleNotification = () => {
-    router.push(`/notifications/${user.id}`);
-  };
-
   const handleMessaging = () => {
-    router.push(`/messages/${user.id}`);
+    router.push("/messages");
   };
   const toggleSidenav = () => {
     setIsOpen(!isOpen);
@@ -83,14 +79,7 @@ function Header() {
                 <MessageIcon />
               </button>
             )}
-            {user && (
-              <button
-                onClick={handleNotification}
-                className="flex items-center justify-center bg-white rounded-[15px] h-[50px] w-[50px] p-1 hover:bg-blue-200 transition-colors"
-              >
-                <NotificationIcon />
-              </button>
-            )}
+            {user && <NotificationBell />}
             <button
               onClick={toggleSidenav}
               className="flex items-center justify-center bg-white rounded-[15px] h-[50px] w-[50px] p-1 hover:bg-blue-200 transition-colors"

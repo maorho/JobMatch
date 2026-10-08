@@ -22,7 +22,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
   const mobilePages = ["Companies", "Articels", "ContactUs"];
   const userConnectedPages = ["Dashboard", "Settings"];
   const guestPages = ["Login", "SignUp"];
-  const iconsPages = [{page:"ResumeAI",navigate:()=>{router.push("/ResumeAI")},icon: ResumeAIIcon}, {page:"Notifications",navigate:()=>{router.push(`/notifications/${user.id}`)}, icon: NotificationIcon}, {page:"Messages",navigate:()=>{router.push(`/messages/${user.id}`)}, icon: MessageIcon}];
+  const iconsPages = [{page:"ResumeAI",navigate:()=>{router.push("/ResumeAI")},icon: ResumeAIIcon}, {page:"Notifications",navigate:()=>{router.push("/notifications")}, icon: NotificationIcon}, {page:"Messages",navigate:()=>{router.push("/messages")}, icon: MessageIcon}];
 
   useEffect(() => {
       const checkWidth = () => setIsMobile(window.innerWidth < 1024);

@@ -34,6 +34,7 @@ export interface IUser extends Document {
   resumeScore?: number;
   resumeIssues?: string[];
   resumeUpdatedAt?: Date;
+  lastMatchDigestAt?: Date;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -82,6 +83,8 @@ const UserSchema = new Schema<IUser>(
     resumeScore: { type: Number, default: undefined },
     resumeIssues: { type: [String], default: undefined },
     resumeUpdatedAt: { type: Date, default: undefined },
+    // Last time the daily "new matching jobs" digest ran for this user.
+    lastMatchDigestAt: { type: Date, default: undefined },
 
     memory: {
       skills: { type: [String], default: [] },

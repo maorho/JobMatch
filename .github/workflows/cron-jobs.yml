@@ -5,6 +5,7 @@ on:
     - cron: "*/30 * * * *"    # Scout: ingest fresh ATS jobs (every 30 min, best-effort)
     - cron: "0 */6 * * *"     # sync-if-stale: every 6 hours (UTC)
     - cron: "0 */12 * * *"    # cleanup-now: every 12 hours (UTC)
+    - cron: "0 6 * * *"       # job-match digest: daily 06:00 UTC (09:00 Israel)
   workflow_dispatch:
 
 env:
@@ -79,6 +80,17 @@ jobs:
         shell: bash
         run: |
           curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/sync-if-stale" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
+  job_match_digest:
+    # Notify each user with a résumé about new postings that match them.
+    if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call notifications/job-matches
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/notifications/job-matches" \
             --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
 
   cleanup_now:

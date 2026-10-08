@@ -2,6 +2,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import Candidates from "@/app/models/Candidates";
 import Job from "@/app/models/Job";
 import { requireRecruiterOrAdmin } from "@/app/lib/authGuard";
+import { notify } from "@/app/lib/notifications/notify";
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 
@@ -20,7 +21,7 @@ export async function PUT(req: NextRequest) {
     }
 
     // Ownership: only the publishing recruiter (or an admin) may change statuses.
-    const job = await Job.findById(jobId).select("publisher");
+    const job = await Job.findById(jobId).select("publisher job");
     if (!job) {
       return NextResponse.json({ message: "Job not found" }, { status: 404 });
     }
@@ -54,7 +55,20 @@ export async function PUT(req: NextRequest) {
 
     const result = await Candidates.bulkWrite(updates);
 
-    console.log("Bulk write result:", result);
+    // Tell each candidate their application moved (best-effort, in parallel).
+    await Promise.all(
+      Array.from(statusMap.entries())
+        .filter(([userID]) => mongoose.isValidObjectId(userID))
+        .map(([userID, status]) =>
+          notify(userID, {
+            type: "application_status",
+            title: `עדכון במועמדות שלך: ${job.job}`,
+            body: `הסטטוס החדש: ${status}`,
+            link: "/Dashboard",
+            meta: { jobId: String(jobId), status },
+          })
+        )
+    );
 
     return NextResponse.json({
       message: "Candidates status updated successfully",
