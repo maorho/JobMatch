@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
+import EmailTrackingCard from "./components/EmailTrackingCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
 import { SearchIcon } from "../components/icons";
@@ -166,6 +167,7 @@ const DashboardPage: React.FC = () => {
           
         </div>
       </div>
+      <EmailTrackingCard />
       {jobsSubmitted && <JobManagement jobs={filteredJobs}/>}
 
       {showModal && (

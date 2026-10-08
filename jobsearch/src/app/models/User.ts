@@ -35,6 +35,13 @@ export interface IUser extends Document {
   resumeIssues?: string[];
   resumeUpdatedAt?: Date;
   lastMatchDigestAt?: Date;
+  gmail?: {
+    address?: string;
+    refreshTokenSealed?: string;
+    connectedAt?: Date;
+    lastSyncAt?: Date;
+    lastError?: string;
+  };
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -85,6 +92,16 @@ const UserSchema = new Schema<IUser>(
     resumeUpdatedAt: { type: Date, default: undefined },
     // Last time the daily "new matching jobs" digest ran for this user.
     lastMatchDigestAt: { type: Date, default: undefined },
+
+    // Gmail connection for application-status tracking (refresh token is
+    // AES-GCM sealed — see lib/crypto/secretBox).
+    gmail: {
+      address: { type: String, default: "" },
+      refreshTokenSealed: { type: String, default: "", select: false },
+      connectedAt: { type: Date, default: undefined },
+      lastSyncAt: { type: Date, default: undefined },
+      lastError: { type: String, default: "" },
+    },
 
     memory: {
       skills: { type: [String], default: [] },

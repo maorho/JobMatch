@@ -6,6 +6,7 @@ on:
     - cron: "0 */6 * * *"     # sync-if-stale: every 6 hours (UTC)
     - cron: "0 */12 * * *"    # cleanup-now: every 12 hours (UTC)
     - cron: "0 6 * * *"       # job-match digest: daily 06:00 UTC (09:00 Israel)
+    - cron: "15 */2 * * *"    # gmail application tracking: every 2 hours
   workflow_dispatch:
 
 env:
@@ -91,6 +92,17 @@ jobs:
         shell: bash
         run: |
           curl -fsS -G "${{ env.PROD_BASE_URL }}/api/notifications/job-matches" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
+  gmail_sync:
+    # Read connected mailboxes and update application statuses from emails.
+    if: github.event.schedule == '15 */2 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call integrations/gmail/sync
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/integrations/gmail/sync" \
             --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
 
   cleanup_now:

@@ -17,10 +17,37 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "", again: "" });
   const [confirmDelete, setConfirmDelete] = useState("");
 
+  const [gmail, setGmail] = useState<{ connected: boolean; address: string; lastSyncAt: string | null; configured: boolean } | null>(null);
+  const loadGmail = () => fetch("/api/integrations/gmail").then(async (r) => r.ok && setGmail(await r.json()));
+
   useEffect(() => {
     if (!user) return;
     fetch("/api/settings/profile").then(async (r) => r.ok && setP((await r.json()).user));
+    // After the Gmail status loads, surface the consent flow's outcome
+    // (the callback redirects here with ?gmail=...).
+    loadGmail().then(() => {
+      const outcome = new URLSearchParams(window.location.search).get("gmail");
+      const text: Record<string, [kind: "ok" | "err", text: string]> = {
+        connected: ["ok", "Gmail חובר — הסטטוס של המועמדויות יתעדכן מהמיילים"],
+        denied: ["err", "החיבור ל-Gmail בוטל"],
+        state: ["err", "החיבור פג — נסה/י שוב"],
+        failed: ["err", "החיבור ל-Gmail נכשל"],
+        no_refresh_token: ["err", "Google לא החזיר הרשאה קבועה — הסר/י את JobMatch מהרשאות חשבון Google ונסה/י שוב"],
+        not_configured: ["err", "חיבור Gmail עדיין לא מוגדר בסביבה הזו"],
+      };
+      if (outcome && text[outcome]) {
+        setMsg({ kind: text[outcome][0], text: text[outcome][1] });
+        window.history.replaceState(null, "", "/Settings");
+      }
+    });
   }, [user]);
+
+  const disconnectGmail = async () => {
+    const r = await fetch("/api/integrations/gmail", { method: "DELETE" });
+    if (!r.ok) return flash("err", "הניתוק נכשל");
+    loadGmail();
+    flash("ok", "Gmail נותק");
+  };
 
   const flash = (kind: "ok" | "err", text: string) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 4000); };
 
@@ -90,6 +117,22 @@ export default function SettingsPage() {
           {p?.resumeUpdatedAt ? `קורות החיים עודכנו ב-${new Date(p.resumeUpdatedAt).toLocaleDateString("he-IL")}${p.resumeScore ? ` · ציון ${p.resumeScore}/100` : ""}.` : "עדיין לא העלית קורות חיים — הפיד לא מותאם אישית."}
         </p>
         <Link href="/ResumeAI" className="inline-block bg-[#11AEFF] hover:bg-[#0d8ed6] text-white px-5 py-3 rounded-[14px] text-sm transition">לעדכן ב-ResumeAI</Link>
+      </div>
+
+      <div className={card}>
+        <h2 className="text-lg font-semibold text-[#232323]">📬 מעקב סטטוס מהמייל (Gmail)</h2>
+        <p className="text-sm text-[#232323]/70">
+          {gmail?.connected
+            ? <>מחובר ל-<span dir="ltr">{gmail.address}</span>. הסוכן קורא (לקריאה בלבד) מיילים שקשורים למועמדויות שלך ומעדכן את הסטטוס בדשבורד.</>
+            : "חבר/י את ה-Gmail כדי שזימונים לראיון, הצעות ודחיות יעדכנו את הסטטוס של המועמדויות אוטומטית. הרשאת קריאה בלבד; אפשר לנתק בכל רגע."}
+        </p>
+        {gmail?.connected ? (
+          <button onClick={disconnectGmail} className="border border-[#232323]/20 text-[#232323] px-6 py-3 rounded-[14px] hover:bg-[#F9F9F9] transition">נתק Gmail</button>
+        ) : gmail?.configured ? (
+          <a href="/api/integrations/gmail/connect" className="inline-block bg-[#11AEFF] hover:bg-[#0d8ed6] text-white px-5 py-3 rounded-[14px] text-sm transition">חבר Gmail</a>
+        ) : (
+          <p className="text-xs text-[#232323]/50">לא מוגדר בסביבה הזו (נדרשים GOOGLE_CLIENT_ID ו-TOKEN_ENCRYPTION_KEY).</p>
+        )}
       </div>
 
       {(!p?.authProvider || p.authProvider === "local") && (

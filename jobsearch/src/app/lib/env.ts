@@ -34,6 +34,11 @@ export const envSchema = z
     FACEBOOK_APP_ID: z.string().min(1).optional(),
     FACEBOOK_APP_SECRET: z.string().min(1).optional(),
     APP_URL: z.string().url().optional(),
+    // Gmail application tracking: refresh tokens are sealed with this key.
+    TOKEN_ENCRYPTION_KEY: z.string().min(16).optional(),
+    // Contact form relay (optional).
+    RESEND_API_KEY: z.string().optional(),
+    CONTACT_TO_EMAIL: z.string().email().optional(),
   })
   .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {
     message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together",
