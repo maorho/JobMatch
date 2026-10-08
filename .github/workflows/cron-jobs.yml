@@ -23,11 +23,30 @@ jobs:
     if: github.event.schedule == '*/30 * * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Call scout/run
+      - name: Call scout/run (chunked until the whole catalog is covered)
         shell: bash
         run: |
-          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
-            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+          # Each call polls sources for up to ~4 minutes and returns
+          # `nextOffset`; loop until it is null so a serverless timeout can
+          # never leave the tail of the catalog unpolled.
+          offset=0
+          for i in $(seq 1 30); do
+            resp=$(curl -fsS -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
+              --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" \
+              --data-urlencode "offset=$offset" \
+              --data-urlencode "limit=25" \
+              --data-urlencode "budget=240")
+            echo "$resp" | node -e '
+              let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const j=JSON.parse(s);
+                console.log(`chunk offset=${j.nextOffset===null?"last":""} processed=${j.processed}/${j.totalSources} created=${j.created} removed=${j.removed}`);
+                const errs=(j.results||[]).filter(r=>r.error);
+                if(errs.length) console.log("source errors:", errs.map(r=>r.company+": "+r.error).join(" | "));
+              });'
+            next=$(echo "$resp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);process.stdout.write(j.nextOffset===null?"":String(j.nextOffset));})')
+            [ -z "$next" ] && { echo "scout: catalog fully covered"; break; }
+            offset=$next
+          done
 
   embed_jobs:
     # Embed newly-ingested jobs for the Matcher, after the Scout runs.

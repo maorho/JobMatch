@@ -37,15 +37,28 @@ export type ScoutSourceResult = {
 };
 
 export type ScoutResult = {
-  sources: number;
+  sources: number; // sources handled in this call
+  totalSources: number; // enabled sources matching the query
+  processed: number; // sources actually polled before the time budget ran out
+  nextOffset: number | null; // where the next chunk should start; null = done
   created: number;
   removed: number;
   results: ScoutSourceResult[];
 };
 
-type RunOptions = {
+export type RunOptions = {
   company?: string; // limit to one company (by name), for debugging
   dry?: boolean; // fetch + diff but do not write
+  /**
+   * Chunking for serverless hosts: process sources [offset, offset+limit) in a
+   * stable (_id) order, and stop starting new sources once `timeBudgetMs` has
+   * elapsed. The result's `nextOffset` tells the caller where to resume, so a
+   * cron can walk the whole catalog in several short calls instead of one
+   * long call that gets killed by the platform timeout.
+   */
+  offset?: number;
+  limit?: number;
+  timeBudgetMs?: number;
 };
 
 /**
@@ -57,13 +70,27 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
 
   const query: Record<string, unknown> = { enabled: true };
   if (opts.company) query.companyName = opts.company;
-  const sources = await CompanySource.find(query);
+
+  const offset = Math.max(0, opts.offset ?? 0);
+  const limit = opts.limit && opts.limit > 0 ? opts.limit : 0; // 0 = no cap
+  const timeBudgetMs = opts.timeBudgetMs ?? Infinity;
+  const startedAt = Date.now();
+
+  const totalSources = await CompanySource.countDocuments(query);
+  let cursor = CompanySource.find(query).sort({ _id: 1 }).skip(offset);
+  if (limit) cursor = cursor.limit(limit);
+  const sources = await cursor;
 
   const results: ScoutSourceResult[] = [];
   let createdTotal = 0;
   let removedTotal = 0;
+  let processed = 0;
 
   for (const src of sources) {
+    // Out of time: leave the rest for the next chunk rather than get killed.
+    // Always poll at least one source so every call makes progress.
+    if (processed > 0 && Date.now() - startedAt > timeBudgetMs) break;
+    processed++;
     const result: ScoutSourceResult = {
       company: src.companyName,
       atsType: src.atsType,
@@ -217,8 +244,15 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
     results.push(result);
   }
 
+  // More to do if we stopped early (budget) or this chunk didn't reach the end.
+  const reached = offset + processed;
+  const nextOffset = reached < totalSources ? reached : null;
+
   return {
     sources: sources.length,
+    totalSources,
+    processed,
+    nextOffset,
     created: createdTotal,
     removed: removedTotal,
     results,
