@@ -58,7 +58,7 @@ export function getJobType(job: Job): string {
   // Shared taxonomy — the server search classifies with the same rules.
   return isInternalJob(job)
     ? workModeOf({ type: job.type || "On Site" })
-    : workModeOf({ city: job.city, country: job.country, description: job.description });
+    : workModeOf({ city: job.city, country: job.country, remote: (job as any).remote === true });
 }
 
 /**
@@ -267,6 +267,29 @@ function JobTable() {
     setPage(page + 1);
   };
 
+  // Infinite scroll: a sentinel above the "Load More" button triggers loadMore
+  // when it comes into view (400px early so the next page is usually ready
+  // before the user reaches the end). `requestedPage` stops a second trigger
+  // from firing in the tick between setPage and the fetch effect's `loading`.
+  const loadMoreRef = React.useRef<HTMLDivElement | null>(null);
+  const requestedPageRef = React.useRef(1);
+  useEffect(() => {
+    if (page === 1) requestedPageRef.current = 1; // filters reset the paging
+    const el = loadMoreRef.current;
+    if (!el || page >= totalPages) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || loading) return;
+        if (requestedPageRef.current >= page + 1) return;
+        requestedPageRef.current = page + 1;
+        setPage(page + 1);
+      },
+      { rootMargin: "400px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [page, totalPages, loading]);
+
 
   return (
     <div className="w-screen items-center mx-auto justify-center">
@@ -421,6 +444,8 @@ function JobTable() {
 
               {page < totalPages && (
                 <div className="text-center mt-6">
+                  {/* Scroll sentinel: when visible, the next page loads automatically. */}
+                  <div ref={loadMoreRef} aria-hidden="true" className="h-px" />
                   <button
                     className="px-6 py-3 bg-[#24A8A2] text-white rounded-[14px] hover:bg-blue-600 transition font-outfit"
                     onClick={loadMore}
