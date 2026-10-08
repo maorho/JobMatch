@@ -7,7 +7,11 @@
     "puppeteer-server": "ts-node --project ./server/tsconfig.server.json ./server/index.ts",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --exclude \"tests/scale/**\"",
+    "test:watch": "vitest",
+    "test:scale": "vitest run tests/scale --testTimeout=600000"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.804.0",
@@ -43,7 +47,8 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-icons": "^5.5.0",
-    "swr": "^2.3.3"
+    "swr": "^2.3.3",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -59,8 +64,10 @@
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "^16.0.8",
+    "mongodb-memory-server": "^10.4.3",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.9"
   }
 }
