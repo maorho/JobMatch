@@ -316,13 +316,6 @@ export default function ResumeAIPage() {
             <span className="text-base sm:text-lg font-semibold text-navy">📄 העלה קו״ח</span>
           </button>
 
-          {loading && (
-            <div className="flex items-center gap-3 text-sm text-ink-600" role="status">
-              <span className="h-5 w-5 rounded-full border-2 border-teal border-t-transparent animate-spin" />
-              <span>המערכת חושבת…</span>
-            </div>
-          )}
-
           {hasResult && (
             <div className="space-y-4">
               {score !== null && (
@@ -392,7 +385,10 @@ export default function ResumeAIPage() {
             ))}
 
             {loading && (
-              <div className="text-sm text-ink-400 italic">המערכת חושבת…</div>
+              <div className="flex items-center gap-2 text-sm text-ink-400" role="status">
+                <span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" />
+                המערכת חושבת…
+              </div>
             )}
           </div>
 

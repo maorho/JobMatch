@@ -1,4 +1,5 @@
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
+import { Pagination } from "@/app/components/ui";
 import React, { useState } from "react";
 import { isSelfAddedJob } from "../../../../utils/isSelfAddedJob";
 import { DeleteIcon } from "@/app/components/icons";
@@ -27,7 +28,6 @@ const chipByStatus: Record<string, string> = {
   "HR Phone Interview": "jm-chip-teal",
   "Technical Interview": "jm-chip-teal",
   "Final Interview": "jm-chip-teal",
-  "Offer Recived": OFFER_CHIP,
   "Recived an Offer": OFFER_CHIP,
   Accepted: OFFER_CHIP,
   Rejected: "bg-red-50 text-red-700 border-red-200",
@@ -96,31 +96,13 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
         <p className="jm-muted">
           Showing {startIndex + 1}–
           {Math.min(startIndex + itemsPerPage, jobs.length)} of{" "}
-          {jobs.length} candidates
+          {jobs.length} applications
         </p>
       ) : (
         <span />
       )}
 
-      <div className="flex items-center gap-2">
-        <button
-          disabled={currentPage === 1}
-          onClick={() => setCurrentPage(currentPage - 1)}
-          className="jm-btn jm-btn-secondary jm-btn-sm"
-        >
-          Previous
-        </button>
-        <span className="jm-muted px-1 whitespace-nowrap">
-          Page {currentPage} of {Math.max(totalPages, 1)}
-        </span>
-        <button
-          disabled={currentPage === totalPages}
-          onClick={() => setCurrentPage(currentPage + 1)}
-          className="jm-btn jm-btn-secondary jm-btn-sm"
-        >
-          Next
-        </button>
-      </div>
+      <Pagination page={currentPage} total={totalPages} onChange={setCurrentPage} />
     </div>
   );
 

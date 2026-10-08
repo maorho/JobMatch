@@ -37,7 +37,7 @@ function Header() {
   const iconBtn = "relative flex items-center justify-center h-11 w-11 rounded-control bg-white/10 text-white hover:bg-white/20 transition-colors";
 
   return (
-    <header className="sticky top-0 z-[60] bg-navy text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
+    <header className="sticky top-0 z-40 bg-navy text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
       <div className="jm-container flex items-center gap-3 h-[72px]">
         <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="JobMatch home">
           <Image src="/jobMatchIcon.png" alt="" width={44} height={44} priority className="rounded-xl" />

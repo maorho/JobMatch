@@ -67,11 +67,8 @@ export default function NotificationsPage() {
                   </div>
                   {n.body && <p className="mt-1 text-sm text-ink-600 whitespace-pre-line" dir="auto">{n.body}</p>}
                 </div>
-                {n.link ? (
-                  <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">←</span>
-                ) : !n.read ? (
-                  <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" aria-label="לא נקרא" />
-                ) : null}
+                {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" role="img" aria-label="לא נקרא" />}
+                {n.link && <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">←</span>}
               </div>
             );
             return (

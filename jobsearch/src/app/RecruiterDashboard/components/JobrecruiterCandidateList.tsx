@@ -1,7 +1,8 @@
 import ResumeLink from "@/app/components/ResumeLink";
+import { Pagination } from "@/app/components/ui";
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import { DeleteIcon, PdfIcon } from "@/app/components/icons";
+import { PdfIcon } from "@/app/components/icons";
 import { Search } from "lucide-react"; // אייקון זכוכית מגדלת
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
 
@@ -206,16 +207,6 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
     </Link>
   );
 
-  const deleteButton = (
-    <button
-      type="button"
-      className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9"
-      aria-label="Delete candidate"
-    >
-      <DeleteIcon />
-    </button>
-  );
-
   return (
     <div className="jm-card p-4 sm:p-5 space-y-4">
         {/* Header with search + filter */}
@@ -310,7 +301,6 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                       />
                     </td>
                     <td>
-                      {deleteButton}
                     </td>
                   </tr>
                 ))}
@@ -326,7 +316,6 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
               >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-base font-semibold text-navy">{candidate.candidateId.fullname}</p>
-                  {deleteButton}
                 </div>
                 <p className="text-sm text-ink-600">
                     <strong className="text-ink">Email:</strong> {candidate.candidateId.email}
@@ -367,25 +356,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
             {filteredCandidates.length} candidates
           </p>
 
-          <div className="flex items-center gap-2">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(currentPage - 1)}
-              className="jm-btn jm-btn-secondary jm-btn-sm"
-            >
-              Previous
-            </button>
-            <span className="jm-muted px-1 whitespace-nowrap">
-              Page {currentPage} of {Math.max(totalPages, 1)}
-            </span>
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage(currentPage + 1)}
-              className="jm-btn jm-btn-secondary jm-btn-sm"
-            >
-              Next
-            </button>
-          </div>
+          <Pagination page={currentPage} total={totalPages} onChange={setCurrentPage} />
         </div>
     </div>
   );

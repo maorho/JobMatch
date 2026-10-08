@@ -252,7 +252,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         </div>
 
         {(showAboutCompany || (user && jobKey)) && (
-          <aside className="min-w-0 space-y-6 lg:sticky lg:top-24">
+          <aside className="min-w-0 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto jm-scroll">
             {user && jobKey && (
               <TailorResumePanel
                 jobId={String(job._id ?? job.id)}
@@ -271,17 +271,28 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         )}
       </div>
 
-      {/* Spacer so the mobile apply bar never covers content. */}
-      {user && <div className="h-20 lg:hidden" aria-hidden />}
-
-      {/* Mobile sticky apply bar */}
+      {/* Mobile apply bar: sticky (not fixed) so it scrolls away with the page
+          and never covers the footer. After an external apply it turns into
+          the "Did you apply?" prompt right where the user tapped. */}
       {user && (
-        <div className="fixed bottom-0 inset-x-0 z-40 lg:hidden p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur border-t border-line">
-          <div className="mx-auto w-full max-w-[1280px]">
+        <div className="sticky bottom-0 z-40 lg:hidden mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur border-t border-line">
+          {didYouApply ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-sm">Did you apply?</span>
+              <div className="flex gap-2">
+                <button className="jm-btn jm-btn-primary jm-btn-sm" disabled={submitting} onClick={submitExternalApplication}>
+                  {submitting ? "Sending..." : "Yes"}
+                </button>
+                <button className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => setDidYouApply(false)}>
+                  No
+                </button>
+              </div>
+            </div>
+          ) : (
             <button onClick={handleApplyClick} className="jm-btn jm-btn-accent w-full" disabled={submitting}>
               Apply
             </button>
-          </div>
+          )}
         </div>
       )}
 

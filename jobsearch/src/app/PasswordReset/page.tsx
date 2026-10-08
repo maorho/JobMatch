@@ -41,7 +41,7 @@ function PasswordReset() {
         <div className="w-full max-w-md mx-auto my-auto py-8 sm:py-10 space-y-6">
           <div>
             <h1 className="jm-title">Password Reset</h1>
-            <p className="jm-subtitle">Enter your email and we&apos;ll send you reset instructions.</p>
+            <p className="jm-subtitle">Enter the email address on your account.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -85,7 +85,7 @@ function PasswordReset() {
           fill
           sizes="50vw"
           className="object-cover"
-          priority
+          loading="lazy"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/50 to-navy/10" />
         <div className="absolute bottom-0 inset-x-0 p-10 xl:p-14 text-white">

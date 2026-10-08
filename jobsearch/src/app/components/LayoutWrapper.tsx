@@ -10,7 +10,7 @@ export default function LayoutWrapper({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const hideFooterAndHeader = ["/Login", "/SignUp"].includes(pathname);
+  const hideFooterAndHeader = ["/Login", "/SignUp", "/PasswordReset"].includes(pathname);
 
   return (
     <>

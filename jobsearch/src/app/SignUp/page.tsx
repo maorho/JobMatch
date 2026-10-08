@@ -292,7 +292,7 @@ function SignUp() {
           fill
           sizes="50vw"
           className="object-cover"
-          priority
+          loading="lazy"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/50 to-navy/10" />
         <div className="absolute bottom-0 inset-x-0 p-10 xl:p-14 text-white">

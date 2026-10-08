@@ -72,3 +72,35 @@ export function SignInGate({ text, next }: { text: ReactNode; next?: string }) {
     </div>
   );
 }
+
+/** Prev / numbered / next pager. Windows the numbers so long lists stay compact. */
+export function Pagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
+  const last = Math.max(total, 1);
+  const pages: number[] = [];
+  for (let p = 1; p <= last; p++) {
+    if (last <= 7 || p === 1 || p === last || Math.abs(p - page) <= 1) pages.push(p);
+  }
+  return (
+    <nav className="flex items-center gap-1 flex-wrap" aria-label="Pagination">
+      <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} className="jm-btn jm-btn-secondary jm-btn-sm">
+        Previous
+      </button>
+      {pages.map((p, i) => (
+        <span key={p} className="contents">
+          {i > 0 && pages[i - 1] !== p - 1 && <span className="jm-muted px-1">…</span>}
+          <button
+            type="button"
+            onClick={() => onChange(p)}
+            aria-current={p === page ? "page" : undefined}
+            className={`jm-btn jm-btn-sm min-w-9 px-2 ${p === page ? "jm-btn-navy" : "jm-btn-ghost"}`}
+          >
+            {p}
+          </button>
+        </span>
+      ))}
+      <button type="button" disabled={page >= last} onClick={() => onChange(page + 1)} className="jm-btn jm-btn-secondary jm-btn-sm">
+        Next
+      </button>
+    </nav>
+  );
+}

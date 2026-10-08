@@ -34,7 +34,8 @@ const RecruiterDashboardPage: React.FC = () => {
       setJobs(data);
       setjobLength(data.length);
     } catch (err) {
-      setError(`Something went wrong: ${err}`);
+      console.error(err);
+      setError("Something went wrong while loading your positions.");
     } finally {
       setLoadingJobs(false); // סיום טעינה
     }

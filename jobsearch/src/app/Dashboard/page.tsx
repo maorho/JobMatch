@@ -186,13 +186,11 @@ const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:flex gap-3">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
               <option value="">Filter by Status</option>
-              {jobsSubmitted?.
-                map((job: any) => <option key={job._id} value={job.status}>{job.status}</option>)}
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => job.status).filter(Boolean))].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
               <option value="">Filter by Type</option>
-              {jobsSubmitted?.
-                map((job: any) => <option key={job._id} value={isSelfAddedJob(job)?job.jobType:job.jobId.type}>{isSelfAddedJob(job)?job.jobType:job.jobId.type}</option>)}
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => (isSelfAddedJob(job) ? job.jobType : job.jobId?.type)).filter(Boolean))].map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
         </div>

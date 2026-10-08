@@ -130,7 +130,7 @@
 }
 
 @utility jm-chip {
-  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-canvas text-ink-600 border border-line whitespace-nowrap;
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-canvas text-ink-600 border border-line max-w-full break-words;
 }
 @utility jm-chip-teal {
   @apply bg-teal-50 text-teal-600 border-teal/20;
