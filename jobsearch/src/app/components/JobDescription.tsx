@@ -271,6 +271,14 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
             </Link>
           )}
           {user && (job?._id || job?.id) && (
+            <Link
+              href={`/interview-prep/${internal ? "internal" : "external"}/${String(job._id ?? job.id)}`}
+              className="inline-flex items-center gap-2 mb-5 me-3 bg-[#102B39] text-white rounded-[14px] px-5 py-3 font-outfit hover:bg-[#163a4d] transition"
+            >
+              🎯 הכנה לראיון למשרה הזו
+            </Link>
+          )}
+          {user && (job?._id || job?.id) && (
             <TailorResumePanel
               jobId={String(job._id ?? job.id)}
               source={internal ? "internal" : "external"}
