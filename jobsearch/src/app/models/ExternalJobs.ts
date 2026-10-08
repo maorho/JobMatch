@@ -28,7 +28,8 @@ const ExternalJobSchema = new mongoose.Schema({
     finalUrl:{
         type: String,
         required: true,
-        unique:true,
+        // NOT unique: distinct postings (e.g. multi-location roles) can share an
+        // apply URL. Dedup is handled per-company via (companySource, sourceJobId).
     },
     description:{
         type: String,
@@ -44,7 +45,67 @@ const ExternalJobSchema = new mongoose.Schema({
     seniority:{
         type: [String],
         required: true,
+    },
+    // --- Scout / ATS ingestion fields (all optional, back-compatible) ---
+    source:{
+        type: String,
+        default: 'csv', // 'greenhouse' | 'lever' | 'comeet' | 'csv' | 'manual'
+    },
+    sourceJobId:{
+        type: String, // stable id from the ATS, used for dedup
+    },
+    companySource:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'CompanySource',
+    },
+    applyUrl:{
+        type: String,
+    },
+    companyDomain:{
+        type: String, // company website domain, for the logo
+        default: '',
+    },
+    logoUrl:{
+        type: String, // resolved company logo URL (with graceful UI fallback)
+        default: '',
+    },
+    postedAt:{
+        type: Date, // when the posting went live on the source, if known
+    },
+    firstSeenAt:{
+        type: Date,
+        default: Date.now, // when the Scout first ingested it
+    },
+    lastSeenAt:{
+        type: Date,
+        default: Date.now, // last scout poll that still found this posting in the ATS feed
+    },
+    active:{
+        type: Boolean,
+        default: true,
+    },
+    embedding:{
+        type: [Number], // reserved for the Matcher (in-app cosine, Atlas-ready)
+        default: undefined,
+        select: false,
     }
 },{timestamps:true});
+
+// Stable per-company dedup for ATS-sourced jobs: two sources on the same ATS
+// with a colliding sourceJobId stay independent. CSV/manual docs (no sourceJobId)
+// are excluded via the partial filter.
+ExternalJobSchema.index(
+    { companySource: 1, sourceJobId: 1 },
+    { unique: true, partialFilterExpression: { sourceJobId: { $type: 'string' } } }
+);
+
+// Query-performance indexes for the dashboard filters and feeds.
+ExternalJobSchema.index({ postedAt: -1 });
+ExternalJobSchema.index({ company: 1 });
+ExternalJobSchema.index({ country: 1 });
+ExternalJobSchema.index({ city: 1 });
+ExternalJobSchema.index({ active: 1 });
+// Backs the staleness sweep (delete ATS jobs not seen in the latest polls).
+ExternalJobSchema.index({ lastSeenAt: 1 });
 
 export default mongoose.models.ExternalJobs || mongoose.model('ExternalJobs',ExternalJobSchema);

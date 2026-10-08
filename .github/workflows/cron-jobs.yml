@@ -2,15 +2,46 @@ name: JobMatch Cron
 
 on:
   schedule:
-    - cron: "0 */6 * * *"    # every 6 hours (UTC)
-    - cron: "0 */12 * * *"   # every 12 hours (UTC)
+    - cron: "*/30 * * * *"    # Scout: ingest fresh ATS jobs (every 30 min, best-effort)
+    - cron: "0 */6 * * *"     # sync-if-stale: every 6 hours (UTC)
+    - cron: "0 */12 * * *"    # cleanup-now: every 12 hours (UTC)
   workflow_dispatch:
 
 env:
   PROD_BASE_URL: https://job-match-six.vercel.app
 
+# Serialize overlapping runs (e.g. when the */30, 6h and 12h schedules coincide)
+# so ingestion/cleanup never run concurrently.
+concurrency:
+  group: jobmatch-cron
+  cancel-in-progress: false
+
 jobs:
+  scout_run:
+    # Only on the 30-min schedule (or manual dispatch) — not also on the 6h/12h
+    # ticks. embed_jobs `needs` this, so it follows the same gate.
+    if: github.event.schedule == '*/30 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call scout/run
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
+  embed_jobs:
+    # Embed newly-ingested jobs for the Matcher, after the Scout runs.
+    needs: scout_run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call matcher/embed-jobs
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/matcher/embed-jobs" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
   sync_if_stale:
+    if: github.event.schedule == '0 */6 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Call sync-if-stale
@@ -20,6 +51,7 @@ jobs:
             --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
 
   cleanup_now:
+    if: github.event.schedule == '0 */12 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Call cleanup-now
