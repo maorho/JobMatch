@@ -107,9 +107,8 @@ export async function POST(req: NextRequest) {
   // Best-effort — never fail signup because of it.
   if (resumeBuffer) {
     try {
-      const pdfParseModule: any = await import("pdf-parse");
-      const pdfData = await pdfParseModule.default(resumeBuffer);
-      const rawText: string = pdfData?.text || "";
+      const { extractPdfText } = await import("@/app/lib/pdf/extractText");
+      const { text: rawText } = await extractPdfText(resumeBuffer);
       if (rawText.trim()) {
         await embedAndStoreResume(String(newUser._id), rawText);
       }

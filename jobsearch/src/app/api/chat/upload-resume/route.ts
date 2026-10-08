@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { extractPdfText } from "@/app/lib/pdf/extractText";
 
 export const runtime = "nodejs";
 
@@ -39,11 +40,14 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const pdfParseModule: any = await import("pdf-parse");
-    const pdfData = await pdfParseModule.default(buffer);
-    const rawText: string = pdfData.text || "";
+    const { text: rawText } = await extractPdfText(arrayBuffer);
+    if (!rawText.trim()) {
+      // A scanned/image-only PDF has no text layer to read.
+      return NextResponse.json(
+        { error: "No readable text in this PDF (is it a scanned image?)" },
+        { status: 422 }
+      );
+    }
 
     // Feed the Matcher: store the text + embedding so the personalized feed
     // and match scores reflect this résumé immediately. Never blocks the upload.

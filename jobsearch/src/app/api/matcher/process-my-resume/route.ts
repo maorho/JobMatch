@@ -4,6 +4,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { extractPdfText } from "@/app/lib/pdf/extractText";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,9 +51,7 @@ export async function POST(req: NextRequest) {
     );
     const buffer = await streamToBuffer(obj.Body as any);
 
-    const pdfParseModule: any = await import("pdf-parse");
-    const pdfData = await pdfParseModule.default(buffer);
-    const rawText: string = pdfData?.text || "";
+    const { text: rawText } = await extractPdfText(buffer);
     if (!rawText.trim()) {
       return NextResponse.json(
         { ok: false, error: "Could not read résumé text" },
