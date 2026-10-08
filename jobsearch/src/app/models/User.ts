@@ -24,14 +24,23 @@ export interface IUser extends Document {
     };
   };
 
+  resumeText?: string;
+  embedding?: number[];
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 const UserSchema = new Schema<IUser>(
   {
-    username: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
+    username: { type: String, required: true, unique: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
     password: { type: String, required: true },
     fullname: { type: String, required: true },
 
@@ -51,16 +60,22 @@ const UserSchema = new Schema<IUser>(
     phone: { type: String, required: true },
     currentJob: { type: String, default: "" },
 
+    // Extracted résumé text + its embedding, used to personalize the job feed.
+    resumeText: { type: String, default: "", select: false },
+    embedding: { type: [Number], default: undefined, select: false },
+
     memory: {
       skills: { type: [String], default: [] },
       experience: { type: [String], default: [] },
       preferences: {
         type: Object,
-        default: {
+        // Factory default so each user gets its own object (a static literal
+        // default would be shared/mutable across documents).
+        default: () => ({
           preferredLanguage: "he",
           preferredResumeStyle: "ats",
           hideSections: [],
-        },
+        }),
       },
     },
   },
