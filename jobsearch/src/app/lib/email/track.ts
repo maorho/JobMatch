@@ -9,12 +9,14 @@ import { notify } from "@/app/lib/notifications/notify";
 import { open } from "@/app/lib/crypto/secretBox";
 import { refreshAccessToken, listApplicationMessages, type GmailMessage } from "./gmail";
 import { classifyEmails, type EmailClassification, APPLICATION_STATUSES } from "./classify";
+import { startFlow, kick } from "@/app/lib/agents/bus";
+import type { ApplicationChange } from "@/app/lib/agents/types";
 
 /** Rank for "did the status advance?" — we never move an application backwards from an email. */
 const RANK: Record<string, number> = { "Submitted Resume": 1, "HR Phone Interview": 2, "Technical Interview": 3, "Final Interview": 4, "Recived an Offer": 5, Accepted: 6, Rejected: 6 };
 const MIN_CONFIDENCE = 0.6;
 
-export type TrackedApplication = { _id: string; status: string; company: string; title: string; jobModel: string };
+export type TrackedApplication = { _id: string; status: string; company: string; title: string; jobModel: string; jobId: string };
 
 const norm = (s: string) => (s || "").toLowerCase().replace(/\b(ltd|inc|llc|corp|technologies|technology|labs|group|the)\b/g, "").replace(/[^a-z0-9֐-׿]+/g, " ").trim();
 
@@ -26,10 +28,10 @@ export async function loadApplications(userId: string): Promise<TrackedApplicati
   for (const a of apps) {
     if (a.jobModel === "ExternalJobs") {
       const j: any = await ExternalJobs.findById(a.jobId).select("job company").lean();
-      if (j) out.push({ _id: String(a._id), status: a.status, company: j.company || "", title: j.job || "", jobModel: a.jobModel });
+      if (j) out.push({ _id: String(a._id), status: a.status, company: j.company || "", title: j.job || "", jobModel: a.jobModel, jobId: String(a.jobId) });
     } else if (a.jobModel === "Job") {
       const j: any = await Job.findById(a.jobId).populate({ path: "company", model: Company, select: "companyName" }).select("job company").lean();
-      if (j) out.push({ _id: String(a._id), status: a.status, company: j.company?.companyName || "", title: j.job || "", jobModel: a.jobModel });
+      if (j) out.push({ _id: String(a._id), status: a.status, company: j.company?.companyName || "", title: j.job || "", jobModel: a.jobModel, jobId: String(a.jobId) });
     }
   }
   return out;
@@ -49,20 +51,31 @@ export function matchApplication(c: EmailClassification, apps: TrackedApplicatio
   return byCompany.find((a) => norm(a.title).includes(role) || role.includes(norm(a.title))) || byCompany[0];
 }
 
-export type SyncResult = { fetched: number; classified: number; events: number; updated: number; error?: string };
+export type SyncResult = { fetched: number; classified: number; events: number; updated: number; changes: ApplicationChange[]; error?: string };
+
+export type SyncDeps = {
+  list?: typeof listApplicationMessages;
+  classify?: typeof classifyEmails;
+  /** Where status changes are reported. Default: a new agent-bus run per change (the Coach picks it up). */
+  publish?: (change: ApplicationChange) => Promise<unknown>;
+};
+
+const defaultPublish = (change: ApplicationChange) =>
+  startFlow("application.changed", change, { from: "tracker", startedBy: `user:${change.userId}`, title: `${change.title} @ ${change.company} → ${change.status}`, says: `${change.title} @ ${change.company} moved to "${change.status}". Coach — anything to prepare?` });
 
 /**
  * Pull the user's recent application emails, classify them, and apply
  * status changes to matching applications. Idempotent per email id.
  */
-export async function syncUserEmails(userId: string, deps: { list?: typeof listApplicationMessages; classify?: typeof classifyEmails } = {}): Promise<SyncResult> {
+export async function syncUserEmails(userId: string, deps: SyncDeps = {}): Promise<SyncResult> {
   await connectToDatabase();
   // "+path" adds the hidden token to the default projection (selecting the
   // whole `gmail` subdoc as well would be a projection path collision).
   const user: any = await User.findById(userId).select("+gmail.refreshTokenSealed");
-  if (!user?.gmail?.refreshTokenSealed) return { fetched: 0, classified: 0, events: 0, updated: 0, error: "NOT_CONNECTED" };
+  if (!user?.gmail?.refreshTokenSealed) return { fetched: 0, classified: 0, events: 0, updated: 0, changes: [], error: "NOT_CONNECTED" };
 
-  const result: SyncResult = { fetched: 0, classified: 0, events: 0, updated: 0 };
+  const result: SyncResult = { fetched: 0, classified: 0, events: 0, updated: 0, changes: [] };
+  const publish = deps.publish || defaultPublish;
   try {
     const accessToken = await refreshAccessToken(open(user.gmail.refreshTokenSealed));
     const messages: GmailMessage[] = await (deps.list || listApplicationMessages)(accessToken, { days: 14, max: 40 });
@@ -94,6 +107,9 @@ export async function syncUserEmails(userId: string, deps: { list?: typeof listA
         app.status = status;
         applied = true;
         result.updated++;
+        const change: ApplicationChange = { userId, applicationId: app._id, jobId: app.jobId, jobModel: app.jobModel, status, title: app.title, company: app.company };
+        result.changes.push(change);
+        await publish(change).catch((e) => console.warn("[track] publish skipped:", (e as Error)?.message));
         await notify(userId, {
           type: "application_status",
           title: `עדכון ממייל: ${app.title} · ${app.company}`,
@@ -109,6 +125,7 @@ export async function syncUserEmails(userId: string, deps: { list?: typeof listA
       result.events++;
     }
     await User.updateOne({ _id: userId }, { $set: { "gmail.lastSyncAt": new Date(), "gmail.lastError": "" } });
+    if (result.changes.length && !deps.publish) kick();
     return result;
   } catch (err: any) {
     const msg = err?.code === "REVOKED" ? "Gmail access was revoked — reconnect" : err?.message || "sync failed";

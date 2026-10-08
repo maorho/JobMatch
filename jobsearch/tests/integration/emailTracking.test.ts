@@ -82,9 +82,9 @@ describe("building blocks", () => {
 
   it("matches emails to applications by company, then role", () => {
     const apps = [
-      { _id: "a", status: "Submitted Resume", company: "Acme", title: "Junior Frontend Developer", jobModel: "Job" },
-      { _id: "b", status: "Submitted Resume", company: "Acme", title: "Data Scientist", jobModel: "Job" },
-      { _id: "c", status: "Submitted Resume", company: "Globex Technologies", title: "Backend Engineer", jobModel: "ExternalJobs" },
+      { _id: "a", status: "Submitted Resume", company: "Acme", title: "Junior Frontend Developer", jobModel: "Job", jobId: "j" },
+      { _id: "b", status: "Submitted Resume", company: "Acme", title: "Data Scientist", jobModel: "Job", jobId: "j" },
+      { _id: "c", status: "Submitted Resume", company: "Globex Technologies", title: "Backend Engineer", jobModel: "ExternalJobs", jobId: "j" },
     ];
     expect(matchApplication({ id: "x", isJobRelated: true, company: "Acme", roleTitle: "Frontend", status: null, confidence: 1, summary: "" }, apps)?._id).toBe("a");
     expect(matchApplication({ id: "x", isJobRelated: true, company: "Globex", roleTitle: "", status: null, confidence: 1, summary: "" }, apps)?._id).toBe("c"); // "Technologies" stripped

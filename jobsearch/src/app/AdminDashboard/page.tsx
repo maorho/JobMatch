@@ -248,6 +248,9 @@ function EmployerDashboard() {
           <p className="text-sm sm:text-base text-white/80">
             Review your company&apos;s positions and approve recruiters.
           </p>
+          <Link href="/AdminDashboard/agents" className="jm-btn jm-btn-accent w-fit">
+            🤖 Agent team
+          </Link>
         </div>
       </section>
 

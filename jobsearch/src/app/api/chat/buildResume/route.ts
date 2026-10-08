@@ -5,6 +5,7 @@ import User from "@/app/models/User";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { connectToDatabase } from "@/app/lib/db";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { announceResumeUpdate } from "@/app/lib/agents/triggers";
 import { structuredToText } from "@/app/lib/resume/structuredToText";
 
 export const runtime = "nodejs";
@@ -253,6 +254,7 @@ RULES
       // The uploaded text is the richest source; otherwise embed the built résumé.
       const text = (rawResumeText || "").trim() || structuredToText(parsed.structuredResume);
       matchReady = !!(await embedAndStoreResume(userId, text));
+      if (matchReady) announceResumeUpdate(userId);
     } catch (e) {
       console.warn("[buildResume] embedding skipped:", (e as Error)?.message);
     }

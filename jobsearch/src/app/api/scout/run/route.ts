@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runScout } from "@/app/lib/scout/runScout";
+import { announceCatalogIngested } from "@/app/lib/agents/triggers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,15 @@ export async function GET(req: NextRequest) {
   );
 
   try {
+    const startedAt = new Date();
     const result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs });
+    // Whole catalog covered → hand the new postings to the agent chain
+    // (Locator → Matcher → Notifier) the same way the Scout agent does.
+    if (!dry && result.nextOffset === null) {
+      await announceCatalogIngested({ since: startedAt, created: result.created, removed: result.removed, sources: result.processed }).catch((e: any) =>
+        console.warn("[scout] agents hand-off skipped:", e?.message)
+      );
+    }
     return NextResponse.json({ ok: true, dry, ...result });
   } catch (err: any) {
     console.error("❌ Scout run error:", err);

@@ -411,7 +411,7 @@ function JobTable() {
               <h2 className="jm-title">Available positions</h2>
               <p className="jm-subtitle">
                 {loading && page === 1 ? "Searching the catalog…" : `Showing ${jobCount.toLocaleString()} jobs`}
-                {user && !isSearching && " · ranked by your résumé"}
+                {user && !isSearching && " · ranked by your resume"}
               </p>
             </div>
             <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary jm-btn-sm lg:hidden">

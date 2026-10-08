@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { announceResumeUpdate } from "@/app/lib/agents/triggers";
 import { extractPdfText } from "@/app/lib/pdf/extractText";
 
 export const runtime = "nodejs";
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
     if (rawText.trim()) {
       try {
         matchReady = !!(await embedAndStoreResume(userId, rawText));
+        if (matchReady) announceResumeUpdate(userId);
       } catch (e) {
         console.warn("[upload-resume] embedding skipped:", (e as Error)?.message);
       }
