@@ -4,22 +4,17 @@ import Image from "next/image";
 import React, { useState } from "react";
 import SideNavbar from "./SideNavbar";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import { useRouter } from "next/navigation";
 import { FiAlignRight } from "react-icons/fi";
-import { MessageIcon, ResumeAIIcon, UserIcon } from "./icons";
+import { ResumeAIIcon, UserIcon } from "./icons";
 import NotificationBell from "./NotificationBell";
+import MessagesBadge from "./MessagesBadge";
 
 
 
 function Header() {
   const [isOpen, setIsOpen] = useState(false);
   const pages = ["Companies", "Articels", "ContactUs"];
-  const router = useRouter();
   const { user } = useCurrentUser();
-
-  const handleMessaging = () => {
-    router.push("/messages");
-  };
   const toggleSidenav = () => {
     setIsOpen(!isOpen);
   };
@@ -71,14 +66,7 @@ function Header() {
             >
               <ResumeAIIcon />
             </Link>
-            {user && (
-              <button
-                onClick={handleMessaging}
-                className="flex items-center justify-center bg-white rounded-[15px] h-[50px] w-[50px] p-1 hover:bg-blue-200 transition-colors"
-              >
-                <MessageIcon />
-              </button>
-            )}
+            {user && <MessagesBadge />}
             {user && <NotificationBell />}
             <button
               onClick={toggleSidenav}

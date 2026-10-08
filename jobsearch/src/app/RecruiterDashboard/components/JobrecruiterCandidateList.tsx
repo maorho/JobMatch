@@ -1,4 +1,5 @@
 import ResumeLink from "@/app/components/ResumeLink";
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { DeleteIcon, PdfIcon } from "@/app/components/icons";
 import { Search } from "lucide-react"; // אייקון זכוכית מגדלת
@@ -312,7 +313,18 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
               <tbody>
                 {displayedCandidates.map((candidate, ind) => (
                   <tr key={ind} className="border-b border-[#E5E7EB]/10 bg-white">
-                    <td className="px-6 py-4">{candidate.candidateId.fullname}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {candidate.candidateId.fullname}
+                        <Link
+                          href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`}
+                          title="שלח הודעה למועמד/ת"
+                          className="text-[#11AEFF] hover:underline text-sm"
+                        >
+                          💬
+                        </Link>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <label className="font-outfit font-medium">
@@ -352,7 +364,10 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
               >
               <div>
                 <p className="text-[14px] text-gray-700">
-                    <strong>Full Name:</strong>{candidate.candidateId.fullname} 
+                    <strong>Full Name:</strong>{candidate.candidateId.fullname}{" "}
+                    <Link href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`} className="text-[#11AEFF] text-sm">
+                      💬 הודעה
+                    </Link>
 
                 </p>
         

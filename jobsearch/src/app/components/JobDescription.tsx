@@ -261,6 +261,15 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
               )}
             </div>
           )}
+          {/* Internal postings: talk to the recruiter who published the job. */}
+          {user && internal && job?.publisher && String(job.publisher) !== String((user as any)._id ?? (user as any).id) && (
+            <Link
+              href={`/messages?to=${String(job.publisher)}&job=${String(job._id ?? job.id)}`}
+              className="inline-flex items-center gap-2 mb-5 border border-[#232323]/15 rounded-[14px] px-5 py-3 font-outfit text-[#232323] hover:bg-[#F9F9F9] transition"
+            >
+              💬 שלח הודעה למגייס
+            </Link>
+          )}
           {user && (job?._id || job?.id) && (
             <TailorResumePanel
               jobId={String(job._id ?? job.id)}
