@@ -7,8 +7,11 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, rawResumeText } = await req.json();
     const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { messages, rawResumeText } = await req.json();
     if (mongoose.connection.readyState === 0) {
       if (!process.env.MONGO_URI) {
         console.error("❌ MONGODB_URI is not defined");
@@ -211,8 +214,26 @@ RULES
       .replace(/```\s*$/i, "")
       .trim();
 
-    const parsed = JSON.parse(clean);
-    
+    let parsed: any;
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      // Tolerate a prose preamble/suffix around the JSON object.
+      const start = clean.indexOf("{");
+      const end = clean.lastIndexOf("}");
+      if (start === -1 || end <= start) {
+        throw new Error("Model did not return valid JSON");
+      }
+      parsed = JSON.parse(clean.slice(start, end + 1));
+    }
+
+    if (!parsed || !Array.isArray(parsed.structuredResume)) {
+      return NextResponse.json(
+        { error: "Model returned an unexpected shape" },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       structuredResume: parsed.structuredResume,
       score: parsed.score,

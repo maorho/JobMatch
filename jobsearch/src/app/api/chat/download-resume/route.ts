@@ -1,13 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fs from "fs";
+import path from "path";
+import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+
+export const runtime = "nodejs";
 
 type ResumeSection = {
   heading: string;
   items: any[];
 };
 
+// Load the Unicode font (Hebrew + Latin) once. WinAnsi built-ins crash on any
+// non-Latin-1 character, so we embed DejaVuSans to support Hebrew résumés.
+let fontCache: { regular: Buffer; bold: Buffer } | null = null;
+function loadFonts() {
+  if (fontCache) return fontCache;
+  const dir = path.join(process.cwd(), "src/app/lib/fonts");
+  fontCache = {
+    regular: fs.readFileSync(path.join(dir, "DejaVuSans.ttf")),
+    bold: fs.readFileSync(path.join(dir, "DejaVuSans-Bold.ttf")),
+  };
+  return fontCache;
+}
+
 export async function POST(req: NextRequest) {
   try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { structuredResume }: { structuredResume: ResumeSection[] } =
       await req.json();
 
@@ -20,8 +43,28 @@ export async function POST(req: NextRequest) {
 
     // --- PDF Setup ---
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontkit = (await import("fontkit")).default as any;
+    pdfDoc.registerFontkit(fontkit);
+
+    let font;
+    let fontBold;
+    let usingUnicode = true;
+    try {
+      const fonts = loadFonts();
+      font = await pdfDoc.embedFont(fonts.regular, { subset: true });
+      fontBold = await pdfDoc.embedFont(fonts.bold, { subset: true });
+    } catch (e) {
+      // Last-resort fallback (Latin only) so generation never hard-fails.
+      console.error("⚠️ Unicode font load failed, falling back:", e);
+      usingUnicode = false;
+      font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    }
+
+    // When using the Latin-only fallback, strip characters the built-in font
+    // cannot encode so drawText never throws (e.g. on Hebrew).
+    const safe = (t: string) =>
+      usingUnicode ? t : (t || "").replace(/[^\x00-\xFF]/g, "");
 
     const pageSize: [number, number] = [595, 842]; // A4
     let page = pdfDoc.addPage(pageSize);
@@ -50,7 +93,7 @@ export async function POST(req: NextRequest) {
       if (!text) return;
 
       ensureSpace(gap);
-      page.drawText(text, {
+      page.drawText(safe(text), {
         x: marginX,
         y,
         size,
@@ -79,7 +122,7 @@ export async function POST(req: NextRequest) {
 
         if (width > maxWidth) {
           ensureSpace(gap);
-          page.drawText(line, {
+          page.drawText(safe(line), {
             x: marginX,
             y,
             size,
@@ -94,7 +137,7 @@ export async function POST(req: NextRequest) {
 
       if (line) {
         ensureSpace(gap);
-        page.drawText(line, {
+        page.drawText(safe(line), {
           x: marginX,
           y,
           size,
@@ -119,10 +162,14 @@ export async function POST(req: NextRequest) {
     };
 
     // Helper to parse sections by name
-    const getSection = (name: string) =>
-      structuredResume.find(
-        (sec) => sec.heading.toLowerCase() === name.toLowerCase()
+    // Normalize items to an array so a malformed LLM section can't crash the loop.
+    const getSection = (name: string) => {
+      const sec = structuredResume.find(
+        (s) => s?.heading?.toLowerCase() === name.toLowerCase()
       );
+      if (!sec) return undefined;
+      return { ...sec, items: Array.isArray(sec.items) ? sec.items : [] };
+    };
 
     // ---------- HEADER ----------
     const headerSec = getSection("Header");
@@ -207,7 +254,7 @@ export async function POST(req: NextRequest) {
 
     // --- Export PDF ---
     const pdfBytes = await pdfDoc.save();
-    return new NextResponse(pdfBytes, {
+    return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
