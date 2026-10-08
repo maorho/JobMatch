@@ -145,7 +145,11 @@ export default function ResumeAIPage() {
 
       const blob = await pdfRes.blob();
       const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
+      // Revoke any previous object URL to avoid leaking blob memory.
+      setDownloadUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
 
       appendMessage({
         role: "assistant",
@@ -243,7 +247,10 @@ export default function ResumeAIPage() {
 
     const blob = await pdfRes.blob();
     const url = URL.createObjectURL(blob);
-    setDownloadUrl(url);
+    setDownloadUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
 
     appendMessage({
       role: "assistant",

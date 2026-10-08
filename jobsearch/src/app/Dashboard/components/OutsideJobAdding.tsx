@@ -2,13 +2,14 @@
 import { useState } from "react";
 
 const OutsideJobAdding = () => {
+  const typemodel =["Hybrid","Remote","On Site"];
+  const statuses = ['Submitted Resume','Rejected', 'HR Phone Interview', 'Technical Interview', 'Accepted','Final Interview','Recived an Offer'];
   const [job, setJob] = useState("");
   const [company, setCompany] = useState("");
-  const [job_type, setJobType] = useState("");
+  // Default to the first option so the submitted value matches what the UI shows.
+  const [job_type, setJobType] = useState(typemodel[0]);
   const [error, setError] = useState("");
-  const typemodel =["Hybrid","Remote","On Site"];
-  const [status,setStatus] = useState("");
-  const statuses = ['Submitted Resume','Rejected', 'HR Phone Interview', 'Technical Interview', 'Accepted','Final Interview','Recived an Offer'];
+  const [status,setStatus] = useState(statuses[0]);
   const [link, setLink] = useState("");
   const [location, setLocation] = useState("");
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,7 +67,7 @@ const OutsideJobAdding = () => {
           />
         </div>
         <div className="items-center">
-          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" onChange={(e)=>setJobType(e.target.value)}>
+          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" value={job_type} onChange={(e)=>setJobType(e.target.value)}>
             {typemodel.map((e,ind)=>{
               return (<option className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" key={ind} value={e}>{e}</option>)
             })}
@@ -91,7 +92,7 @@ const OutsideJobAdding = () => {
           />
         </div>
         <div className="items-center">
-          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" onChange={(e)=>setStatus(e.target.value)}>
+          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" value={status} onChange={(e)=>setStatus(e.target.value)}>
             {statuses.map((e,ind)=>{
               return (<option className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" key={ind} value={e}>{e}</option>)
             })}

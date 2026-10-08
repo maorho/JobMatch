@@ -7,14 +7,16 @@ import "@/app/models/AddedJobs";
 import "@/app/models/Company";
 import "@/app/models/User";
 import Candidates from "@/app/models/Candidates";
+import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   await connectToDatabase();
 
-  const { userId } = await req.json();
+  // A user can only read their own applications (id from the token, not body).
+  const userId = await getUserIdFromRequest(req);
   if (!userId) {
-    return NextResponse.json({ message: "Missing userId" }, { status: 400 });
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
   const applications = await Candidates.find({

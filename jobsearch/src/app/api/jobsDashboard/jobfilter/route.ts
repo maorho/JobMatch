@@ -15,8 +15,12 @@ export async function POST(req: NextRequest) {
       country = [],
     } = body;
 
-    // 🔍 הכנת regex יעיל לחיפוש
-    const regex = new RegExp(searchTerm, "i");
+    // Escape user input and cap its length before building a regex, so a
+    // crafted pattern can't cause catastrophic backtracking (ReDoS).
+    const safeTerm = String(searchTerm)
+      .slice(0, 100)
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(safeTerm, "i");
 
     // =============== פנימיות ==================
     const internalFilter: any = {

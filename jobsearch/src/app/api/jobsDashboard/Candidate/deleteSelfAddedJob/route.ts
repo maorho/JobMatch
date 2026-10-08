@@ -1,11 +1,12 @@
 import { connectToDatabase } from "@/app/lib/db";
 import { AppJwtPayload, verifyJwt } from "@/app/lib/jwt";
 import AddedJobs from "@/app/models/AddedJobs";
+import Candidates from "@/app/models/Candidates";
 import { NextRequest, NextResponse } from "next/server";
 
 
 export async function DELETE(req:NextRequest){
-    connectToDatabase();
+    await connectToDatabase();
     const token = req.cookies.get("token")?.value;
 
     if (!token) {
@@ -31,6 +32,12 @@ export async function DELETE(req:NextRequest){
     if(!exist){
         return NextResponse.json({msg:'job not exsit',status:400});
     }
+    // Ownership: only the candidate who added it may delete it.
+    if (String(exist.candidateId) !== String(decoded.id)) {
+        return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    }
     await AddedJobs.findByIdAndDelete(job);
+    // Cascade: remove any application record pointing at this self-added job.
+    await Candidates.deleteMany({ jobModel: "AddedJobs", jobId: job });
     return NextResponse.json({msg:'Job Deleted Successfully'});
 }

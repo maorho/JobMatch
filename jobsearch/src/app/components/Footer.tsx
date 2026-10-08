@@ -60,7 +60,7 @@ function Footer() {
             <ul className="gap-[50px] items-center flex flex-col md:flex-row lg:flex-row  ">
               <li className="hover:text-blue-500 font-outfit text-[16px]">
                 <Link
-                  href="/CompaniesPage"
+                  href="/Companies"
                   className="hover:text-blue-500 font-outfit h-[11px] w-[80px] text-[16px]"
                 >
                   Companies

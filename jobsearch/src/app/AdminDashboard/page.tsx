@@ -64,11 +64,19 @@ interface RecruitersProps {
 }
 const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }) => {
   const handleApprove = async (recruiterId: string) => {
-    await approveRecruiter(recruiterId);
+    try {
+      await approveRecruiter(recruiterId);
+    } catch (e) {
+      console.error("Approve failed:", e);
+    }
     refreshRecruiters()
   }
   const handleDecline = async (recruiterId: string) => {
-    await declineRecruiter(recruiterId);
+    try {
+      await declineRecruiter(recruiterId);
+    } catch (e) {
+      console.error("Decline failed:", e);
+    }
     refreshRecruiters()
   }
   return (
@@ -178,7 +186,7 @@ function EmployerDashboard() {
     return (
       <div className="text-center min-h-screen">
         <p className="text-red-500 text-lg">You are not an admin.</p>
-        <Link href="/LoginPage" className="text-blue-600 underline">
+        <Link href="/Login" className="text-blue-600 underline">
           Go to Login
         </Link>
       </div>

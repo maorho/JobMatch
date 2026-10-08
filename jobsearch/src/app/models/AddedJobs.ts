@@ -21,7 +21,7 @@ const AddJobsScheme = new mongoose.Schema({
       },
       jobType:{
         type:String,
-        emun:["Hybrid","Remote","On Site"],
+        enum:["Hybrid","Remote","On Site"],
         required:true,
       },
       location:{

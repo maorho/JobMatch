@@ -28,7 +28,7 @@ function SignUp() {
   const [phone, setPhone] = useState("");
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [recruiter, setRecruiter] = useState(false);
-  const [admin, setAdmin] = useState(false);
+  const [admin] = useState(false); // admin is never self-granted at signup
   const [company, setCompany] = useState("");
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
@@ -221,17 +221,9 @@ function SignUp() {
               />
               <label className="text-sm font-medium">I&apos;m a recruiter</label>
             </div>
-            <div className="flex gap-2">
-              <input
-                type="checkbox"
-                checked={admin}
-                onChange={() => setAdmin(!admin)}
-              />
-              <label className="text-sm font-medium">I&apos;m an Admin</label>
-            </div>
           </div>
           <div className="grid grid-flow-col">
-            {(recruiter || admin) && (
+            {recruiter && (
               <input
                 type="text"
                 placeholder="Company"

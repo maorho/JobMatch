@@ -11,9 +11,8 @@ interface ApplybuttonProps {
 }
 
 const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
-  const { user } = useCurrentUser(); // ✅ בראש הפונקציה
-  console.log(user);
-  const router = useRouter(); // ✅ בראש הפונקציה
+  const { user } = useCurrentUser();
+  const router = useRouter();
   const [fullname, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");

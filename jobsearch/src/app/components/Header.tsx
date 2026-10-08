@@ -100,7 +100,7 @@ function Header() {
           </div>
         </div>
       </div>
-      <SideNavbar isOpen={isOpen} closeNav={closeNav} />‎
+      <SideNavbar isOpen={isOpen} closeNav={closeNav} />
     </header>
   );
 }

@@ -62,7 +62,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
                 <Link
                   href={`/${page.replace(" ", "")}`}
                   className={`text-lg font-semibold hover:text-blue-400 ${
-                    pathname === `/${page.replace(" ", "")}Page`
+                    pathname === `/${page.replace(" ", "")}`
                       ? "text-blue-400"
                       : ""
                   }`}
@@ -103,7 +103,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
                 <Link
                   href={`/${page.replace(" ", "")}`}
                   className={`text-lg font-semibold hover:text-blue-400 ${
-                    pathname === `/${page.replace(" ", "")}Page`
+                    pathname === `/${page.replace(" ", "")}`
                       ? "text-blue-400"
                       : ""
                   }`}
@@ -134,7 +134,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
                 <Link
                   href={`/${page.replace(" ", "")}`}
                   className={`text-lg font-semibold hover:text-blue-400 ${
-                    pathname === `/${page.replace(" ", "")}Page`
+                    pathname === `/${page.replace(" ", "")}`
                       ? "text-blue-400"
                       : ""
                   }`}
@@ -152,7 +152,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
                 <Link
                   href={`/${page.replace(" ", "")}`}
                   className={`text-lg font-semibold hover:text-blue-400 ${
-                    pathname === `/${page.replace(" ", "")}Page`
+                    pathname === `/${page.replace(" ", "")}`
                       ? "text-blue-400"
                       : ""
                   }`}
@@ -168,7 +168,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen}) => {
                 <Link
                   href={`/${page.replace(" ", "")}`}
                   className={`text-lg font-semibold hover:text-blue-400 ${
-                    pathname === `/${page.replace(" ", "")}Page`
+                    pathname === `/${page.replace(" ", "")}`
                       ? "text-blue-400"
                       : ""
                   }`}

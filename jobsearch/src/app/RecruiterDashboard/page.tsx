@@ -40,8 +40,13 @@ const RecruiterDashboardPage: React.FC = () => {
   }
 
   useEffect(() => {
+    // Only recruiters have a company to load jobs for. Admins (and anyone else)
+    // just get the spinner cleared — loading company jobs with an empty company
+    // name would 404.
     if (user?.recruiter) {
       loadJobs();
+    } else if (user) {
+      setLoadingJobs(false);
     }
   }, [user]);
 

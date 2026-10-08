@@ -5,11 +5,6 @@ import User from "@/app/models/User";
 
 export const runtime = "nodejs";
 
-// זיכרון מטמון לשמירת משתמשים לפי ID
-const userCache = new Map<string, any>();
-const CACHE_TTL_MS = 60 * 1000; // תקפות המטמון: 60 שניות
-const userCacheTimestamps = new Map<string, number>();
-
 export async function GET(req: NextRequest) {
   const token = req.cookies.get("token")?.value;
 
@@ -18,26 +13,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // אימות ה־JWT באמצעות jose
     const decoded = await verifyJwt<{ id: string }>(token);
 
     if (!decoded || !decoded.id) {
       return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
     }
 
-    const userId = decoded.id;
-    const now = Date.now();
-    const lastFetchTime = userCacheTimestamps.get(userId);
-    const cachedUser = userCache.get(userId);
-
-    // אם יש משתמש בזיכרון והוא בתוקף — מחזירים אותו
-    if (cachedUser && lastFetchTime && now - lastFetchTime < CACHE_TTL_MS) {
-      return NextResponse.json(cachedUser);
-    }
-
-    // אחרת — מביאים מה־DB
+    // Always read fresh from the DB: a role/approval change must take effect
+    // immediately (the old 60s in-memory cache served stale data and grew
+    // unbounded on a long-lived server).
     await connectToDatabase();
-    const user = await User.findById(userId).select("-password");
+    const user = await User.findById(decoded.id).select("-password");
 
     if (!user) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
@@ -55,10 +41,6 @@ export async function GET(req: NextRequest) {
       resumeUrl:user.resume,
       company:user.company,
     };
-
-    // שמירה במטמון
-    userCache.set(userId, userData);
-    userCacheTimestamps.set(userId, now);
 
     return NextResponse.json(userData);
   } catch (err) {

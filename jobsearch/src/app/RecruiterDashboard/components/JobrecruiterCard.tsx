@@ -77,7 +77,9 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
     { headline: "Rejected", number: rejected },
   ];
   if (!user) return null;
-  const isPublisher = user.id.toString() === job.publisher.toString()|| user.admin === true;
+  const isPublisher =
+    user.admin === true ||
+    (!!job.publisher && user.id.toString() === String(job.publisher));
   const handleUpdate = async () => {
     try {
       const res = await fetch("/api/jobsDashboard/Recruiter/changeStatus", {

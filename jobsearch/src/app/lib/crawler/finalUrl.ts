@@ -4,7 +4,11 @@ export type OpenJobResponse = {
 };
 
 export const getFinalUrl = async (url: string): Promise<OpenJobResponse> => {
-  const endpoint = `http://localhost:4000/api/open-job?url=${encodeURIComponent(url)}`;
+  // Configurable so it works in deployed environments, not just localhost.
+  const base = process.env.PUPPETEER_SERVER_URL || "http://localhost:4000";
+  const token = process.env.SCRAPER_TOKEN || process.env.CRON_SECRET || "";
+  const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+  const endpoint = `${base}/api/open-job?url=${encodeURIComponent(url)}${tokenParam}`;
 
   try {
     const res = await fetch(endpoint, { cache: "no-store" });

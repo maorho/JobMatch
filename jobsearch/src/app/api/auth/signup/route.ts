@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import { signJwt } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
+import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import User from "@/app/models/User";
 import Company from "@/app/models/Company";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 import mongoose from "mongoose";
-
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -35,12 +34,13 @@ export async function POST(req: NextRequest) {
 
   const form = await req.formData();
 
-  const email = form.get("email")?.toString() || "";
+  const email = (form.get("email")?.toString() || "").trim().toLowerCase();
   const password = form.get("password")?.toString() || "";
   const fullname = form.get("fullname")?.toString() || "";
   const username = form.get("username")?.toString() || "";
   const recruiter = form.get("recruiter")?.toString() === "true";
-  const admin = form.get("admin")?.toString() === "true";
+  // Admin accounts are NEVER self-granted at signup (client input ignored).
+  const admin = false;
   const company = form.get("company")?.toString() || "";
   const phone = form.get("phone")?.toString() || "";
   const resumeFile = form.get("resume") as File | null;
@@ -63,12 +63,13 @@ export async function POST(req: NextRequest) {
 
 
   let resumeKey = "";
+  let resumeBuffer: Buffer | null = null;
   if (!admin) {
     if (!resumeFile) {
       return NextResponse.json({ message: "Missing resume file" }, { status: 400 });
     }
-    const buffer = Buffer.from(await resumeFile.arrayBuffer());
-    resumeKey = await uploadToS3(buffer, resumeFile.name, resumeFile.type);
+    resumeBuffer = Buffer.from(await resumeFile.arrayBuffer());
+    resumeKey = await uploadToS3(resumeBuffer, resumeFile.name, resumeFile.type);
   }
 
   // ✅ טיפול בחברה
@@ -102,8 +103,23 @@ export async function POST(req: NextRequest) {
   const newUser = new User(userData);
   await newUser.save();
 
+  // Process the résumé for the personalized feed: extract text → embedding.
+  // Best-effort — never fail signup because of it.
+  if (resumeBuffer) {
+    try {
+      const pdfParseModule: any = await import("pdf-parse");
+      const pdfData = await pdfParseModule.default(resumeBuffer);
+      const rawText: string = pdfData?.text || "";
+      if (rawText.trim()) {
+        await embedAndStoreResume(String(newUser._id), rawText);
+      }
+    } catch (e) {
+      console.error("⚠️ résumé embedding at signup failed:", e);
+    }
+  }
+
   // ✅ יצירת טוקן
-  const token = jwt.sign({ id: newUser._id, email }, JWT_SECRET, { expiresIn: "1h" });
+  const token = await signJwt({ id: String(newUser._id), email, admin: false });
 
   const response = NextResponse.json({ message: "Signup successful", recruiter });
   response.cookies.set({
