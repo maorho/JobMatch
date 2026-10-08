@@ -2,12 +2,14 @@
 
 import React, { useMemo, useState } from "react";
 import Applybutton from "./Applybutton";
-import { isInternalJob} from "./JobTable";
+import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import Link from "next/link";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import Image from "next/image";
 import { CompanyIcon, LocationIconJobDescription } from "./icons";
+import CompanyLogo from "./CompanyLogo";
 import { IUser } from "../models/User";
+import dayjs from "dayjs";
 
 interface JobDescriptionProps {
   job: any;
@@ -34,8 +36,35 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const internal = useMemo(() => isInternalJob(job), [job]);
 
   const qualifications = internal
-    ? (job?.qualifications?.split(", ").filter(Boolean) as string[]) || []
+    ? typeof job?.qualifications === "string"
+      ? job.qualifications.split(", ").filter(Boolean)
+      : Array.isArray(job?.qualifications)
+      ? (job.qualifications as string[])
+      : []
     : (job?.skills as string[]) || [];
+
+  // External-job presentation data.
+  const companyName = internal ? job?.company?.companyName : job?.company;
+  const cityCountry = [job?.city, job?.country]
+    .filter((v) => v && String(v).trim() && String(v) !== "Unknown")
+    .join(", ");
+  const workMode = !internal ? getJobType(job as Job) : job?.type;
+  const seniorityLabel = !internal ? getSeniorityLevel(job as Job) : job?.seniority;
+  const postedDate = job?.postedAt || job?.createdAt;
+  const postedLabel = postedDate ? dayjs(postedDate).format("MMM D, YYYY") : "";
+  const sourceLabel =
+    !internal && job?.source && job.source !== "external"
+      ? String(job.source)
+      : "";
+  const metaChips = !internal
+    ? ([
+        cityCountry && { label: "Location", value: cityCountry },
+        workMode && { label: "Work mode", value: workMode },
+        seniorityLabel && { label: "Seniority", value: seniorityLabel },
+        postedLabel && { label: "Posted", value: postedLabel },
+        sourceLabel && { label: "Source", value: sourceLabel },
+      ].filter(Boolean) as { label: string; value: string }[])
+    : [];
 
   const handleApplyClick = () => {
     if (!user) return; // נציג הודעת התחברות מתחת
@@ -95,40 +124,84 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
     <div className="w-full mt-4 lg:mt-10 lg:px-10">
       <DescriptionImg />
       <div className="mt-5 lg:mt-14 m-auto px-5">
-        <div className="flex flex-col lg:flex-row mb-10">
-          <div className="w-full mb-5 lg:w-1/2">
-            <label className="text-[28px] lg:text-5xl font-outfit font-bold">
-              {job?.job || job?.title}
-            </label>
-          </div>
-          <div className="flex w-full items-start lg:w-1/2 lg:justify-end gap-[60px]">
-            <div className="flex">
-              <CompanyIcon />
-              <div className="ml-2">
-                <label className="text-left">
-                  <span className="font-semibold">Company</span>
-                  <br />
-                  <span className="font-normal text-[#222222]/50">
-                    {internal ? job?.company?.companyName : job?.company}
-                  </span>
-                </label>
-              </div>
+        {internal ? (
+          <div className="flex flex-col lg:flex-row mb-10">
+            <div className="w-full mb-5 lg:w-1/2">
+              <label className="text-[28px] lg:text-5xl font-outfit font-bold">
+                {job?.job || job?.title}
+              </label>
             </div>
-
-            <div className="flex">
-              <LocationIconJobDescription />
-              <div className="ml-2">
-                <span className="font-semibold">Location</span>
-                <div className="flex gap-4 font-normal text-[#222222]/50 items-center">
-                  <label>
-                    {(job?.location || "").toString()}
-                    {job?.country ? `, ${job.country}` : ""}
+            <div className="flex w-full items-start lg:w-1/2 lg:justify-end gap-[60px]">
+              <div className="flex">
+                <CompanyIcon />
+                <div className="ml-2">
+                  <label className="text-left">
+                    <span className="font-semibold">Company</span>
+                    <br />
+                    <span className="font-normal text-[#222222]/50">
+                      {job?.company?.companyName}
+                    </span>
                   </label>
+                </div>
+              </div>
+
+              <div className="flex">
+                <LocationIconJobDescription />
+                <div className="ml-2">
+                  <span className="font-semibold">Location</span>
+                  <div className="flex gap-4 font-normal text-[#222222]/50 items-center">
+                    <label>
+                      {(job?.location || "").toString()}
+                      {job?.country ? `, ${job.country}` : ""}
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="mb-10">
+            <div className="flex items-start gap-4">
+              <CompanyLogo
+                name={companyName}
+                domain={job?.companyDomain}
+                logoUrl={job?.logoUrl}
+                className="w-14 h-14 lg:w-16 lg:h-16 flex-shrink-0 border border-[#232323]/10 p-1"
+              />
+              <div className="min-w-0">
+                <h1 className="text-[26px] lg:text-5xl font-outfit font-bold leading-tight">
+                  {job?.job || job?.title}
+                </h1>
+                <p className="mt-1 text-lg lg:text-xl font-outfit text-[#232323]/70">
+                  {companyName}
+                </p>
+              </div>
+              {typeof job?.matchScore === "number" && (
+                <span className="ml-auto flex-shrink-0 inline-flex items-center rounded-full bg-[#24A8A2]/10 text-[#24A8A2] text-sm font-semibold px-3 py-1">
+                  {job.matchScore}% התאמה
+                </span>
+              )}
+            </div>
+
+            {metaChips.length > 0 && (
+              <div className="mt-6 flex flex-wrap gap-3">
+                {metaChips.map((chip) => (
+                  <div
+                    key={chip.label}
+                    className="rounded-2xl border border-[#232323]/10 px-4 py-2"
+                  >
+                    <div className="text-xs font-outfit uppercase tracking-wide text-[#232323]/40">
+                      {chip.label}
+                    </div>
+                    <div className="text-sm lg:text-base font-outfit font-medium text-[#232323] capitalize">
+                      {chip.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div>
           {!internal && job?.company_description && (
             <div className="mb-5 rounded-4xl border-[1px] border-[#232323]/10 py-8 px-5">
@@ -141,31 +214,44 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
             </div>
           )}
           {job?.description && (
-            <div className="mb-5 rounded-4xl border-[1px] border-[#232323]/10 py-8 px-5">
-              <h3 className="font-outfit text-3xl font-bold mb-10">
-                Description:
+            <div className="mb-5 rounded-4xl border-[1px] border-[#232323]/10 py-8 px-5 lg:px-8">
+              <h3 className="font-outfit text-2xl lg:text-3xl font-bold mb-5">
+                Description
               </h3>
-              <p className="ml-1 text-2xl font-outfit font-normal text-[#232323]/50">
+              <p className="font-outfit font-normal text-base lg:text-lg leading-relaxed text-[#232323]/70 whitespace-pre-line break-words">
                 {job.description}
               </p>
             </div>
           )}
 
           {qualifications.length > 0 && (
-            <div className="mb-5 rounded-4xl border-[1px] border-[#232323]/10 py-8 px-5">
-              <h3 className="font-outfit text-3xl font-bold mb-10">
-                Qualifications:
+            <div className="mb-5 rounded-4xl border-[1px] border-[#232323]/10 py-8 px-5 lg:px-8">
+              <h3 className="font-outfit text-2xl lg:text-3xl font-bold mb-5">
+                {internal ? "Qualifications" : "Skills"}
               </h3>
-              <ol className="list-decimal list-inside">
-                {qualifications.map((q: string, i: number) => (
-                  <li
-                    key={`${q}-${i}`}
-                    className="text-2xl font-outfit font-normal text-[#232323]/50"
-                  >
-                    {q}
-                  </li>
-                ))}
-              </ol>
+              {internal ? (
+                <ol className="list-decimal list-inside space-y-2">
+                  {qualifications.map((q: string, i: number) => (
+                    <li
+                      key={`${q}-${i}`}
+                      className="text-base lg:text-lg font-outfit font-normal text-[#232323]/70"
+                    >
+                      {q}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {qualifications.map((q: string, i: number) => (
+                    <span
+                      key={`${q}-${i}`}
+                      className="rounded-full bg-[#F9F9F9] border border-[#232323]/10 px-4 py-1.5 text-sm lg:text-base font-outfit text-[#232323]/80"
+                    >
+                      {q}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {user && (

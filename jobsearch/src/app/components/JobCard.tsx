@@ -3,6 +3,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { isInternalJob, type Job } from "./JobTable";
+import CompanyLogo from "./CompanyLogo";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 
@@ -90,8 +91,21 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       <h2 className="text-base sm:text-lg font-semibold truncate max-w-[70%]">
         {job.job}
       </h2>
-      <GoogleIcon />
+      <CompanyLogo
+        name={isInternalJob(job) ? job.company.companyName : job.company}
+        domain={job.companyDomain}
+        logoUrl={job.logoUrl}
+        className="w-5 h-5 flex-shrink-0"
+      />
     </div>
+
+    {typeof job.matchScore === "number" && (
+      <div className="px-3 mt-2">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#24A8A2]/10 text-[#24A8A2] text-xs font-semibold px-2 py-0.5">
+          {job.matchScore}% התאמה
+        </span>
+      </div>
+    )}
 
     <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
       <h3 className="truncate">

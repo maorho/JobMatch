@@ -4,19 +4,23 @@ import type { Job } from "./JobTable";
 
 interface LocationSelectProps {
   jobs: Job[];
+  /** DB-wide city list (/api/jobs/facets); falls back to the loaded jobs. */
+  cities?: string[] | null;
   selectedCities: string[];
   setSelectedCities: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 export default function LocationSelect({
   jobs,
+  cities,
   selectedCities,
   setSelectedCities,
 }: LocationSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // ערים ייחודיות בלבד
-  const uniqueCities = [...new Set(jobs.map((job) => job.city))];
+  // ערים ייחודיות בלבד — מכל המאגר כשיש facets, אחרת מהמשרות שנטענו
+  const uniqueCities =
+    cities ?? [...new Set(jobs.map((job) => job.city).filter(Boolean))];
 
   const toggleCity = (city: string) => {
     setSelectedCities((prev) =>

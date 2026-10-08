@@ -7,6 +7,8 @@ import { FilterIcon, SearchIcon, WhiteFilterIcon } from "./icons";
 import LocationSelect from "./LocationSelect";
 import { HeroImg } from "./HeroImages";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
+import type { JobFacets } from "./FilterJobs";
+import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
 
 
 interface BaseJob {
@@ -15,6 +17,9 @@ interface BaseJob {
   country: string;
   createdAt?: Date;
   description?: string;
+  companyDomain?: string;
+  logoUrl?: string;
+  matchScore?: number;
 }
 
 export interface ExternalJob extends BaseJob {
@@ -45,6 +50,25 @@ export function isInternalJob(job: Job): job is InternalJob {
   return job.source === "internal";
 }
 
+/**
+ * Work mode for a job (On Site / Hybrid / Remote). Internal jobs carry it in
+ * `type`; for external (ATS) jobs we infer it from the location/description.
+ */
+export function getJobType(job: Job): string {
+  // Shared taxonomy — the server search classifies with the same rules.
+  return isInternalJob(job)
+    ? workModeOf({ type: job.type || "On Site" })
+    : workModeOf({ city: job.city, country: job.country, description: job.description });
+}
+
+/**
+ * Seniority bucket (Intern / Junior / Mid / Senior). Uses the `seniority` field
+ * (Comeet's experience_level) when present, otherwise infers from the title.
+ */
+export function getSeniorityLevel(job: Job): string {
+  return seniorityOf(job.job, job.seniority as string[] | string | undefined);
+}
+
 function JobTable() {
   const { user } = useCurrentUser();
   const [allJobs, setAllJobs] = useState<Job[]>([]); 
@@ -56,55 +80,108 @@ function JobTable() {
   const [company, setCompany] = useState<string[]>([]);
   const [country, setCountry] = useState<string[]>([]);
   const [city, setCity] = useState<string[]>([]);
+  const [jobType, setJobType] = useState<string[]>([]);
+  const [seniority, setSeniority] = useState<string[]>([]);
   const [jobCount, setJobCount] = useState(0);
   const [showmodal, setShowModal] = useState<boolean>(false);
   const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
-  const [globalSearchMode, setGlobalSearchMode] = useState(false);
-  const searchAllJobsOnServer = async () => {
+
+  // Filter options for the WHOLE catalog (every company/city in the DB).
+  const [facets, setFacets] = useState<JobFacets | null>(null);
+  useEffect(() => {
+    fetch("/api/jobs/facets")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((f) => f && setFacets(f))
+      .catch(() => {});
+  }, []);
+
+  // Any term or filter active → search the DB server-side instead of the page.
+  const isSearching =
+    searchTerm.trim() !== "" ||
+    company.length > 0 ||
+    country.length > 0 ||
+    city.length > 0 ||
+    jobType.length > 0 ||
+    seniority.length > 0;
+
+  // ✅ חיפוש בכל המאגר (פנימי + חיצוני) — לא רק במשרות שנטענו לדף
+  const searchServer = async (pageNum: number) => {
     try {
       setLoading(true);
-      setGlobalSearchMode(true);
+      const params = new URLSearchParams();
+      if (searchTerm.trim()) params.set("q", searchTerm.trim());
+      company.forEach((v) => params.append("company", v));
+      city.forEach((v) => params.append("city", v));
+      country.forEach((v) => params.append("country", v));
+      jobType.forEach((v) => params.append("jobType", v));
+      seniority.forEach((v) => params.append("seniority", v));
+      params.set("page", String(pageNum));
+      params.set("limit", "48");
 
-      const res = await fetch("api/jobsDashboard/jobfilter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          searchTerm,
-          company,
-          city,
-          country,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to search all jobs");
-
+      const res = await fetch(`/api/jobs/search?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to search jobs");
       const data = await res.json();
+      const results: Job[] = data.jobs || [];
 
-      // אם אתה רוצה לשמור את ה־shape של JobTable:
-      const serverJobs = data.jobs.map((j: any) => ({
-        ...j,
-        source: "internal" as const,
-      }));
-
-      setAllJobs(serverJobs);
-      setJobs(serverJobs);
-      setJobCount(data.total);
-      setTotalPages(data.pages);
-      setPage(1);
+      if (pageNum === 1) {
+        setAllJobs(results);
+        setJobs(results);
+      } else {
+        setAllJobs((prev) => [...prev, ...results]);
+        setJobs((prev) => [...prev, ...results]);
+      }
+      setJobCount(data.total ?? results.length);
+      setTotalPages(data.pages || 1);
     } catch (err) {
-      console.error("❌ Global search failed:", err);
+      console.error("❌ Search failed:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  
+
 
   // ✅ מביא את המשרות מהשרת
   const fetchJobs = async (pageNum: number) => {
     try {
       setLoading(true);
+
+      // Personalized feed (ranked by the user's résumé) for logged-in users.
+      if (user) {
+        try {
+          const feedRes = await fetch(
+            `/api/matcher/feed?page=${pageNum}&limit=48`
+          );
+          if (feedRes.ok) {
+            const feedData = await feedRes.json();
+            if (
+              feedData.personalized &&
+              Array.isArray(feedData.jobs) &&
+              feedData.jobs.length
+            ) {
+              const feedJobs = feedData.jobs.map((j: Job) => ({
+                ...j,
+                source: "external",
+              }));
+              if (pageNum === 1) {
+                setAllJobs(feedJobs);
+                setJobs(feedJobs);
+              } else {
+                setAllJobs((prev) => [...prev, ...feedJobs]);
+                setJobs((prev) => [...prev, ...feedJobs]);
+              }
+              // Catalog-wide count, not the page size.
+              setJobCount(feedData.total ?? feedJobs.length);
+              setTotalPages(feedData.pages || 1);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch {
+          // fall through to the normal feed
+        }
+      }
 
       const internalUrl = user
         ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id}&page=${pageNum}&limit=50`
@@ -131,15 +208,15 @@ function JobTable() {
       if (pageNum === 1) {
         setAllJobs(merged);
         setJobs(merged);
-        setJobCount(merged.length);
       } else {
-        setAllJobs((prev) => {
-          const combined = [...prev, ...merged];
-          setJobCount(combined.length);
-          return combined;
-        });
+        setAllJobs((prev) => [...prev, ...merged]);
         setJobs((prev) => [...prev, ...merged]);
       }
+      // Catalog-wide count (what the DB holds), not the size of this page.
+      setJobCount(
+        (externalData.total ?? externalJobs.length) +
+          (internalData.total ?? internalJobs.length)
+      );
       setTotalPages(Math.max(internalData.pages || 1, externalData.pages || 1));
     } catch (err) {
       console.error("❌ Failed to fetch jobs:", err);
@@ -148,84 +225,46 @@ function JobTable() {
     }
   };
 
+  // One driver for all loading. Term/filter changes reset to page 1 (debounced
+  // so typing doesn't fire a request per keystroke); page changes load at once.
+  const searchKey = JSON.stringify({
+    q: searchTerm.trim(),
+    company,
+    country,
+    city,
+    jobType,
+    seniority,
+    u: user?._id ?? null,
+  });
+  const prevKeyRef = React.useRef(searchKey);
+
   useEffect(() => {
-    fetchJobs(page);
-  }, [page]);
-  
-  useEffect(() => {
-  handleSearch();
-}, [city, country, company]); 
-
-  const handleSearch = () => {
-    const term = searchTerm.toLowerCase();
-
-    const filtered = allJobs.filter((job) => {
-      const matchKeyword =
-        !term ||
-        job.job.toLowerCase().includes(term) ||
-        job.description?.toLowerCase().includes(term) ||
-        job.city.toLowerCase().includes(term) ||
-        (isInternalJob(job)
-          ? job.company.companyName.toLowerCase().includes(term)
-          : job.company.toLowerCase().includes(term)) ||
-        job.country.toLowerCase().includes(term);
-
-      const matchCompany = isInternalJob(job)
-        ? company.length === 0 || company.includes(job.company.companyName)
-        : company.length === 0 || company.includes(job.company);
-
-      const matchCity = city.length === 0 || city.includes(job.city);
-      const matchCountry = country.length === 0 || country.includes(job.country);
-
-      return matchKeyword && matchCompany && matchCity && matchCountry;
-    });
-    setJobCount(filtered.length);
-    setJobs(filtered);
-  };
-
-  const loadMore = async () => {
-    if (page >= totalPages) return;
-
-    const nextPage = page + 1;
-
-    if (!globalSearchMode) {
-      // מצב רגיל – מה שיש לך כבר
-      setPage(nextPage);
+    const keyChanged = prevKeyRef.current !== searchKey;
+    prevKeyRef.current = searchKey;
+    if (keyChanged && page !== 1) {
+      setPage(1); // re-runs this effect with page 1
       return;
     }
+    const run = () => (isSearching ? searchServer(page) : fetchJobs(page));
+    const t = setTimeout(run, keyChanged ? 350 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchKey]);
 
-    // מצב חיפוש גלובלי
-    try {
-      setLoading(true);
-      const res = await fetch("/api/jobs/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          searchTerm,
-          company,
-          city,
-          country,
-          page: nextPage,
-          limit: 50,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to load more search results");
-      const data = await res.json();
-
-      const serverJobs = data.jobs.map((j: any) => ({
-        ...j,
-        source: "internal" as const,
-      }));
-
-      setAllJobs((prev) => [...prev, ...serverJobs]);
-      setJobs((prev) => [...prev, ...serverJobs]);
-      setPage(nextPage);
-    } catch (err) {
-      console.error("❌ Load more (global search) failed:", err);
-    } finally {
-      setLoading(false);
+  // "Search Jobs" button: search the whole catalog right now (no debounce).
+  const handleSearch = () => {
+    if (page !== 1) {
+      setPage(1);
+      return;
     }
+    if (isSearching) searchServer(1);
+    else fetchJobs(1);
+  };
+
+  // Next page of whatever is active (feed or server search) — the effect loads it.
+  const loadMore = () => {
+    if (page >= totalPages || loading) return;
+    setPage(page + 1);
   };
 
 
@@ -255,6 +294,7 @@ function JobTable() {
             <div className="flex flex-row gap-4 items-center">
               <LocationSelect
                 jobs={allJobs}
+                cities={facets?.cities}
                 selectedCities={city}
                 setSelectedCities={setCity}
               />
@@ -286,12 +326,17 @@ function JobTable() {
               <div className="block md:hidden lg:block">
                 <JobsFilters
                   jobs={allJobs}
+                  facets={facets}
                   company={company}
                   country={country}
                   city={city}
                   setCompany={setCompany}
                   setCountry={setCountry}
                   setCity={setCity}
+                  jobType={jobType}
+                  setJobType={setJobType}
+                  seniority={seniority}
+                  setSeniority={setSeniority}
                   isMobile={isMobile}
                 />
               </div>
@@ -316,12 +361,17 @@ function JobTable() {
               <div className="block md:hidden lg:block">
                 <JobsFilters
                   jobs={allJobs}
+                  facets={facets}
                   company={company}
                   country={country}
                   city={city}
                   setCompany={setCompany}
                   setCountry={setCountry}
                   setCity={setCity}
+                  jobType={jobType}
+                  setJobType={setJobType}
+                  seniority={seniority}
+                  setSeniority={setSeniority}
                   isMobile={isMobile}
                 />
               </div>
@@ -361,7 +411,11 @@ function JobTable() {
 
               <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {jobs.map((job, i) => (
-                  <JobCard key={job.id || i} job={job} jobIndex={i} />
+                  <JobCard
+                    key={job._id || job.id || `${job.source}-${i}`}
+                    job={job}
+                    jobIndex={i}
+                  />
                 ))}
               </div>
 
@@ -398,12 +452,17 @@ function JobTable() {
         <div className="p-4 overflow-y-auto max-h-[75vh]">
           <JobsFilters
             jobs={allJobs}
+            facets={facets}
             company={company}
             country={country}
             city={city}
             setCompany={setCompany}
             setCountry={setCountry}
             setCity={setCity}
+            jobType={jobType}
+            setJobType={setJobType}
+            seniority={seniority}
+            setSeniority={setSeniority}
             isMobile={isMobile}
           />
         </div>
