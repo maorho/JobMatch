@@ -26,6 +26,11 @@ export interface IUser extends Document {
 
   resumeText?: string;
   embedding?: number[];
+  // Latest résumé built/improved in ResumeAI (structured JSON) + its review.
+  resumeStructured?: unknown;
+  resumeScore?: number;
+  resumeIssues?: string[];
+  resumeUpdatedAt?: Date;
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -63,6 +68,11 @@ const UserSchema = new Schema<IUser>(
     // Extracted résumé text + its embedding, used to personalize the job feed.
     resumeText: { type: String, default: "", select: false },
     embedding: { type: [Number], default: undefined, select: false },
+    // Latest résumé built/improved in ResumeAI (structured JSON) + its review.
+    resumeStructured: { type: mongoose.Schema.Types.Mixed, default: undefined, select: false },
+    resumeScore: { type: Number, default: undefined },
+    resumeIssues: { type: [String], default: undefined },
+    resumeUpdatedAt: { type: Date, default: undefined },
 
     memory: {
       skills: { type: [String], default: [] },

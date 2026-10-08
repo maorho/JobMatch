@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
 
 type Role = "user" | "assistant" | "system";
 
@@ -24,6 +25,8 @@ export default function ResumeAIPage() {
   const [rawResumeText, setRawResumeText] = useState<string | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
+  // True once the résumé is stored for matching → the feed is personalized.
+  const [matchReady, setMatchReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // מושך את המשתמש המחובר (בהנחה ש /api/auth/me מחזיר user._id)
@@ -127,6 +130,7 @@ export default function ResumeAIPage() {
 
       setScore(buildData.score ?? null);
       setIssues(Array.isArray(buildData.issues) ? buildData.issues : []);
+      setMatchReady(!!buildData.matchReady);
 
       // 2️⃣ יצירת PDF
       const pdfRes = await fetch("/api/chat/download-resume", {
@@ -227,6 +231,7 @@ export default function ResumeAIPage() {
 
     setScore(buildData.score ?? null);
     setIssues(buildData.issues ?? []);
+    setMatchReady(!!(buildData.matchReady || data.matchReady));
 
     // 3️⃣ יצירת PDF משופר
     const pdfRes = await fetch("/api/chat/download-resume", {
@@ -327,6 +332,19 @@ export default function ResumeAIPage() {
             >
               📄 הורד קורות חיים משופרים (ATS Ready)
             </a>
+          </div>
+        )}
+        {matchReady && (
+          <div className="text-center mt-3 text-sm">
+            <p className="text-gray-700 mb-2">
+              🎯 קורות החיים שלך נשמרו — הפיד שלך עכשיו מותאם אישית אליהם.
+            </p>
+            <Link
+              href="/"
+              className="inline-block px-6 py-2 bg-[#11AEFF] hover:bg-[#0d8ed6] text-white rounded shadow text-sm"
+            >
+              ראה משרות שמתאימות לקורות החיים שלך
+            </Link>
           </div>
         )}
       </div>

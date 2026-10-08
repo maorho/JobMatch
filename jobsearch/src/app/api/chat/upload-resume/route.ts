@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 
 export const runtime = "nodejs";
 
@@ -44,7 +45,18 @@ export async function POST(req: NextRequest) {
     const pdfData = await pdfParseModule.default(buffer);
     const rawText: string = pdfData.text || "";
 
-    return NextResponse.json({ rawText });
+    // Feed the Matcher: store the text + embedding so the personalized feed
+    // and match scores reflect this résumé immediately. Never blocks the upload.
+    let matchReady = false;
+    if (rawText.trim()) {
+      try {
+        matchReady = !!(await embedAndStoreResume(userId, rawText));
+      } catch (e) {
+        console.warn("[upload-resume] embedding skipped:", (e as Error)?.message);
+      }
+    }
+
+    return NextResponse.json({ rawText, matchReady });
   } catch (err: any) {
     console.error("❌ upload-resume error:", err);
     return NextResponse.json(

@@ -9,6 +9,7 @@ import Image from "next/image";
 import { CompanyIcon, LocationIconJobDescription } from "./icons";
 import CompanyLogo from "./CompanyLogo";
 import DescriptionBlocks from "./DescriptionBlocks";
+import TailorResumePanel from "./TailorResumePanel";
 import { IUser } from "../models/User";
 import dayjs from "dayjs";
 
@@ -259,6 +260,12 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
                 </div>
               )}
             </div>
+          )}
+          {user && (job?._id || job?.id) && (
+            <TailorResumePanel
+              jobId={String(job._id ?? job.id)}
+              source={internal ? "internal" : "external"}
+            />
           )}
           {user && (
             <button

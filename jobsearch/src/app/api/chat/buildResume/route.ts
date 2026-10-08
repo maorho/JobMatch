@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import mongoose from "mongoose";
 import User from "@/app/models/User";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+import { connectToDatabase } from "@/app/lib/db";
+import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { structuredToText } from "@/app/lib/resume/structuredToText";
+
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,13 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { messages, rawResumeText } = await req.json();
-    if (mongoose.connection.readyState === 0) {
-      if (!process.env.MONGO_URI) {
-        console.error("❌ MONGODB_URI is not defined");
-      } else {
-        await mongoose.connect(process.env.MONGO_URI);
-      }
-    }
+    await connectToDatabase();
 
     const user = userId ? await User.findById(userId).lean() : null;
 
@@ -234,10 +233,35 @@ RULES
       );
     }
 
+    // Persist the result and feed the Matcher, so the personalized feed, the
+    // match scores and the "tailor to this job" agent all see this résumé.
+    const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).slice(0, 20) : [];
+    const score = Number.isFinite(Number(parsed.score)) ? Number(parsed.score) : undefined;
+    await User.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          resumeStructured: parsed.structuredResume,
+          resumeScore: score,
+          resumeIssues: issues,
+          resumeUpdatedAt: new Date(),
+        },
+      }
+    );
+    let matchReady = false;
+    try {
+      // The uploaded text is the richest source; otherwise embed the built résumé.
+      const text = (rawResumeText || "").trim() || structuredToText(parsed.structuredResume);
+      matchReady = !!(await embedAndStoreResume(userId, text));
+    } catch (e) {
+      console.warn("[buildResume] embedding skipped:", (e as Error)?.message);
+    }
+
     return NextResponse.json({
       structuredResume: parsed.structuredResume,
       score: parsed.score,
       issues: parsed.issues,
+      matchReady,
     });
   } catch (err: any) {
     console.error("❌ buildResume error:", err);
