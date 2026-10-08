@@ -4,6 +4,8 @@ import puppeteer, { Browser, Page } from "puppeteer";
 import dns from "dns/promises";
 import net from "net";
 import path from "path";
+import fs from "fs";
+import os from "os";
 import dotenv from "dotenv";
 
 // Load the Next app's env so SCRAPER_TOKEN/CRON_SECRET match between processes.
@@ -368,6 +370,399 @@ app.get("/api/capture", async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: "Failed to capture" });
   } finally {
     inFlight--;
+    await page?.close().catch(() => {});
+  }
+});
+
+// =====================================================================
+// POST /api/apply — fill and submit an ATS application form on behalf of a
+// candidate (the Applier agent). Knows Greenhouse and Lever well, tries a
+// generic form otherwise, and reports `needs_user` instead of guessing
+// whenever the form asks something it cannot answer (custom required
+// questions, captcha, unknown layout). `dryRun: true` fills but never submits.
+// =====================================================================
+app.use(express.json({ limit: "15mb" }));
+
+type ApplyProfile = { firstName: string; lastName: string; email: string; phone: string; linkedin?: string };
+type ApplyAnswer = { selector: string; value: string };
+type ApplyBody = { url: string; profile: ApplyProfile; resumePdfBase64?: string; resumeFileName?: string; coverNote?: string; dryRun?: boolean; answers?: ApplyAnswer[] };
+type FormField = { selector: string; label: string; type: string; required: boolean; options?: string[]; value?: string };
+
+function detectAts(url: string): string {
+  const u = url.toLowerCase();
+  if (u.includes("greenhouse.io")) return "greenhouse";
+  if (u.includes("lever.co")) return "lever";
+  if (u.includes("comeet.co")) return "comeet";
+  if (u.includes("ashbyhq.com")) return "ashby";
+  if (u.includes("myworkdayjobs.com")) return "workday";
+  if (u.includes("smartrecruiters.com")) return "smartrecruiters";
+  return "unknown";
+}
+
+/** Type into the first selector that exists and is visible. Returns the selector used. */
+async function fillFirst(page: Page, selectors: string[], value: string): Promise<string | null> {
+  if (!value) return null;
+  for (const sel of selectors) {
+    const el = await page.$(sel);
+    if (!el) continue;
+    const visible = await el.isVisible().catch(() => false);
+    if (!visible) continue;
+    await el.click({ clickCount: 3 }).catch(() => {});
+    await el.type(value, { delay: 10 });
+    return sel;
+  }
+  return null;
+}
+
+async function pageHasCaptcha(page: Page): Promise<boolean> {
+  return page.evaluate(() => !!document.querySelector('iframe[src*="recaptcha"], .g-recaptcha, iframe[src*="hcaptcha"], .h-captcha, iframe[src*="turnstile"]'));
+}
+
+/** A captcha that actually demands interaction (the image-grid challenge is on screen). */
+async function captchaChallengeVisible(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const vis = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      const st = getComputedStyle(el as HTMLElement);
+      return r.width > 50 && r.height > 50 && st.visibility !== "hidden" && st.display !== "none";
+    };
+    const challenge = Array.from(document.querySelectorAll('iframe[src*="recaptcha/api2/bframe"], iframe[title*="challenge" i], iframe[src*="hcaptcha.com/captcha"]'));
+    return challenge.some((f) => vis(f) && vis(f.parentElement || f));
+  });
+}
+
+/** Required inputs/selects/textareas on the page that are still empty (label text for the report). */
+async function emptyRequiredFields(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const els = Array.from(document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input[required], select[required], textarea[required], [aria-required='true']"));
+    for (const el of els) {
+      const type = (el as HTMLInputElement).type || el.tagName.toLowerCase();
+      if (type === "hidden" || type === "file" || type === "submit" || type === "checkbox" || type === "radio") continue;
+      if ((el as HTMLElement).offsetParent === null) continue; // not visible
+      const value = (el as HTMLInputElement).value;
+      if (value && value.trim()) continue;
+      const id = el.id;
+      const label = (id && document.querySelector(`label[for="${id}"]`)?.textContent) || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name") || id || "field";
+      const clean = label.replace(/\s+/g, " ").replace(/\*/g, "").trim().slice(0, 80);
+      if (!seen.has(clean)) {
+        seen.add(clean);
+        out.push(clean);
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * Every visible, still-empty input/select/textarea on the form, with a stable
+ * selector and the label a human would read — the Applier answers these.
+ */
+async function collectFields(page: Page): Promise<FormField[]> {
+  return page.evaluate(() => {
+    const out: any[] = [];
+    const seen = new Set<string>();
+    const vis = (el: Element) => !!((el as HTMLElement).offsetParent || el.getClientRects().length);
+    const labelFor = (el: Element) => {
+      const id = el.id;
+      let t = (id && document.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent) || el.getAttribute("aria-label") || "";
+      if (!t) {
+        const labelled = el.getAttribute("aria-labelledby");
+        if (labelled) t = labelled.split(/\s+/).map((i) => document.getElementById(i)?.textContent || "").join(" ");
+      }
+      if (!t) t = el.closest("label")?.textContent || "";
+      if (!t) {
+        // Walk up a few levels: Lever/Greenhouse wrap the control in a div
+        // and put the question text in a sibling (.application-label, label…).
+        let node: Element | null = el.parentElement;
+        for (let depth = 0; node && depth < 5 && !t; depth++, node = node.parentElement) {
+          const lab = node.querySelector(":scope > label, :scope > legend, :scope > .application-label, :scope > .label, :scope > .text, :scope > h4, :scope > h5, :scope > div > label, :scope > .application-label > *");
+          if (lab && !lab.contains(el)) t = lab.textContent || "";
+          if (!t && node.matches(".application-question, .field, .form-group, fieldset")) {
+            t = node.querySelector(".application-label, label, legend, .text")?.textContent || "";
+          }
+        }
+      }
+      if (!t) t = el.getAttribute("placeholder") || el.getAttribute("name") || id || "field";
+      return t.replace(/\s+/g, " ").replace(/\*/g, "").replace(/✱/g, "").trim().slice(0, 120);
+    };
+    const selectorFor = (el: Element) => {
+      if (el.id) return `#${CSS.escape(el.id)}`;
+      const name = el.getAttribute("name");
+      if (name) return `${el.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+      return "";
+    };
+    const els = Array.from(document.querySelectorAll<HTMLElement>("input, select, textarea"));
+    const radioGroups = new Set<string>();
+    for (const el of els) {
+      const input = el as HTMLInputElement;
+      const type = (input.type || el.tagName.toLowerCase()).toLowerCase();
+      if (["hidden", "submit", "button", "file", "search"].includes(type)) continue;
+      if (!vis(el)) continue;
+      if (/first_name|last_name|^email$|^phone$|keyword-filter|department-filter|office-filter/.test(input.name || el.id)) continue;
+      const required = input.required || el.getAttribute("aria-required") === "true" || /\*/.test((el.closest(".field, .application-question, .form-group, fieldset") as HTMLElement)?.innerText?.slice(0, 200) || "");
+      if (type === "radio" || type === "checkbox") {
+        const key = input.name || el.id;
+        if (!key || radioGroups.has(key)) continue;
+        radioGroups.add(key);
+        const group = Array.from(document.querySelectorAll<HTMLInputElement>(`input[name="${key.replace(/"/g, '\\"')}"]`));
+        const options = group.map((g) => (g.id && document.querySelector(`label[for="${CSS.escape(g.id)}"]`)?.textContent) || g.closest("label")?.textContent || g.value).map((t) => (t || "").replace(/\s+/g, " ").trim()).filter(Boolean);
+        const fs = group[0].closest("fieldset, .field, .application-question, .form-group");
+        const label = (fs?.querySelector("legend, label, .application-label, .text")?.textContent || labelFor(group[0])).replace(/\s+/g, " ").replace(/\*/g, "").trim().slice(0, 120);
+        if (group.some((g) => g.checked)) continue;
+        out.push({ selector: `input[name="${key.replace(/"/g, '\\"')}"]`, label, type, required: required || group.some((g) => g.required), options });
+        continue;
+      }
+      const selector = selectorFor(el);
+      if (!selector || seen.has(selector)) continue;
+      seen.add(selector);
+      const value = (input.value || "").trim();
+      if (value && type !== "select-one") continue;
+      const comboLike = el.getAttribute("role") === "combobox" || el.getAttribute("aria-autocomplete") === "list";
+      if (comboLike) {
+        // react-select: the chosen value lives in a sibling, not in the input.
+        const control = el.closest('[class*="control"], [class*="Control"]') || el.parentElement?.parentElement;
+        if (control && control.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value"], [class*="multiValue"]')) continue;
+      }
+      if (el.tagName === "SELECT") {
+        const sel = el as HTMLSelectElement;
+        const chosen = sel.selectedOptions[0];
+        if (chosen && chosen.value && !/select|choose|^-+$/i.test(chosen.textContent || "")) continue;
+        out.push({ selector, label: labelFor(el), type: "select", required, options: Array.from(sel.options).map((o) => o.textContent?.trim() || "").filter((t) => t && !/^(select|choose|please)/i.test(t)).slice(0, 60) });
+        continue;
+      }
+      const combo = el.getAttribute("role") === "combobox" || el.getAttribute("aria-autocomplete") === "list";
+      out.push({ selector, label: labelFor(el), type: combo ? "combobox" : el.tagName === "TEXTAREA" ? "textarea" : type, required });
+    }
+    return out;
+  });
+}
+
+/** Apply the Applier's answers: selects by option text, comboboxes by typing + Enter, radios by label, text by typing. */
+async function fillAnswers(page: Page, fields: FormField[], answers: ApplyAnswer[]): Promise<string[]> {
+  const applied: string[] = [];
+  for (const a of answers) {
+    const f = fields.find((x) => x.selector === a.selector);
+    if (!f || !a.value) continue;
+    try {
+      if (f.type === "select") {
+        const picked = await page.evaluate((sel, val) => {
+          const el = document.querySelector(sel) as HTMLSelectElement | null;
+          if (!el) return false;
+          const v = val.toLowerCase();
+          const opt = Array.from(el.options).find((o) => (o.textContent || "").trim().toLowerCase() === v) || Array.from(el.options).find((o) => (o.textContent || "").toLowerCase().includes(v));
+          if (!opt) return false;
+          el.value = opt.value;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        }, f.selector, a.value);
+        if (picked) applied.push(f.label);
+      } else if (f.type === "radio" || f.type === "checkbox") {
+        const clicked = await page.evaluate((sel, val) => {
+          const group = Array.from(document.querySelectorAll<HTMLInputElement>(sel));
+          const v = val.toLowerCase();
+          const match = group.find((g) => {
+            const t = ((g.id && document.querySelector(`label[for="${CSS.escape(g.id)}"]`)?.textContent) || g.closest("label")?.textContent || g.value || "").trim().toLowerCase();
+            return t === v || t.includes(v);
+          });
+          if (!match) return false;
+          match.click();
+          return true;
+        }, f.selector, a.value);
+        if (clicked) applied.push(f.label);
+      } else if (f.type === "combobox") {
+        const el = await page.$(f.selector);
+        if (!el) continue;
+        await el.click();
+        await el.type(a.value, { delay: 25 });
+        // Async autocompletes (city lookups) can take a few seconds; poll for
+        // a visible option, and if the full phrase finds nothing, retry with
+        // its first word (e.g. "Tel Aviv, Israel" → "Tel").
+        const optionsVisible = () => page.evaluate(() => Array.from(document.querySelectorAll<HTMLElement>('[role="option"], [class*="__option"], [id*="-option-"]')).some((o) => o.getClientRects().length && !/no (results|options|location)/i.test(o.textContent || "")));
+        let seen = false;
+        for (let i = 0; i < 15 && !(seen = await optionsVisible()); i++) await new Promise((r) => setTimeout(r, 400));
+        if (!seen) {
+          await el.click({ clickCount: 3 }).catch(() => {});
+          await page.keyboard.press("Backspace");
+          await el.type(a.value.split(/[,\s]+/)[0], { delay: 40 });
+          for (let i = 0; i < 15 && !(seen = await optionsVisible()); i++) await new Promise((r) => setTimeout(r, 400));
+        }
+        const clicked = await page.evaluate((val) => {
+          const v = val.toLowerCase();
+          const opts = Array.from(document.querySelectorAll<HTMLElement>('[role="option"], [class*="__option"], [id*="-option-"]')).filter((o) => o.getClientRects().length);
+          const best = opts.find((o) => (o.textContent || "").trim().toLowerCase() === v) || opts.find((o) => (o.textContent || "").toLowerCase().startsWith(v)) || opts.find((o) => (o.textContent || "").toLowerCase().includes(v)) || opts[0];
+          if (!best) return false;
+          best.click();
+          return true;
+        }, a.value);
+        if (!clicked) await page.keyboard.press("Enter");
+        await new Promise((r) => setTimeout(r, 400));
+        applied.push(f.label);
+      } else {
+        const el = await page.$(f.selector);
+        if (!el) continue;
+        await el.click({ clickCount: 3 }).catch(() => {});
+        await el.type(a.value, { delay: 5 });
+        applied.push(f.label);
+      }
+    } catch (e: any) {
+      console.warn("[apply] answer failed for", f.label, e?.message);
+    }
+  }
+  return applied;
+}
+
+async function confirmationSeen(page: Page, startUrl: string): Promise<string | null> {
+  const text: string = await page.evaluate(() => (document.body?.innerText || "").slice(0, 20000)).catch(() => "");
+  const m = text.match(/(thank you[^.\n]{0,120}|application (?:has been |was )?(?:submitted|received)[^.\n]{0,80}|we(?:'ve| have) received your application[^.\n]{0,80}|תודה[^.\n]{0,80}|המועמדות (?:נשלחה|התקבלה)[^.\n]{0,80})/i);
+  if (m) return m[0].trim();
+  const url = page.url();
+  if (url !== startUrl && /confirmation|thank|success|submitted/i.test(url)) return url;
+  return null;
+}
+
+async function formErrors(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const nodes = Array.from(document.querySelectorAll(".field-error, .error-message, .form-error, [role='alert'], .invalid-feedback, .helper-text--error, .error"));
+    return nodes.map((n) => (n.textContent || "").replace(/\s+/g, " ").trim()).filter((t) => t && t.length < 160).slice(0, 6);
+  });
+}
+
+app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
+  if (SCRAPER_TOKEN) {
+    const token = (req.query.token as string) || req.get("x-scraper-token") || "";
+    if (token !== SCRAPER_TOKEN) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+  }
+  const body = (req.body || {}) as ApplyBody;
+  const { url, profile } = body;
+  if (!url || !profile?.email || !profile?.firstName) {
+    res.status(400).json({ error: "Missing url or profile" });
+    return;
+  }
+  if (!(await isSafeUrl(url))) {
+    res.status(400).json({ error: "URL not allowed" });
+    return;
+  }
+  if (inFlight >= MAX_CONCURRENCY) {
+    res.status(503).json({ error: "Busy, try again" });
+    return;
+  }
+
+  const ats = detectAts(url);
+  // Lever's posting page is read-only; the form lives under /apply.
+  const targetUrl = ats === "lever" && !/\/apply\/?(\?|$)/.test(url) ? url.replace(/\/?(\?.*)?$/, "/apply$1") : url;
+
+  inFlight++;
+  let page: Page | null = null;
+  let tmpResume: string | null = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+    await page.setViewport({ width: 1280, height: 1600 });
+    await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 40000 });
+    await page.waitForSelector("form, input[type=file]", { timeout: 10000 }).catch(() => {});
+
+    if (ats === "comeet" || ats === "workday" || ats === "ashby" || ats === "smartrecruiters") {
+      res.json({ status: "needs_user", ats, reason: `${ats} application forms are multi-step/iframe based — open the link and apply manually.` });
+      return;
+    }
+    // Greenhouse and Lever ship an invisible reCAPTCHA on every form; it only
+    // blocks when a visible challenge pops up at submit, so note it and go on.
+    const captchaPresent = await pageHasCaptcha(page);
+
+    // Greenhouse (classic boards.greenhouse.io and the newer job-boards) and
+    // Lever share the same handful of fields; the generic fallback guesses
+    // by name/id/autocomplete.
+    const filled: string[] = [];
+    const fullName = `${profile.firstName} ${profile.lastName}`.trim();
+    const first = await fillFirst(page, ["#first_name", "input[name='first_name']", "input[name*='first' i]", "input[autocomplete='given-name']", "input[id*='first' i]"], profile.firstName);
+    const last = await fillFirst(page, ["#last_name", "input[name='last_name']", "input[name*='last' i]", "input[autocomplete='family-name']", "input[id*='last' i]"], profile.lastName);
+    if (!first && !last) {
+      const name = await fillFirst(page, ["input[name='name']", "input[autocomplete='name']", "input[name*='full' i]", "input[id*='name' i]"], fullName);
+      if (name) filled.push("name");
+    } else filled.push("first/last name");
+    if (await fillFirst(page, ["#email", "input[name='email']", "input[type='email']", "input[autocomplete='email']"], profile.email)) filled.push("email");
+    if (await fillFirst(page, ["#phone", "input[name='phone']", "input[type='tel']", "input[autocomplete='tel']", "input[name*='phone' i]"], profile.phone)) filled.push("phone");
+    if (profile.linkedin) {
+      if (await fillFirst(page, ["input[name='urls[LinkedIn]']", "input[name*='linkedin' i]", "input[id*='linkedin' i]", "input[autocomplete='url']"], profile.linkedin)) filled.push("linkedin");
+    }
+    if (body.coverNote) {
+      if (await fillFirst(page, ["textarea[name='comments']", "#cover_letter_text", "textarea[name*='cover' i]", "textarea[name*='message' i]"], body.coverNote)) filled.push("cover note");
+    }
+
+    // Résumé upload: any file input (Greenhouse hides it behind a button; Lever uses input[name=resume]).
+    if (body.resumePdfBase64) {
+      tmpResume = path.join(os.tmpdir(), `jm-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+      fs.writeFileSync(tmpResume, Buffer.from(body.resumePdfBase64, "base64"));
+      const fileInput = (await page.$("input[type=file][name*='resume' i], input[type=file][id*='resume' i], input#resume, input[type=file]")) as any;
+      if (fileInput) {
+        await fileInput.uploadFile(tmpResume);
+        filled.push("resume");
+        await new Promise((r) => setTimeout(r, 2500)); // let the ATS parse/attach it
+      }
+    }
+
+    if (!filled.includes("email")) {
+      res.json({ status: "needs_user", ats, reason: "Could not find a standard application form on this page.", filled, captchaPresent });
+      return;
+    }
+
+    // Whatever the form still asks: fill the Applier's answers, then re-check.
+    let fields = await collectFields(page);
+    if (body.answers?.length) {
+      const applied = await fillAnswers(page, fields, body.answers);
+      filled.push(...applied.map((l) => `answer: ${l}`));
+      await new Promise((r) => setTimeout(r, 500));
+      fields = await collectFields(page);
+    }
+    const missingRequired = fields.filter((f) => f.required);
+    const missing = missingRequired.map((f) => f.label);
+    if (missing.length) {
+      res.json({ status: "needs_user", ats, reason: `The form asks for: ${missing.join(", ")}.`, filled, missing, fields, captchaPresent });
+      return;
+    }
+    if (body.dryRun) {
+      res.json({ status: "ready", ats, filled, fields, captchaPresent });
+      return;
+    }
+
+    const startUrl = page.url();
+    const submit = await page.$("#submit_app, button#btn-submit, button[type=submit], input[type=submit]");
+    if (!submit) {
+      res.json({ status: "needs_user", ats, reason: "No submit button found.", filled });
+      return;
+    }
+    await Promise.all([page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(() => null), submit.click()]);
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const confirmation = await confirmationSeen(page, startUrl);
+    if (confirmation) {
+      res.json({ status: "submitted", ats, filled, confirmation });
+      return;
+    }
+    if (await captchaChallengeVisible(page)) {
+      res.json({ status: "needs_user", ats, reason: "A captcha challenge appeared at submit — open the link and finish it yourself.", filled, captchaPresent });
+      return;
+    }
+    const errors = await formErrors(page);
+    const stillMissing = await emptyRequiredFields(page);
+    if (errors.length || stillMissing.length) {
+      res.json({ status: "needs_user", ats, reason: `The form rejected the submission: ${[...errors, ...stillMissing].join("; ")}`, filled });
+      return;
+    }
+    res.json({ status: "failed", ats, reason: "Submitted but no confirmation was detected.", filled });
+  } catch (err: any) {
+    console.error("❌ apply error:", err?.message || err);
+    res.status(500).json({ status: "failed", ats, error: err?.message || "Failed to apply" });
+  } finally {
+    inFlight--;
+    if (tmpResume) fs.unlink(tmpResume, () => {});
     await page?.close().catch(() => {});
   }
 });

@@ -42,6 +42,8 @@ export interface IUser extends Document {
     lastSyncAt?: Date;
     lastError?: string;
   };
+  autoApply?: { enabled?: boolean; minScore?: number; dailyCap?: number; enabledAt?: Date };
+  onboarding?: { completedAt?: Date; contactsStep?: "" | "done" | "skipped" };
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -101,6 +103,20 @@ const UserSchema = new Schema<IUser>(
       connectedAt: { type: Date, default: undefined },
       lastSyncAt: { type: Date, default: undefined },
       lastError: { type: String, default: "" },
+    },
+
+    // Applier agent opt-in: submit automatically when a new posting scores
+    // at least `minScore` against the résumé, at most `dailyCap` per day.
+    autoApply: {
+      enabled: { type: Boolean, default: false },
+      minScore: { type: Number, default: 75, min: 50, max: 100 },
+      dailyCap: { type: Number, default: 5, min: 1, max: 30 },
+      enabledAt: { type: Date, default: undefined },
+    },
+    /** Onboarding steps the user completed or skipped. */
+    onboarding: {
+      completedAt: { type: Date, default: undefined },
+      contactsStep: { type: String, enum: ["", "done", "skipped"], default: "" },
     },
 
     memory: {

@@ -8,6 +8,7 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import CompanyLogo from "./CompanyLogo";
 import DescriptionBlocks from "./DescriptionBlocks";
 import TailorResumePanel from "./TailorResumePanel";
+import ReferralsCard from "./ReferralsCard";
 import { IUser } from "../models/User";
 import dayjs from "dayjs";
 
@@ -253,6 +254,9 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
 
         {(showAboutCompany || (user && jobKey)) && (
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto jm-scroll">
+            {user && jobKey && companyName && (
+              <ReferralsCard company={companyName} jobId={String(job._id ?? job.id)} source={internal ? "internal" : "external"} jobUrl={job?.finalUrl || job?.url} />
+            )}
             {user && jobKey && (
               <TailorResumePanel
                 jobId={String(job._id ?? job.id)}

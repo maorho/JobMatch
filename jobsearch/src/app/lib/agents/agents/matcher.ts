@@ -5,6 +5,8 @@ import { matchForUser } from "@/app/lib/matcher/matchCandidate";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import ExternalJobs from "@/app/models/ExternalJobs";
+import User from "@/app/models/User";
+import { autoApplyCandidatesSince } from "@/app/lib/apply/autoApply";
 
 const TOP_N = 5;
 const MIN_SCORE = 60;
@@ -33,7 +35,12 @@ export const matcherAgent = registerAgent({
           { since: p.since, embedded, remaining },
           `${embedded} postings now have vectors${remaining ? ` (${remaining} left for the next tick)` : ""}. Notifier — tell people about their new matches.`
         );
-        return `Embedded ${embedded} postings, ${remaining} remaining.`;
+        // Opted-in candidates: anything new that clears their bar goes to the Applier.
+        const picks = await autoApplyCandidatesSince(new Date(p.since), (u, j) => toMatchScore(cosineSimilarity(u, j)));
+        for (const [userId, jobs] of picks) {
+          await ctx.send("apply.request", { userId, jobs, trigger: "new_postings" }, `Applier — ${jobs.length} new posting${jobs.length === 1 ? "" : "s"} clear this candidate's auto-apply bar (best ${jobs[0].score}%).`);
+        }
+        return `Embedded ${embedded} postings, ${remaining} remaining${picks.size ? `; ${picks.size} candidate${picks.size === 1 ? "" : "s"} have auto-apply matches` : ""}.`;
       }
 
       case "resume.updated": {
@@ -42,6 +49,13 @@ export const matcherAgent = registerAgent({
         if (!matches.length) return "No postings score above the bar for this résumé yet.";
         const top = matches.map((m) => ({ jobId: String(m._id), title: m.job, company: m.company, score: m.matchScore }));
         await ctx.send("candidate.matched", { userId, top }, `Top ${top.length} for this résumé: ${top.map((t) => `${t.title} @ ${t.company} (${t.score}%)`).join("; ")}. Notifier — let them know.`);
+        // Fresh résumé + auto-apply on → let the Applier look at the top matches right away.
+        const u: any = await User.findById(userId).select("autoApply").lean();
+        if (u?.autoApply?.enabled) {
+          const bar = u.autoApply.minScore ?? 75;
+          const eligible = top.filter((t) => t.score >= bar).map((t) => ({ ...t, jobModel: "ExternalJobs" as const }));
+          if (eligible.length) await ctx.send("apply.request", { userId, jobs: eligible, trigger: "resume_updated" }, `Applier — ${eligible.length} of these clear the candidate's ${bar}% auto-apply bar.`);
+        }
         return `Ranked the catalog for the candidate; best match ${top[0].score}%.`;
       }
 

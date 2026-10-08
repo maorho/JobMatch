@@ -13,9 +13,31 @@ export const notifierAgent = registerAgent({
   name: "notifier",
   title: "Notifier",
   description: "The only agent that talks to people: turns what the others found into in-app notifications.",
-  handles: ["jobs.embedded", "candidate.matched", "prep.ready"],
+  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report"],
   async handle(msg) {
     switch (msg.type) {
+      case "apply.report": {
+        const p = msg.payload as Payloads["apply.report"];
+        if (p.submitted.length) {
+          await notify(p.userId, {
+            type: "application_status",
+            title: p.submitted.length === 1 ? `הגשנו בשבילך מועמדות: ${p.submitted[0].title}` : `הגשנו בשבילך ${p.submitted.length} מועמדויות`,
+            body: p.submitted.map((s) => `${s.title} · ${s.company} (${s.score}%)`).join("\n"),
+            link: "/Dashboard",
+            meta: { agent: "applier", jobIds: p.submitted.map((s) => s.jobId) },
+          });
+        }
+        if (p.needsUser.length) {
+          await notify(p.userId, {
+            type: "system",
+            title: p.needsUser.length === 1 ? `משרה מתאימה מחכה להגשה שלך: ${p.needsUser[0].title}` : `${p.needsUser.length} משרות מתאימות מחכות להגשה שלך`,
+            body: p.needsUser.map((n) => `${n.title} · ${n.company} — ${n.reason}`).join("\n"),
+            link: "/Dashboard#auto-apply",
+            meta: { agent: "applier", jobIds: p.needsUser.map((n) => n.jobId) },
+          });
+        }
+        return `Reported ${p.submitted.length} submissions and ${p.needsUser.length} hand-offs.`;
+      }
       case "jobs.embedded": {
         const r = await runJobMatchDigest();
         return `Digest: ${r.newJobs} new postings vs ${r.users} candidates → ${r.notified} people notified.`;

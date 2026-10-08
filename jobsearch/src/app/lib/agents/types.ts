@@ -3,7 +3,7 @@
  * types and the payload shape listed next to it. Keep this file the single
  * source of truth when adding an agent or a new kind of message.
  */
-export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor"] as const;
+export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
 /** Non-agent senders. */
@@ -37,6 +37,10 @@ export type Payloads = {
   "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
   /** Janitor: delete postings no source has reported for a while. */
   "catalog.sweep": { staleDays?: number };
+  /** Matcher → Applier: postings that cleared the user's auto-apply bar. */
+  "apply.request": { userId: string; jobs: { jobId: string; jobModel: "Job" | "ExternalJobs"; score: number; title: string; company: string }[]; trigger: "new_postings" | "resume_updated" | "manual" };
+  /** Applier → Notifier: what happened with the auto-applications. */
+  "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number };
 };
 export type MessageType = keyof Payloads;
 
@@ -54,6 +58,8 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "fit.reply": "coach",
   "prep.ready": "notifier",
   "catalog.sweep": "janitor",
+  "apply.request": "applier",
+  "apply.report": "notifier",
 };
 
 export type BusMessage<T extends MessageType = MessageType> = {

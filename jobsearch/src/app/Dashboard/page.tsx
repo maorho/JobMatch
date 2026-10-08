@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
 import EmailTrackingCard from "./components/EmailTrackingCard";
+import AutoApplyCard from "../components/AutoApplyCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
 import { EmptyState, Spinner } from "../components/ui";
@@ -197,6 +198,10 @@ const DashboardPage: React.FC = () => {
       </div>
 
       <EmailTrackingCard />
+      <section id="auto-apply" className="jm-card p-5 sm:p-6" dir="rtl">
+        <h2 className="jm-h2 mb-3">⚡ הגשה אוטומטית</h2>
+        <AutoApplyCard showList />
+      </section>
       {jobsSubmitted && <JobManagement jobs={filteredJobs}/>}
 
       {showModal && (

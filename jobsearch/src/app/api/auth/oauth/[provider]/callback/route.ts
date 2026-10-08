@@ -43,8 +43,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     const { user, created } = await findOrCreateOAuthUser(profile);
 
     const token = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
-    // New social accounts have no résumé yet: send them to ResumeAI first.
-    const dest = created && next === "/" ? "/ResumeAI?welcome=1" : next;
+    // New social accounts start with onboarding (résumé → contacts → auto-apply).
+    const dest = created && next === "/" ? "/onboarding" : next;
     const res = NextResponse.redirect(new URL(dest, req.nextUrl.origin));
     res.cookies.set({
       name: "token",

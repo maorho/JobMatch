@@ -9,6 +9,7 @@ import "./agents/notifier";
 import "./agents/tracker";
 import "./agents/coach";
 import "./agents/janitor";
+import "./agents/applier";
 
 export { listAgents, getAgent } from "./registry";
 export { startRun, startFlow, send, processQueue, readRun, kick } from "./bus";

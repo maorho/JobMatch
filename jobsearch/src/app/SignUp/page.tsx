@@ -65,7 +65,7 @@ function SignUp() {
             ? "/RecruiterDashboard"
             : data.admin
             ? "/AdminDashboard"
-            : "/Dashboard"
+            : "/onboarding"
         );
       } else {
         setError(data.message || "Signup failed");

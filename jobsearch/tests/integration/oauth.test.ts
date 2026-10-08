@@ -65,7 +65,7 @@ describe("social login", () => {
   it("creates the account on first Google login and issues the app session cookie", async () => {
     const { cb } = await login("google", { sub: "g-1", email: "Dana@Example.com", email_verified: true, name: "Dana Dev", picture: "https://img/x.png" });
     expect(cb.status).toBe(307);
-    expect(cb.headers.get("location")).toBe(`${ORIGIN}/ResumeAI?welcome=1`); // new user → build a résumé
+    expect(cb.headers.get("location")).toBe(`${ORIGIN}/onboarding`); // new user → build a résumé
     const token = cookieHeader(cb, "token");
     expect(token).not.toBe("");
     const user: any = await User.findOne({ email: "dana@example.com" }).lean();

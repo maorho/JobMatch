@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
+import ContactsCard from "../components/ContactsCard";
+import AutoApplyCard from "../components/AutoApplyCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string };
@@ -131,6 +133,16 @@ export default function SettingsPage() {
           ) : (
             <p className="jm-muted">לא מוגדר בסביבה הזו (נדרשים GOOGLE_CLIENT_ID ו-TOKEN_ENCRYPTION_KEY).</p>
           )}
+        </div>
+
+        <div id="contacts" className={card}>
+          <h2 className="jm-h2">🤝 אנשי קשר והפניות (LinkedIn)</h2>
+          <ContactsCard />
+        </div>
+
+        <div id="auto-apply" className={card}>
+          <h2 className="jm-h2">⚡ הגשה אוטומטית</h2>
+          <AutoApplyCard />
         </div>
 
         {(!p?.authProvider || p.authProvider === "local") && (
