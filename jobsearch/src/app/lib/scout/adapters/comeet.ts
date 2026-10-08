@@ -26,16 +26,27 @@ export const comeet: Adapter = async (identifier, secondaryIdentifier) => {
     const loc = p.location || {};
     const remote =
       loc.is_remote === true || /remote/i.test(p.workplace_type || "");
+    // Comeet splits the posting into named sections (Description,
+    // Requirements, …); keep the names as headings so the text stays
+    // structured instead of two blobs run together.
     const detailText = Array.isArray(p.details)
-      ? p.details.map((d: any) => d?.value ?? "").join("\n")
-      : p.details || "";
+      ? p.details
+          .map((d: any) => {
+            const body = htmlToText(d?.value ?? "");
+            if (!body) return "";
+            const name = typeof d?.name === "string" ? d.name.trim() : "";
+            return name ? `${name}\n${body}` : body;
+          })
+          .filter(Boolean)
+          .join("\n\n")
+      : htmlToText(p.details || "");
     return {
       sourceJobId: String(p.uid ?? ""),
       title: p.name ?? "",
       company: p.company_name || identifier,
       city: loc.city || (remote ? "Remote" : ""),
       country: loc.country || (remote ? "Remote" : "Unknown"), // e.g. "IL"
-      description: htmlToText(detailText),
+      description: detailText,
       applyUrl:
         p.url_comeet_hosted_page ||
         p.url_active_page ||

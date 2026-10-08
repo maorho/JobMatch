@@ -8,6 +8,7 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import Image from "next/image";
 import { CompanyIcon, LocationIconJobDescription } from "./icons";
 import CompanyLogo from "./CompanyLogo";
+import DescriptionBlocks from "./DescriptionBlocks";
 import { IUser } from "../models/User";
 import dayjs from "dayjs";
 
@@ -49,6 +50,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
     .filter((v) => v && String(v).trim() && String(v) !== "Unknown")
     .join(", ");
   const workMode = !internal ? getJobType(job as Job) : job?.type;
+  const cityCountryLabel = cityCountry || (job?.remote ? "Remote" : "");
   const seniorityLabel = !internal ? getSeniorityLevel(job as Job) : job?.seniority;
   const postedDate = job?.postedAt || job?.createdAt;
   const postedLabel = postedDate ? dayjs(postedDate).format("MMM D, YYYY") : "";
@@ -58,7 +60,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       : "";
   const metaChips = !internal
     ? ([
-        cityCountry && { label: "Location", value: cityCountry },
+        cityCountryLabel && { label: "Location", value: cityCountryLabel },
         workMode && { label: "Work mode", value: workMode },
         seniorityLabel && { label: "Seniority", value: seniorityLabel },
         postedLabel && { label: "Posted", value: postedLabel },
@@ -218,9 +220,13 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
               <h3 className="font-outfit text-2xl lg:text-3xl font-bold mb-5">
                 Description
               </h3>
-              <p className="font-outfit font-normal text-base lg:text-lg leading-relaxed text-[#232323]/70 whitespace-pre-line break-words">
-                {job.description}
-              </p>
+              {internal ? (
+                <p className="font-outfit font-normal text-base lg:text-lg leading-relaxed text-[#232323]/70 whitespace-pre-line break-words">
+                  {job.description}
+                </p>
+              ) : (
+                <DescriptionBlocks text={job.description} />
+              )}
             </div>
           )}
 

@@ -70,10 +70,12 @@ function externalWorkModeFilter(modes: string[]) {
   const noText = (re: RegExp) => ({
     $and: [{ city: { $not: re } }, { country: { $not: re } }],
   });
+  const notRemoteFlag = { remote: { $ne: true } };
   const byMode: Record<string, object> = {
-    Remote: text(REMOTE_RE),
-    Hybrid: { $and: [noText(REMOTE_RE), text(HYBRID_RE)] },
-    "On Site": { $and: [noText(REMOTE_RE), noText(HYBRID_RE)] },
+    // The normalized `remote` flag (location agent) or legacy location text.
+    Remote: { $or: [{ remote: true }, text(REMOTE_RE)] },
+    Hybrid: { $and: [notRemoteFlag, noText(REMOTE_RE), text(HYBRID_RE)] },
+    "On Site": { $and: [notRemoteFlag, noText(REMOTE_RE), noText(HYBRID_RE)] },
   };
   const parts = modes.map((m) => byMode[m]).filter(Boolean);
   return parts.length ? { $or: parts } : {};

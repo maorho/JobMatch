@@ -45,14 +45,35 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&"); // keep last so earlier entities decode first
 }
 
-/** Strip HTML (possibly entity-escaped, as Greenhouse returns) to clean text. */
+/**
+ * Strip HTML (possibly entity-escaped, as Greenhouse returns) to clean text
+ * while KEEPING the document structure: block elements become line breaks,
+ * list items become "• " bullets, headings get a blank line around them.
+ * Plain `$.text()` glued "…audit work.Key ResponsibilitiesSupport client…"
+ * into one wall of text; this keeps each section readable and lets the UI
+ * render headings and bullet lists.
+ */
 export function htmlToText(html: string): string {
   if (!html) return "";
-  const decoded = decodeEntities(html);
-  const $ = cheerio.load(decoded);
+  let s = decodeEntities(html);
+  // If the markup was escaped twice (common in ATS feeds), decode again.
+  if (/&lt;\/?[a-z]/i.test(s)) s = decodeEntities(s);
+  s = s
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/\s*(p|div|section|article|tr|table|ul|ol|blockquote)\s*>/gi, "\n\n")
+    .replace(/<\s*\/\s*(h[1-6])\s*>/gi, "\n\n")
+    .replace(/<\s*(h[1-6])(\s[^>]*)?>/gi, "\n\n")
+    .replace(/<\s*li(\s[^>]*)?>/gi, "\n• ")
+    .replace(/<\s*\/\s*li\s*>/gi, "\n")
+    .replace(/<\s*(p|div|section|article|tr)(\s[^>]*)?>/gi, "\n")
+    .replace(/<\s*(td|th)(\s[^>]*)?>/gi, " ");
+  const $ = cheerio.load(s);
   return $.text()
     .replace(/\r/g, "")
-    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ /g, " ")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

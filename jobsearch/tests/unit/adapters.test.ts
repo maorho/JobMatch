@@ -170,7 +170,8 @@ describe("comeet adapter", () => {
     stubFetch({ "careers-api": { body: [{ uid: "p1", name: "Junior QA", location: { city: "Tel Aviv", country: "IL" }, experience_level: "Entry-level", details: [{ name: "Description", value: "<p>Test things</p>" }], url_comeet_hosted_page: "https://www.comeet.com/jobs/x/p1" }, { uid: "p2", name: "Remote Dev", location: { is_remote: true }, experience_level: "Senior" }] } });
     const out = await comeet("06.004", "TOKEN");
     expect(out).toHaveLength(2);
-    expect(out[0]).toMatchObject({ sourceJobId: "p1", title: "Junior QA", city: "Tel Aviv", country: "IL", seniority: ["Entry-level"], description: "Test things" });
+    // Section names are kept as headings so the text stays structured.
+    expect(out[0]).toMatchObject({ sourceJobId: "p1", title: "Junior QA", city: "Tel Aviv", country: "IL", seniority: ["Entry-level"], description: "Description\nTest things" });
     expect(out[1]).toMatchObject({ city: "Remote", country: "Remote", seniority: ["Senior"] });
   });
 });

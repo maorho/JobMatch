@@ -61,6 +61,16 @@ const ExternalJobSchema = new mongoose.Schema({
     applyUrl:{
         type: String,
     },
+    // Location as the ATS gave it ("Remote - USA", "Tel Aviv-Yafo, IL"); city/
+    // country above hold the normalized form (see lib/locations).
+    rawLocation:{
+        type: String,
+        default: '',
+    },
+    remote:{
+        type: Boolean,
+        default: false,
+    },
     companyDomain:{
         type: String, // company website domain, for the logo
         default: '',
@@ -107,5 +117,6 @@ ExternalJobSchema.index({ city: 1 });
 ExternalJobSchema.index({ active: 1 });
 // Backs the staleness sweep (delete ATS jobs not seen in the latest polls).
 ExternalJobSchema.index({ lastSeenAt: 1 });
+ExternalJobSchema.index({ remote: 1 });
 
 export default mongoose.models.ExternalJobs || mongoose.model('ExternalJobs',ExternalJobSchema);

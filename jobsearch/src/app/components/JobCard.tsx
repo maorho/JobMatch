@@ -109,7 +109,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
 
     <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
       <h3 className="truncate">
-        {job.city}, {job.country}
+        {[job.city, job.country]
+          .filter((v) => v && v !== "Unknown")
+          .join(", ") || ((job as any).remote ? "Remote" : "")}
+        {(job as any).remote && job.city ? " · Remote" : ""}
       </h3>
       <h3 className="whitespace-nowrap">{time}</h3>
     </div>

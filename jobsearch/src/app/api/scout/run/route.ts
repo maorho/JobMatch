@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
   }
 
   const dry = sp.get("dry") === "1";
+  const refresh = sp.get("refresh") === "1"; // rewrite existing postings too
   const company = sp.get("company") || undefined;
   const num = (k: string) => {
     const v = parseInt(sp.get(k) ?? "", 10);
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   );
 
   try {
-    const result = await runScout({ dry, company, offset, limit, timeBudgetMs });
+    const result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs });
     return NextResponse.json({ ok: true, dry, ...result });
   } catch (err: any) {
     console.error("❌ Scout run error:", err);

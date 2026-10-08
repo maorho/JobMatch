@@ -6,6 +6,22 @@ import { getAdapter } from "./adapters";
 import { getLogoUrl, resolveLogoDomain } from "./logo";
 import { isIsraelOrRemote } from "./locationFilter";
 import { NormalizedPosting } from "./types";
+import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
+
+/**
+ * Canonical city/country/remote for a posting (location agent, rules stage).
+ * When the rules can't resolve the string we keep the raw city so nothing is
+ * lost; the backfill endpoint later runs the LLM stage over `rawLocation`.
+ */
+function locationFields(p: NormalizedPosting) {
+  const loc = normalizeLocation({ city: p.city, country: p.country });
+  return {
+    city: loc.confidence === "low" ? p.city || "" : loc.city,
+    country: loc.country || p.country || "Unknown",
+    remote: loc.remote,
+    rawLocation: loc.raw,
+  };
+}
 
 /**
  * ATS types whose adapter returns a company's COMPLETE current board in one
@@ -59,6 +75,12 @@ export type RunOptions = {
   offset?: number;
   limit?: number;
   timeBudgetMs?: number;
+  /**
+   * Also rewrite title/description/location/postedAt of postings we already
+   * have (normally only new postings are written). Used after parser or
+   * normalizer improvements so the existing catalog picks them up.
+   */
+  refresh?: boolean;
 };
 
 /**
@@ -115,16 +137,19 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       }).select("sourceJobId");
       const seen = new Set(existing.map((e: any) => e.sourceJobId));
 
+      // Relevance uses both the raw strings and the normalized remote flag, so
+      // "Remote - USA" (normalized to country United States) still qualifies.
+      const relevant = (p: NormalizedPosting) =>
+        isIsraelOrRemote({ ...p, remote: locationFields(p).remote });
+
       const fresh = postings.filter(
-        (p) =>
-          p.sourceJobId && !seen.has(p.sourceJobId) && isIsraelOrRemote(p)
+        (p) => p.sourceJobId && !seen.has(p.sourceJobId) && relevant(p)
       );
 
       // All currently-open Israel/remote postings for this source — the keep
       // set the stored jobs are reconciled against.
-      const keepIds = postings
-        .filter((p) => p.sourceJobId && isIsraelOrRemote(p))
-        .map((p) => p.sourceJobId as string);
+      const keepPostings = postings.filter((p) => p.sourceJobId && relevant(p));
+      const keepIds = keepPostings.map((p) => p.sourceJobId as string);
 
       if (!opts.dry) {
         if (fresh.length) {
@@ -145,8 +170,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
               job: p.title,
               company,
               company_description: "",
-              city: p.city || "",
-              country: p.country || "Unknown",
+              ...locationFields(p),
               url: link,
               finalUrl: link,
               description: p.description,
@@ -191,6 +215,28 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
           await ExternalJobs.updateMany(
             { companySource: src._id, sourceJobId: { $in: keepIds } },
             { $set: { lastSeenAt: new Date(), active: true } }
+          );
+        }
+
+        // Optional full refresh of existing postings (parser/normalizer upgrades).
+        if (opts.refresh && keepPostings.length) {
+          await ExternalJobs.bulkWrite(
+            keepPostings.map((p) => ({
+              updateOne: {
+                filter: { companySource: src._id, sourceJobId: p.sourceJobId },
+                update: {
+                  $set: {
+                    job: p.title,
+                    description: p.description,
+                    seniority: p.seniority || [],
+                    ...(p.postedAt ? { postedAt: p.postedAt } : {}),
+                    ...(p.applyUrl ? { applyUrl: p.applyUrl, url: p.applyUrl, finalUrl: p.applyUrl } : {}),
+                    ...locationFields(p),
+                  },
+                },
+              },
+            })),
+            { ordered: false }
           );
         }
 

@@ -47,8 +47,10 @@ export function workModeOf(opts: {
   type?: string;
   city?: string;
   country?: string;
+  remote?: boolean; // normalized flag set by the location agent
   description?: string; // accepted for call-site compatibility, not used
 }): WorkMode {
+  if (opts.remote) return "Remote";
   if (opts.type) {
     const t = opts.type.toLowerCase();
     if (t.includes("remote")) return "Remote";

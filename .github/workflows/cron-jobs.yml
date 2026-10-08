@@ -48,6 +48,18 @@ jobs:
             offset=$next
           done
 
+  normalize_locations:
+    # Location agent: resolve any new raw location strings (cache → rules →
+    # LLM) so filters/facets stay canonical. Idempotent.
+    needs: scout_run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call scout/normalize-locations
+        shell: bash
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/scout/normalize-locations" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
   embed_jobs:
     # Embed newly-ingested jobs for the Matcher, after the Scout runs.
     needs: scout_run

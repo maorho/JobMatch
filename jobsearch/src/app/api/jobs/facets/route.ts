@@ -8,12 +8,15 @@ import { SENIORITY_LEVELS, WORK_MODES } from "@/app/lib/jobTaxonomy";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Values come normalized from the location agent; this is the safety net for
+// anything not yet normalized (multi-location strings, addresses, "Unknown").
+const JUNK = /;|\||•|\d{2,}|\b(st\.|street|floor|suite)\b/i;
 const clean = (values: unknown[]): string[] =>
   Array.from(
     new Set(
       values
         .map((v) => (typeof v === "string" ? v.trim() : ""))
-        .filter((v) => v && v !== "Unknown")
+        .filter((v) => v && v !== "Unknown" && v !== "Remote" && v.length <= 40 && !JUNK.test(v))
     )
   ).sort((a, b) => a.localeCompare(b));
 

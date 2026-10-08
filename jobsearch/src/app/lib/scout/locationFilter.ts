@@ -19,8 +19,10 @@ export function isIsraelOrRemote(j: {
   title?: string;
   city?: string;
   country?: string;
+  remote?: boolean;
   description?: string;
 }): boolean {
+  if (j.remote === true) return true;
   const country = (j.country || "").trim();
   if (/^(il|isr|israel)$/i.test(country)) return true;
 
