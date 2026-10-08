@@ -201,7 +201,7 @@ RULES
       new HumanMessage("Generate the JSON now."),
     ]);
 
-    let text =
+    const text =
       typeof response.content === "string"
         ? response.content
         : (response.content as any[])

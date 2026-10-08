@@ -13,8 +13,8 @@ export default function TermsOfCondintions() {
         {/* פסקה ראשונה */}
         <p className="text-lg">
           By accessing or using our website, application, or any other services
-          we provide (collectively, the "Platform"), you agree to comply with
-          and be bound by these Terms of Use (the "Terms"). If you do not agree
+          we provide (collectively, the &quot;Platform&quot;), you agree to comply with
+          and be bound by these Terms of Use (the &quot;Terms&quot;). If you do not agree
           to these Terms, please do not use our Platform.
         </p>
 
@@ -73,7 +73,7 @@ export default function TermsOfCondintions() {
           <p>
             You are solely responsible for any content you post, upload, or
             share on the Platform, including your profile, messages, and other
-            materials ("User Content"). You grant us a worldwide, royalty-free,
+            materials (&quot;User Content&quot;). You grant us a worldwide, royalty-free,
             and non-exclusive license to use, display, and distribute your User
             Content as necessary to operate and improve the Platform.
           </p>
@@ -102,7 +102,7 @@ export default function TermsOfCondintions() {
             <strong>8. Disclaimers</strong>
           </p>
           <p>
-            The Platform is provided "as is" without any warranties, express or
+            The Platform is provided &quot;as is&quot; without any warranties, express or
             implied. We do not guarantee the accuracy, reliability, or
             availability of the Platform, and we are not responsible for any
             content posted by users.

@@ -40,12 +40,15 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      setCompany(user.company || "");
-      setPublisher(user.id || "");
-    }
-  }, [user]);
+  // Seed company/publisher from the signed-in user once per user, during
+  // render (React's adjust-state-on-prop-change pattern) rather than in an
+  // effect, so the form never paints a frame with empty values first.
+  const [seededForUser, setSeededForUser] = useState<string | null>(null);
+  if (user && (user.id || "") !== seededForUser) {
+    setSeededForUser(user.id || "");
+    setCompany(user.company || "");
+    setPublisher(user.id || "");
+  }
 
   useEffect(() => {
     async function fetchJobData() {

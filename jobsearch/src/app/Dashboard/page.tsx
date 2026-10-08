@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
@@ -37,7 +37,6 @@ const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredJobs, setFilteredJobs] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const isMobile = useIsMobile();
@@ -60,29 +59,24 @@ const DashboardPage: React.FC = () => {
     refreshInterval: 10000,
     revalidateOnFocus: true,
   });
-  useEffect(() => {
-  if (!jobsSubmitted) return;
-
-  const term = searchTerm.toLowerCase();
-
-  const results = jobsSubmitted.filter((job: any) => {
-    const matchesSearch =
-      job?.jobId?.job?.toLowerCase().includes(term) ||
-      job?.jobId?.company?.companyName?.toLowerCase().includes(term) ||
-      job?.jobId?.country?.toLowerCase().includes(term) ||
-      job?.status?.toLowerCase().includes(term) ||
-      job?.jobId?.type?.toLowerCase().includes(term);
-
-    const matchesStatus =
-      !statusFilter || job?.status?.toLowerCase() === statusFilter.toLowerCase();
-
-    const matchesType =
-      !typeFilter || job?.jobId?.type?.toLowerCase() === typeFilter.toLowerCase();
-
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-    setFilteredJobs(results);
+  // Derived from the user's own applications (a small per-user list), so an
+  // in-memory filter is right here; it's a memo, not state synced by an effect.
+  const filteredJobs = useMemo(() => {
+    if (!jobsSubmitted) return [];
+    const term = searchTerm.toLowerCase();
+    return jobsSubmitted.filter((job: any) => {
+      const matchesSearch =
+        job?.jobId?.job?.toLowerCase().includes(term) ||
+        job?.jobId?.company?.companyName?.toLowerCase().includes(term) ||
+        job?.jobId?.country?.toLowerCase().includes(term) ||
+        job?.status?.toLowerCase().includes(term) ||
+        job?.jobId?.type?.toLowerCase().includes(term);
+      const matchesStatus =
+        !statusFilter || job?.status?.toLowerCase() === statusFilter.toLowerCase();
+      const matchesType =
+        !typeFilter || job?.jobId?.type?.toLowerCase() === typeFilter.toLowerCase();
+      return matchesSearch && matchesStatus && matchesType;
+    });
   }, [searchTerm, statusFilter, typeFilter, jobsSubmitted]);
 
   if (loading || isLoading) return <p>Loading...</p>;

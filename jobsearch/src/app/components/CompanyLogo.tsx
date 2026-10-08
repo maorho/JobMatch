@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   getLogoUrl,
   getFaviconUrl,
@@ -37,9 +37,14 @@ export default function CompanyLogo({
 
   // Reset the fallback position when the logo identity changes, so a reused
   // instance (e.g. after list filtering) doesn't keep a prior company's state.
-  useEffect(() => {
+  // Done during render (React's "adjust state on prop change" pattern), not
+  // in an effect, so there is no extra flicker frame of the old logo.
+  const identity = `${name}|${domain ?? ""}|${logoUrl ?? ""}`;
+  const [seenIdentity, setSeenIdentity] = useState(identity);
+  if (seenIdentity !== identity) {
+    setSeenIdentity(identity);
     setIdx(0);
-  }, [name, domain, logoUrl]);
+  }
 
   const letter = (name || "?").trim().charAt(0).toUpperCase() || "?";
   const src = chain[idx];

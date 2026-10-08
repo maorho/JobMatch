@@ -57,7 +57,7 @@ export default function AboutPage() {
       </h2>
       <p className="text-lg mb-6">
         This project demonstrates full-stack expertise, including scalable
-        architecture, secure systems, and cloud-native deployment. It's a
+        architecture, secure systems, and cloud-native deployment. It&apos;s a
         practical, real-world application that shows a high level of technical
         proficiency and creativity.
       </p>
