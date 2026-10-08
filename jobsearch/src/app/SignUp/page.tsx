@@ -289,7 +289,7 @@ function SignUp() {
               {/* כפתורי ההרשמה */}
               <div className="w-full max-w-[520px] mx-auto p-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
                 {/* Google */}
-                <button
+                <a href="/api/auth/oauth/google?next=/"
                   className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
                 flex items-center justify-center gap-2 sm:gap-3
                 py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
@@ -298,11 +298,11 @@ function SignUp() {
                 hover:bg-gray-50 transition-all duration-200 overflow-hidden"
                 >
                   <FcGoogle className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                  <span className="leading-none">Sign up with Google</span>
-                </button>
+                  <span className="leading-none">Continue with Google</span>
+                </a>
 
                 {/* Facebook */}
-                <button
+                <a href="/api/auth/oauth/facebook?next=/"
                   className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
                 flex items-center justify-center gap-2 sm:gap-3
                 py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
@@ -311,8 +311,8 @@ function SignUp() {
                 hover:bg-gray-50 transition-all duration-200 overflow-hidden"
                 >
                   <FaFacebook className="text-[#1877F2] w-6 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                  <span className="leading-none">Sign up with Facebook</span>
-                </button>
+                  <span className="leading-none">Continue with Facebook</span>
+                </a>
               </div>
             </div>
           </div>

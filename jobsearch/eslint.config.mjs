@@ -12,6 +12,9 @@ const eslintConfig = [
       // Pre-existing code leans on `any` (Mongoose lean() docs, ATS payloads).
       // Surface it, don't block CI on it; tighten per-module over time.
       "@typescript-eslint/no-explicit-any": "warn",
+      // Social-login buttons link to API routes (/api/auth/oauth/*), which
+      // need a full navigation — <Link> would client-route and break OAuth.
+      "@next/next/no-html-link-for-pages": "off",
     },
   },
   {

@@ -10,9 +10,12 @@ export interface IUser extends Document {
   approved?: boolean;
   company_id?: mongoose.Types.ObjectId | null;
   company?: string;
-  phone: string;
+  phone?: string;
   resume?: string;
   currentJob?: string;
+  authProvider?: "local" | "google" | "facebook";
+  providerId?: string;
+  avatar?: string;
 
   memory?: {
     skills: string[];
@@ -62,8 +65,14 @@ const UserSchema = new Schema<IUser>(
 
     resume: { type: String, default: "" },
 
-    phone: { type: String, required: true },
+    // Optional: social-login accounts arrive without a phone number.
+    phone: { type: String, default: "" },
     currentJob: { type: String, default: "" },
+
+    // Social login (Google / Facebook). "local" = email + password signup.
+    authProvider: { type: String, enum: ["local", "google", "facebook"], default: "local" },
+    providerId: { type: String, default: undefined },
+    avatar: { type: String, default: "" },
 
     // Extracted résumé text + its embedding, used to personalize the job feed.
     resumeText: { type: String, default: "", select: false },

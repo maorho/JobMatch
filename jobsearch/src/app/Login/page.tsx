@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+// Messages for the social-login callback's ?error= codes.
+const OAUTH_ERRORS: Record<string, string> = {
+  oauth_denied: "ההתחברות בוטלה.",
+  oauth_state: "ההתחברות פגה או לא תקינה — נסה שוב.",
+  oauth_email_unverified: "הספק לא אימת את כתובת המייל — התחבר עם ספק אחר או עם סיסמה.",
+  oauth_not_configured: "התחברות חברתית עדיין לא מוגדרת בסביבה הזו.",
+  oauth_failed: "ההתחברות נכשלה — נסה שוב.",
+};
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FcGoogle } from "react-icons/fc";
@@ -13,6 +22,13 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Surface a social-login failure (callback redirects here with ?error=).
+  // Read from window instead of useSearchParams to keep this page static.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("error");
+    if (code) setError(OAUTH_ERRORS[code] || OAUTH_ERRORS.oauth_failed);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,7 +149,7 @@ function LoginForm() {
             {/* כפתורי ההרשמה */}
             <div className="w-full max-w-[520px] mx-auto p-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
               {/* Google */}
-              <button
+              <a href="/api/auth/oauth/google?next=/"
                 className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
     flex items-center justify-center gap-2 sm:gap-3
     py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
@@ -142,11 +158,11 @@ function LoginForm() {
     hover:bg-gray-50 transition-all duration-200 overflow-hidden"
               >
                 <FcGoogle className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                <span className="leading-none">Sign up with Google</span>
-              </button>
+                <span className="leading-none">Continue with Google</span>
+              </a>
 
               {/* Facebook */}
-              <button
+              <a href="/api/auth/oauth/facebook?next=/"
                 className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
     flex items-center justify-center gap-2 sm:gap-3
     py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
@@ -155,8 +171,8 @@ function LoginForm() {
     hover:bg-gray-50 transition-all duration-200 overflow-hidden"
               >
                 <FaFacebook className="text-[#1877F2] w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                <span className="leading-none">Sign up with Facebook</span>
-              </button>
+                <span className="leading-none">Continue with Facebook</span>
+              </a>
             </div>
           </div>
         </div>

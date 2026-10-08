@@ -1,0 +1,63 @@
+import { NextRequest, NextResponse } from "next/server";
+import { exchangeCode, fetchProfile, isProvider, redirectUri, safeNext } from "@/app/lib/oauth/providers";
+import { findOrCreateOAuthUser } from "@/app/lib/oauth/users";
+import { signJwt } from "@/app/lib/jwt";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const STATE_COOKIE = "oauth_state";
+
+function fail(req: NextRequest, reason: string) {
+  const res = NextResponse.redirect(new URL(`/Login?error=${encodeURIComponent(reason)}`, req.nextUrl.origin));
+  res.cookies.delete(STATE_COOKIE);
+  return res;
+}
+
+/**
+ * GET /api/auth/oauth/{provider}/callback?code=&state=
+ * Verifies the CSRF state, exchanges the code, finds/creates the user and
+ * issues the app's `token` cookie — identical to /api/auth/login.
+ */
+export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: string }> }) {
+  const { provider } = await ctx.params;
+  if (!isProvider(provider)) return fail(req, "oauth_provider");
+
+  const sp = req.nextUrl.searchParams;
+  if (sp.get("error")) return fail(req, "oauth_denied");
+  const code = sp.get("code") || "";
+  const state = sp.get("state") || "";
+  const expected = req.cookies.get(STATE_COOKIE)?.value || "";
+  if (!code || !state || !expected || state !== expected) return fail(req, "oauth_state");
+
+  let next = "/";
+  try {
+    next = safeNext(Buffer.from(state.split(".")[1] || "", "base64url").toString("utf8"));
+  } catch {
+    next = "/";
+  }
+
+  try {
+    const accessToken = await exchangeCode(provider, code, redirectUri(req, provider));
+    const profile = await fetchProfile(provider, accessToken);
+    const { user, created } = await findOrCreateOAuthUser(profile);
+
+    const token = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
+    // New social accounts have no résumé yet: send them to ResumeAI first.
+    const dest = created && next === "/" ? "/ResumeAI?welcome=1" : next;
+    const res = NextResponse.redirect(new URL(dest, req.nextUrl.origin));
+    res.cookies.set({
+      name: "token",
+      value: token,
+      httpOnly: true,
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+    res.cookies.delete(STATE_COOKIE);
+    return res;
+  } catch (err: any) {
+    console.error(`❌ oauth ${provider} callback:`, err?.message || err);
+    return fail(req, err?.code === "EMAIL_UNVERIFIED" ? "oauth_email_unverified" : "oauth_failed");
+  }
+}

@@ -28,6 +28,20 @@ export const envSchema = z
     AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
     S3_BUCKET_NAME: z.string().min(1).optional(),
     SERPAPI_KEY: z.string().optional(),
+    // Social login. Each provider needs both of its values to be enabled.
+    GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    FACEBOOK_APP_ID: z.string().min(1).optional(),
+    FACEBOOK_APP_SECRET: z.string().min(1).optional(),
+    APP_URL: z.string().url().optional(),
+  })
+  .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {
+    message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together",
+    path: ["GOOGLE_CLIENT_ID"],
+  })
+  .refine((e) => !!e.FACEBOOK_APP_ID === !!e.FACEBOOK_APP_SECRET, {
+    message: "FACEBOOK_APP_ID and FACEBOOK_APP_SECRET must be set together",
+    path: ["FACEBOOK_APP_ID"],
   })
   .refine((e) => e.MONGO_URI || e.MONGODB_URI, {
     message: "MONGO_URI (or MONGODB_URI) is required",
