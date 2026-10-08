@@ -57,26 +57,28 @@ export default function DescriptionBlocks({ text, className = "" }: { text: stri
   const blocks = parseDescription(text);
   if (blocks.length === 0) return null;
   return (
-    <div className={`font-outfit text-base lg:text-lg leading-relaxed text-[#232323]/80 space-y-3 ${className}`}>
+    <div className={`text-base space-y-3 ${className}`}>
       {blocks.map((b, i) => {
         if (b.type === "heading") {
           return (
-            <h4 key={i} dir="auto" className="font-semibold text-[#232323] text-lg lg:text-xl pt-3 first:pt-0">
+            <h4 key={i} dir="auto" className="jm-h2 mt-6 first:mt-0">
               {b.text}
             </h4>
           );
         }
         if (b.type === "list") {
           return (
-            <ul key={i} className="list-disc ps-6 space-y-1 marker:text-[#24A8A2]">
+            <ul key={i} className="list-disc ps-5 space-y-1 text-ink-600 leading-relaxed marker:text-teal">
               {b.items.map((it, j) => (
-                <li key={j} dir="auto">{it}</li>
+                <li key={j} dir="auto" className="break-words">
+                  {it}
+                </li>
               ))}
             </ul>
           );
         }
         return (
-          <p key={i} dir="auto" className="break-words">
+          <p key={i} dir="auto" className="text-ink-600 leading-relaxed break-words">
             {b.text}
           </p>
         );

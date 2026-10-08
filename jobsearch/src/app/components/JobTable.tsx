@@ -3,9 +3,10 @@ import React, { useState, useEffect } from "react";
 import JobCard from "./JobCard";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import JobsFilters from "./FilterJobs";
-import { FilterIcon, SearchIcon, WhiteFilterIcon } from "./icons";
 import LocationSelect from "./LocationSelect";
-import { HeroImg } from "./HeroImages";
+import Image from "next/image";
+import { Search, SlidersHorizontal, X } from "lucide-react";
+import { EmptyState } from "./ui";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
@@ -302,206 +303,218 @@ function JobTable() {
     return () => io.disconnect();
   }, [page, totalPages, loading]);
 
+  const activeFilters: { label: string; clear: () => void }[] = [
+    ...seniority.map((v) => ({ label: v, clear: () => setSeniority((s) => s.filter((x) => x !== v)) })),
+    ...jobType.map((v) => ({ label: v, clear: () => setJobType((s) => s.filter((x) => x !== v)) })),
+    ...country.map((v) => ({ label: v, clear: () => setCountry((s) => s.filter((x) => x !== v)) })),
+    ...city.map((v) => ({ label: v, clear: () => setCity((s) => s.filter((x) => x !== v)) })),
+    ...company.map((v) => ({ label: v, clear: () => setCompany((s) => s.filter((x) => x !== v)) })),
+  ];
+  const clearAll = () => {
+    setSearchTerm("");
+    setSeniority([]);
+    setJobType([]);
+    setCountry([]);
+    setCity([]);
+    setCompany([]);
+  };
+  // One-tap shortcuts under the hero search; each toggles a single filter.
+  const quick = [
+    { label: "Junior", on: seniority.includes("Junior"), toggle: () => setSeniority((s) => (s.includes("Junior") ? s.filter((x) => x !== "Junior") : [...s, "Junior"])) },
+    { label: "Remote", on: jobType.includes("Remote"), toggle: () => setJobType((s) => (s.includes("Remote") ? s.filter((x) => x !== "Remote") : [...s, "Remote"])) },
+    { label: "Hybrid", on: jobType.includes("Hybrid"), toggle: () => setJobType((s) => (s.includes("Hybrid") ? s.filter((x) => x !== "Hybrid") : [...s, "Hybrid"])) },
+    { label: "Tel Aviv", on: city.includes("Tel Aviv"), toggle: () => setCity((s) => (s.includes("Tel Aviv") ? s.filter((x) => x !== "Tel Aviv") : [...s, "Tel Aviv"])) },
+    { label: "Israel", on: country.includes("Israel"), toggle: () => setCountry((s) => (s.includes("Israel") ? s.filter((x) => x !== "Israel") : [...s, "Israel"])) },
+  ];
+
+  const filtersPanel = (
+    <JobsFilters
+      jobs={allJobs}
+      facets={facets}
+      company={company}
+      country={country}
+      city={city}
+      setCompany={setCompany}
+      setCountry={setCountry}
+      setCity={setCity}
+      jobType={jobType}
+      setJobType={setJobType}
+      seniority={seniority}
+      setSeniority={setSeniority}
+      isMobile={isMobile}
+    />
+  );
 
   return (
-    <div className="w-screen items-center mx-auto justify-center">
-      <div id="HeroSection" className="relative w-full max-w-[1440px] mx-auto mt-10">
-        <HeroImg />
-        <div className="font-outfit inset-0 flex flex-col absolute text-white items-center justify-center text-center px-4">
-          <label className="text-4xl lg:text-7xl">
-            Find Your Dream Job <br /> in Tech
-          </label>
-          <p className="mt-[40px]">
-            Connect with top companies and discover opportunities that match your skills and ambitions
+    <div className="jm-container pt-4 sm:pt-6">
+      {/* Hero + search */}
+      <section className="jm-hero px-5 py-10 sm:px-10 sm:py-14 lg:py-20">
+        <Image src="/hero.jpg" alt="" fill priority className="object-cover opacity-20" sizes="100vw" />
+        <div className="relative max-w-3xl mx-auto text-center">
+          <span className="jm-chip bg-white/10 text-white border-white/20 mb-5">
+            {jobCount > 0 ? `${jobCount.toLocaleString()} open positions` : "Fresh openings every day"}
+          </span>
+          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
+            Find your dream job <span className="text-sky">in tech</span>
+          </h1>
+          <p className="mt-4 text-sm sm:text-lg text-white/80 max-w-xl mx-auto">
+            Connect with top companies and discover opportunities that match your skills and ambitions.
           </p>
 
-          <div className="backdrop-blur-md lg:backdrop-blur-0 border border-white lg:border-0 p-2 lg:p-0 rounded-2xl mt-[40px] flex flex-col lg:flex-row items-center justify-center gap-5">
-            <div className="relative w-full">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSearch();
+            }}
+            className="mt-7 sm:mt-9 bg-surface rounded-card p-2 flex flex-col lg:flex-row gap-2 text-ink shadow-card-hover"
+          >
+            <label className="relative flex-1">
+              <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-400 pointer-events-none" />
               <input
-                className="bg-white w-full py-[23px] pl-12 lg:pl-10 rounded-[14px] lg:w-[525px] h-[58px] text-[#232323]"
-                type="text"
+                className="w-full h-12 lg:h-14 ps-12 pe-4 rounded-control bg-transparent text-base placeholder:text-ink-400 focus:outline-none focus:bg-canvas"
+                type="search"
                 placeholder="Search jobs, companies, or keywords..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                aria-label="Search jobs"
               />
-              <SearchIcon />
-            </div>
-            <div className="flex flex-row gap-4 items-center">
-              <LocationSelect
-                jobs={allJobs}
-                cities={facets?.cities}
-                selectedCities={city}
-                setSelectedCities={setCity}
-              />
+            </label>
+            <LocationSelect jobs={allJobs} cities={facets?.cities} selectedCities={city} setSelectedCities={setCity} />
+            <button type="submit" className="jm-btn jm-btn-accent h-12 lg:h-14 lg:px-8">
+              Search jobs
+            </button>
+          </form>
+
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {quick.map((q) => (
               <button
-                onClick={handleSearch}
-                className="bg-[#11AEFF] px-12 py-3.5 lg:px-20 lg:py-4 rounded-[14px] whitespace-nowrap w-fit lg:text-[16px] text-[12px]"
+                key={q.label}
+                type="button"
+                onClick={q.toggle}
+                aria-pressed={q.on}
+                className={`jm-chip transition-colors ${q.on ? "bg-sky text-white border-sky" : "bg-white/10 text-white border-white/20 hover:bg-white/20"}`}
               >
-                Search Jobs
+                {q.label}
               </button>
-              <div className="flex flex-row gap-4 items-center">
-                {/* חיפוש גלובלי */}
-               
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 text-center lg:left-40 lg:w-[230px] lg:transform-none lg:text-left w-fit">
-          <p className="text-white text-[14px] lg:text-[18px]">
-            Job Match has a collection of +1000 high-end Jobs
-          </p>
-        </div>
-      </div>
+      </section>
 
-      {loading && page === 1 ? (
-        <p className="text-center mt-4">Loading jobs...</p>
-      ) : jobs.length === 0 ? (
-        <div className="flex flex-col lg:flex-row lg:items-start items-center justify-center mx-auto lg:max-w-4/5 px-4 gap-5 mt-10">
-            {!isMobile ? (
-              <div className="block md:hidden lg:block">
-                <JobsFilters
-                  jobs={allJobs}
-                  facets={facets}
-                  company={company}
-                  country={country}
-                  city={city}
-                  setCompany={setCompany}
-                  setCountry={setCountry}
-                  setCity={setCity}
-                  jobType={jobType}
-                  setJobType={setJobType}
-                  seniority={seniority}
-                  setSeniority={setSeniority}
-                  isMobile={isMobile}
-                />
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={handleModalOpen}
-                  className="bg-[#24A8A2] max-w-72 flex gap-20 rounded-[20px] p-5 hover:bg-[#11AEFF]"
-                >
-                  <label className="mb-1 text-white font-outfit font-medium text-[20px]">
-                    Filters and Sort
-                  </label>
-                  <FilterIcon />
+      {/* Filters + results */}
+      <section className="mt-8 lg:mt-10 grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
+        <aside className="hidden lg:block lg:sticky lg:top-[88px]">{filtersPanel}</aside>
+
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="jm-title">Available positions</h2>
+              <p className="jm-subtitle">
+                {loading && page === 1 ? "Searching the catalog…" : `Showing ${jobCount.toLocaleString()} jobs`}
+                {user && !isSearching && " · ranked by your résumé"}
+              </p>
+            </div>
+            <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary jm-btn-sm lg:hidden">
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {activeFilters.length > 0 && <span className="jm-chip jm-chip-navy px-2 py-0">{activeFilters.length}</span>}
+            </button>
+          </div>
+
+          {(activeFilters.length > 0 || searchTerm.trim()) && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {searchTerm.trim() && (
+                <button type="button" onClick={() => setSearchTerm("")} className="jm-chip jm-chip-sky hover:bg-sky/20">
+                  “{searchTerm.trim()}” <X className="h-3 w-3" />
                 </button>
-              </div>
-            )}
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col lg:flex-row lg:items-start items-center justify-center mx-auto lg:max-w-4/5 px-4 gap-5 mt-10">
-            {!isMobile ? (
-              <div className="block md:hidden lg:block">
-                <JobsFilters
-                  jobs={allJobs}
-                  facets={facets}
-                  company={company}
-                  country={country}
-                  city={city}
-                  setCompany={setCompany}
-                  setCountry={setCountry}
-                  setCity={setCity}
-                  jobType={jobType}
-                  setJobType={setJobType}
-                  seniority={seniority}
-                  setSeniority={setSeniority}
-                  isMobile={isMobile}
-                />
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={handleModalOpen}
-                  className="bg-[#24A8A2] max-w-72 max-h-16 flex gap-20 rounded-[20px] p-5 hover:bg-[#11AEFF]"
-                >
-                  <label className="text-white font-outfit font-medium text-[18px]">
-                    Filters and Sort
-                  </label>
-                  <WhiteFilterIcon />
+              )}
+              {activeFilters.map((f) => (
+                <button key={f.label} type="button" onClick={f.clear} className="jm-chip jm-chip-teal hover:bg-teal/20">
+                  {f.label} <X className="h-3 w-3" />
                 </button>
-              </div>
-            )}
+              ))}
+              <button type="button" onClick={clearAll} className="text-sm text-ink-400 hover:text-navy underline-offset-2 hover:underline ms-1">
+                Clear all
+              </button>
+            </div>
+          )}
 
-            <div className="flex-1">
-              <div className="flex flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <label className="font-outfit text-2xl lg:text-[34px] font-semibold">
-                    Available Positions
-                  </label>
-                  <p className="lg:text-[16px] text-[12px] mt-2 text-[#232323]">
-                    Showing {jobCount} jobs 
-                  </p>
+          {loading && page === 1 ? (
+            <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="jm-card p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="jm-skeleton h-11 w-11" />
+                    <div className="flex-1 space-y-2">
+                      <div className="jm-skeleton h-4 w-3/4" />
+                      <div className="jm-skeleton h-3 w-1/2" />
+                    </div>
+                  </div>
+                  <div className="jm-skeleton h-3 w-full" />
+                  <div className="jm-skeleton h-3 w-5/6" />
+                  <div className="flex gap-2">
+                    <div className="jm-skeleton h-6 w-16 rounded-full" />
+                    <div className="jm-skeleton h-6 w-20 rounded-full" />
+                  </div>
                 </div>
-
-                <div>
-                  <select className="border border-[#232323]/50 rounded-[14px] py-3 px-4 text-[#232323] font-outfit w-full sm:w-auto">
-                    <option>Newest First</option>
-                    <option>Least Applications</option>
-                    <option>Most Popular</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              ))}
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="mt-6">
+              <EmptyState
+                icon="🔎"
+                title="No jobs match these filters"
+                text="Try fewer filters or a broader search term — the catalog is refreshed every day."
+                action={
+                  <button type="button" onClick={clearAll} className="jm-btn jm-btn-primary">
+                    Clear filters
+                  </button>
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
                 {jobs.map((job, i) => (
-                  <JobCard
-                    key={job._id || job.id || `${job.source}-${i}`}
-                    job={job}
-                    jobIndex={i}
-                  />
+                  <JobCard key={job._id || job.id || `${job.source}-${i}`} job={job} jobIndex={i} />
                 ))}
               </div>
 
               {page < totalPages && (
-                <div className="text-center mt-6">
+                <div className="text-center mt-8">
                   {/* Scroll sentinel: when visible, the next page loads automatically. */}
                   <div ref={loadMoreRef} aria-hidden="true" className="h-px" />
-                  <button
-                    className="px-6 py-3 bg-[#24A8A2] text-white rounded-[14px] hover:bg-blue-600 transition font-outfit"
-                    onClick={loadMore}
-                    disabled={loading}
-                  >
-                    {loading ? "Loading..." : "Load More"}
+                  <button className="jm-btn jm-btn-secondary" onClick={loadMore} disabled={loading}>
+                    {loading ? "Loading…" : "Load more"}
                   </button>
                 </div>
               )}
-            </div>
-          </div>
-        </>
-      )}
+            </>
+          )}
+        </div>
+      </section>
 
-      {showmodal && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setShowModal(false)}
-        />
-      )}
-
+      {/* Mobile filter sheet */}
+      {showmodal && <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[60] lg:hidden" onClick={() => setShowModal(false)} />}
       <div
-        className={`lg:hidden fixed left-1/2 bottom-6 transform -translate-x-1/2
-        w-[95%] max-w-84 bg-white rounded-t-3xl shadow-2xl
-        transition-all duration-300 ease-in-out z-50
-        ${showmodal ? "translate-y-0" : "translate-y-full"}`}
+        role="dialog"
+        aria-label="Filters"
+        className={`lg:hidden fixed inset-x-0 bottom-0 z-[70] bg-surface rounded-t-card shadow-card-hover
+        transition-transform duration-300 ease-out ${showmodal ? "translate-y-0" : "translate-y-full"}`}
       >
-        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-2" />
-        <div className="p-4 overflow-y-auto max-h-[75vh]">
-          <JobsFilters
-            jobs={allJobs}
-            facets={facets}
-            company={company}
-            country={country}
-            city={city}
-            setCompany={setCompany}
-            setCountry={setCountry}
-            setCity={setCity}
-            jobType={jobType}
-            setJobType={setJobType}
-            seniority={seniority}
-            setSeniority={setSeniority}
-            isMobile={isMobile}
-          />
+        <div className="flex items-center justify-between px-5 pt-3 pb-2">
+          <div className="w-12 h-1.5 bg-line rounded-full mx-auto absolute left-1/2 -translate-x-1/2 top-2" />
+          <span className="jm-h2 mt-2">Filters</span>
+          <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-ghost jm-btn-icon mt-2" aria-label="Close filters">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-4 pb-4 overflow-y-auto max-h-[70vh] jm-scroll">{filtersPanel}</div>
+        <div className="p-4 border-t border-line flex gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button type="button" onClick={clearAll} className="jm-btn jm-btn-secondary flex-1">Clear</button>
+          <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-primary flex-1">
+            Show {jobCount.toLocaleString()} jobs
+          </button>
         </div>
       </div>
     </div>

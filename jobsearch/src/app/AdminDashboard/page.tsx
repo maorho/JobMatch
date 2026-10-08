@@ -3,11 +3,12 @@
 import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import {Job} from "../components/JobTable"; 
+import {Job} from "../components/JobTable";
 import { IUser } from "../models/User";
 import { motion } from "framer-motion";
 import JobrecruiterCard from "../RecruiterDashboard/components/JobrecruiterCard";
 import { AdminHero } from "../components/HeroImages";
+import { EmptyState, Spinner } from "../components/ui";
 
 interface Tab {
   label: string;
@@ -37,7 +38,7 @@ const approveRecruiter = async (recruiterId: string) => {
   });
   if (!res.ok) throw new Error("Failed to approve recruiter");
   const data = await res.json();
-  console.log(data.msg);    
+  console.log(data.msg);
 }
 const declineRecruiter = async (recruiterId: string) => {
   const res = await fetch("/api/admin/declinerecruiter", {
@@ -47,15 +48,18 @@ const declineRecruiter = async (recruiterId: string) => {
   });
   if (!res.ok) throw new Error("Failed to decline recruiter");
   const data = await res.json();
-  console.log(data.msg);    
-} 
-const Jobs = ({ jobs }: { jobs: Job[] }) => (
-  <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {jobs.map((job, i) => (
-            <JobrecruiterCard key={job.id || i} job={job} jobIndex={i} />
-        ))}
-  </div>
-)
+  console.log(data.msg);
+}
+const Jobs = ({ jobs }: { jobs: Job[] }) =>
+  jobs.length === 0 ? (
+    <EmptyState icon="🗂️" title="No jobs yet" />
+  ) : (
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {jobs.map((job, i) => (
+        <JobrecruiterCard key={job.id || i} job={job} jobIndex={i} />
+      ))}
+    </div>
+  );
 
 
 interface RecruitersProps {
@@ -79,26 +83,37 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
     }
     refreshRecruiters()
   }
+  if (recruiters.length === 0) {
+    return <EmptyState icon="👥" title="No recruiters yet" />;
+  }
   return (
-    <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         {recruiters.map((recruiter, i) => (
             <motion.div
               initial={{ opacity: 0, x: -40 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05, duration: 0.5 }}
-              key={recruiter._id ? String(recruiter._id) : i} 
-              className="border border-[#000000]/10 p-4 rounded shadow">
-              <h3 className="text-lg font-semibold">{recruiter.fullname}</h3>
-              <p className="text-gray-600">Email:{recruiter.email}</p>
-              <p className="text-gray-600">Company: {recruiter.company}</p>
-              <p className="text-gray-600">Approved: {recruiter.approved ? "Yes" : "No"}</p>
-              <button className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
-              <button className="mt-2 ml-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
+              key={recruiter._id ? String(recruiter._id) : i}
+              className="jm-card p-5 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base sm:text-lg font-semibold text-navy truncate">{recruiter.fullname}</h3>
+                <span className={`jm-chip shrink-0 ${recruiter.approved ? "jm-chip-teal" : ""}`}>
+                  Approved: {recruiter.approved ? "Yes" : "No"}
+                </span>
+              </div>
+              <div className="text-sm text-ink-600 space-y-1">
+                <p className="truncate">Email:{recruiter.email}</p>
+                <p className="truncate">Company: {recruiter.company}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-3 mt-auto border-t border-line">
+                <button className="jm-btn jm-btn-primary jm-btn-sm" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
+                <button className="jm-btn jm-btn-danger jm-btn-sm" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
+              </div>
             </motion.div>
         ))}
   </div>
-  ) 
-  
+  )
+
 }
 function EmployerDashboard() {
   const { user } = useCurrentUser();
@@ -107,7 +122,7 @@ function EmployerDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<number>(0);
 
-  
+
   const fetchAllRecruiters = useCallback(async () => {
     if (!user) return;
 
@@ -127,7 +142,7 @@ function EmployerDashboard() {
     }
   }, [user]);
 
-  
+
   const fetchAllCompaniesJobs = useCallback(async () => {
     if (!user) return;
 
@@ -162,21 +177,22 @@ function EmployerDashboard() {
 
   // ⏳ מצב טעינה
   if (!user || loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-gray-600 text-lg">Loading dashboard...</p>
-      </div>
-    );
+    return <Spinner label="Loading dashboard..." />;
   }
 
- 
+
   if (!user) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/Login" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="You are not logged in."
+          action={
+            <Link href="/Login" className="jm-btn jm-btn-primary">
+              Go to Login
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -184,11 +200,16 @@ function EmployerDashboard() {
 
   if (!user.admin) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not an admin.</p>
-        <Link href="/Login" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="You are not an admin."
+          action={
+            <Link href="/Login" className="jm-btn jm-btn-primary">
+              Go to Login
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -203,46 +224,67 @@ function EmployerDashboard() {
       content: <Recruiters recruiters={recruitersList} refreshRecruiters={fetchAllRecruiters}/>,
     },
   ];
-  
+
+  const pendingRecruiters = recruitersList.filter((r) => !r.approved).length;
+  const stats = [
+    { label: "Jobs", value: jobs.length },
+    { label: "Recruiters", value: recruitersList.length },
+    { label: "Approved recruiters", value: recruitersList.length - pendingRecruiters },
+    { label: "Pending approval", value: pendingRecruiters },
+  ];
+
   return (
-    <div className="p-6 items-center justify-items-center min-h-screen">
-      <div
+    <div className="jm-page space-y-6">
+      <section
         id="recruiter hero section"
-        className="relative w-full pb-25 lg:mb-32 flex flex-col"
+        className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
       >
-        <div className="absolute inset-0 flex flex-col text-white items-center justify-center text-center px-4 z-10">
-          <label className="text-3xl lg:text-7xl font-semibold mb-4">
-            Welcome, {user.fullname}! 👋
-          </label>
-        </div>
-
         <AdminHero />
-      </div>
+        <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
+          <div className="text-xs font-semibold uppercase tracking-wider text-white/70">Admin</div>
+          <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
+            Welcome, {user.fullname}! 👋
+          </h1>
+          <p className="text-sm sm:text-base text-white/80">
+            Review your company&apos;s positions and approve recruiters.
+          </p>
+        </div>
+      </section>
 
-  
-       <div className="w-full max-w-5xl mx-auto mt-10 font-outfit">
-      {/* Tabs Header */}
-      <div className="flex border-b border-gray-300">
-        {tabs.map((tab, index) => (
-          <button
-            key={index}
-            onClick={() => setActiveTab(index)}
-            className={`flex-1 py-3 text-center text-sm lg:text-base font-medium transition-colors ${
-              activeTab === index
-                ? "border-b-2 border-[#24A8A2] text-[#24A8A2]"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}
-          </button>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="jm-card p-5">
+            <div className="text-3xl sm:text-4xl font-semibold text-navy leading-none">{stat.value}</div>
+            <div className="jm-muted mt-2">{stat.label}</div>
+          </div>
         ))}
       </div>
 
-      {/* Tabs Content */}
-      <div className="p-4 bg-white shadow-md rounded-b-lg">
-        {tabs[activeTab].content}
+      <div className="space-y-5">
+        {/* Tabs Header */}
+        <div className="flex border-b border-line" role="tablist">
+          {tabs.map((tab, index) => (
+            <button
+              key={index}
+              role="tab"
+              aria-selected={activeTab === index}
+              onClick={() => setActiveTab(index)}
+              className={`flex-1 sm:flex-none sm:px-6 py-3 text-center text-sm sm:text-base font-medium transition-colors -mb-px border-b-2 ${
+                activeTab === index
+                  ? "border-teal text-teal"
+                  : "border-transparent text-ink-400 hover:text-navy"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tabs Content */}
+        <div>
+          {tabs[activeTab].content}
+        </div>
       </div>
-    </div>
     </div>
   );
 }

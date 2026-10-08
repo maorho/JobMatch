@@ -43,70 +43,83 @@ const OutsideJobAdding = () => {
       setError("Job adding failed");
     }
   }
-    
+
 
   return (
-    <div className="ml-3 p-2 items-center">
-      <form onSubmit={handleSubmit} className="ml-10">
-        <div className="items-center">
-          <input
-            type="text"
-            className="text-center m-1 mt-2 w-80 h-10 border border-gray-300 rounded"
-            placeholder="Job"
-            value={job}
-            onChange={(e) => setJob(e.target.value)}
-          />
-        </div>
-        <div className="items-center">
-          <input
-            type="text"
-            className="text-center m-1 w-80 h-10 border border-gray-300 rounded"
-            placeholder="Company"
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-          />
-        </div>
-        <div className="items-center">
-          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" value={job_type} onChange={(e)=>setJobType(e.target.value)}>
-            {typemodel.map((e,ind)=>{
-              return (<option className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" key={ind} value={e}>{e}</option>)
-            })}
-          </select>
-        </div>
-        <div className="items-center">
-          <input
-            type="text"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
-            placeholder="Location"
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-          />
-        </div>
-        <div className="items-center">
-          <input
-            type="text"
-            className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded"
-            placeholder="Link"
-            value={link}
-            onChange={(e) => setLink(e.target.value)}
-          />
-        </div>
-        <div className="items-center">
-          <select className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" value={status} onChange={(e)=>setStatus(e.target.value)}>
-            {statuses.map((e,ind)=>{
-              return (<option className="text-center ml-1 mt-1 w-80 h-10 border border-gray-300 rounded" key={ind} value={e}>{e}</option>)
-            })}
-          </select>
+    <div className="space-y-5">
+      <h2 className="jm-h2">Add New Job</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="osj-job" className="jm-label">Job</label>
+            <input
+              id="osj-job"
+              type="text"
+              className="jm-input"
+              placeholder="Job"
+              value={job}
+              onChange={(e) => setJob(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="osj-company" className="jm-label">Company</label>
+            <input
+              id="osj-company"
+              type="text"
+              className="jm-input"
+              placeholder="Company"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="osj-type" className="jm-label">Job type</label>
+            <select id="osj-type" className="jm-input jm-select" value={job_type} onChange={(e)=>setJobType(e.target.value)}>
+              {typemodel.map((e,ind)=>{
+                return (<option key={ind} value={e}>{e}</option>)
+              })}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="osj-location" className="jm-label">Location</label>
+            <input
+              id="osj-location"
+              type="text"
+              className="jm-input"
+              placeholder="Location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="osj-link" className="jm-label">Link</label>
+            <input
+              id="osj-link"
+              type="text"
+              className="jm-input"
+              placeholder="Link"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="osj-status" className="jm-label">Status</label>
+            <select id="osj-status" className="jm-input jm-select" value={status} onChange={(e)=>setStatus(e.target.value)}>
+              {statuses.map((e,ind)=>{
+                return (<option key={ind} value={e}>{e}</option>)
+              })}
+            </select>
+          </div>
         </div>
         <button
           type="submit"
           onSubmit={handleSubmit}
-          className="items-center font-outfit mx-1 w-80 h-10 bg-[#24A8A2] text-white p-1 rounded hover:bg-[#1B7F7A] mt-1"
+          className="jm-btn jm-btn-primary w-full"
         >
           Add To My Dashboard
         </button>
       </form>
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <p className="jm-alert jm-alert-err">{error}</p>}
     </div>
   );
 };

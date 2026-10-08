@@ -24,8 +24,8 @@ const ApplicantStatus: React.FC<ApplicantStatusProps> = ({
   setStatus,
 }) => (
   <select
-    className={`pl-2.5 mt-1 w-36 h-10 lg:rounded-[14px] rounded-[8px] text-[12px] ${
-      bg_option_color[candidate.status] || "bg-white"
+    className={`jm-input jm-select py-2 text-xs sm:text-sm w-full md:w-44 ${
+      bg_option_color[candidate.status] || ""
     }`}
     value={updateStatuses.get(candidate.candidateId._id) || candidate.status}
     onChange={(e) =>
@@ -33,22 +33,22 @@ const ApplicantStatus: React.FC<ApplicantStatusProps> = ({
     }
   >
     <option value={candidate.status}>{candidate.status}</option>
-    <option value="Rejected" className="bg-white">
+    <option value="Rejected" className="bg-surface text-ink">
       Rejected
     </option>
-    <option value="HR Phone Interview" className="bg-white">
+    <option value="HR Phone Interview" className="bg-surface text-ink">
       HR Phone Interview
     </option>
-    <option value="Technical Interview" className="bg-white">
+    <option value="Technical Interview" className="bg-surface text-ink">
       Technical Interview
     </option>
-    <option value="Final Interview" className="bg-white">
+    <option value="Final Interview" className="bg-surface text-ink">
       Final Interview
     </option>
-    <option value="Recived an Offer" className="bg-white">
+    <option value="Recived an Offer" className="bg-surface text-ink">
       Recived an Offer
     </option>
-    <option value="Accepted" className="bg-white">
+    <option value="Accepted" className="bg-surface text-ink">
       Accepted
     </option>
   </select>
@@ -102,7 +102,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const isMobile = useIsMobile();
-  const itemsPerPage = 5; 
+  const itemsPerPage = 5;
 
   const candidateList = async () => {
     try {
@@ -148,7 +148,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
 
   useEffect(() => {
     if (onRegisterRefresh) {
-      onRegisterRefresh(candidateList); 
+      onRegisterRefresh(candidateList);
     }
   }, []);
 
@@ -168,13 +168,14 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
     }
   };
 
+  // Tint the status select by the candidate's current stage.
   const bg_option_color: Record<string, string> = {
-    Rejected: "bg-red-400",
-    "HR Phone Interview": "bg-blue-400",
-    "Technical Interview": "bg-purple-400",
-    "Final Interview": "bg-cyan-300",
-    "Recived an Offer": "bg-amber-300",
-    Accepted: "bg-green-400",
+    Rejected: "bg-red-50 text-red-700 border-red-200",
+    "HR Phone Interview": "bg-sky-50 text-sky-600 border-sky/20",
+    "Technical Interview": "bg-sky-50 text-sky-600 border-sky/20",
+    "Final Interview": "bg-teal-50 text-teal-600 border-teal/20",
+    "Recived an Offer": "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Accepted: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
 
   // ✅ סינון לפי סטטוס וחיפוש
@@ -195,149 +196,112 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
     startIndex + itemsPerPage
   );
 
+  const messageLink = (candidate: Candidate, label: React.ReactNode) => (
+    <Link
+      href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`}
+      title="שלח הודעה למועמד/ת"
+      className="jm-btn jm-btn-ghost jm-btn-sm"
+    >
+      {label}
+    </Link>
+  );
+
+  const deleteButton = (
+    <button
+      type="button"
+      className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9"
+      aria-label="Delete candidate"
+    >
+      <DeleteIcon />
+    </button>
+  );
+
   return (
-    <div className="flex justify-center items-start my-5 bg-gray-100 border-2 border-gray-100 rounded-[8px] lg:rounded-[14px]">
-      <div className="flex flex-col w-full">
+    <div className="jm-card p-4 sm:p-5 space-y-4">
         {/* Header with search + filter */}
-       <div className="
-              flex 
-              bg-white 
-              py-5 
-              px-6 
-              mb-5 
-              rounded-t-[14px] 
-              justify-between 
-              items-center 
-              flex-wrap 
-              gap-3
-            ">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          {/* כותרת */}
+          <h3 className="jm-h2">
+            Candidates
+          </h3>
 
-              {/* כותרת */}
-              <label className="
-                lg:text-[20px] 
-                text-[16px] 
-                font-outfit 
-                font-semibold
-                w-full 
-                md:w-auto
-              ">
-                Candidates
-              </label>
-
-              {/* קונטיינר של חיפוש + פילטר */}
-              <div className="
-                flex 
-                md:flex-row 
-                flex-col 
-                items-center 
-                gap-3 
-                w-full 
-                md:w-auto
-              ">
-
-                {/* תיבת חיפוש */}
-                <div className="relative w-full md:w-auto">
-                  <Search
-                    className="absolute left-3 top-2.5 text-gray-400"
-                    size={18}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search candidates..."
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="
-                      pl-9 
-                      pr-3 
-                      py-2 
-                      border 
-                      border-gray-300 
-                      rounded-md 
-                      text-sm 
-                      w-full 
-                      md:w-[200px]
-                      focus:outline-none 
-                      focus:ring-2 
-                      focus:ring-blue-400
-                    "
-                  />
-                </div>
-
-                {/* פילטר סטטוסים */}
-                <select
-                  value={filterStatus}
-                  onChange={(e) => {
-                    setFilterStatus(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="
-                    border 
-                    border-gray-300 
-                    rounded-md 
-                    px-3 
-                    py-2 
-                    text-sm 
-                    w-full 
-                    md:w-auto
-                    focus:outline-none
-                  "
-                >
-                  <option value="All">All</option>
-                  <option value="Rejected">Rejected</option>
-                  <option value="HR Phone Interview">HR Phone Interview</option>
-                  <option value="Technical Interview">Technical Interview</option>
-                  <option value="Final Interview">Final Interview</option>
-                  <option value="Recived an Offer">Recived an Offer</option>
-                  <option value="Accepted">Accepted</option>
-                </select>
-              </div>
+          {/* קונטיינר של חיפוש + פילטר */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            {/* תיבת חיפוש */}
+            <div className="relative flex-1 sm:min-w-[220px]">
+              <Search
+                className="absolute start-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none"
+              />
+              <input
+                type="text"
+                placeholder="Search candidates..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="jm-input ps-10 py-2.5"
+              />
             </div>
+
+            {/* פילטר סטטוסים */}
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="jm-input jm-select py-2.5 sm:w-auto"
+            >
+              <option value="All">All</option>
+              <option value="Rejected">Rejected</option>
+              <option value="HR Phone Interview">HR Phone Interview</option>
+              <option value="Technical Interview">Technical Interview</option>
+              <option value="Final Interview">Final Interview</option>
+              <option value="Recived an Offer">Recived an Offer</option>
+              <option value="Accepted">Accepted</option>
+            </select>
+          </div>
+        </div>
 
 
         {/* Table */}
         {!isMobile?
-        <div className="overflow-x-auto w-full">
-             <table className="min-w-full table-auto border-collapse text-center">
-              <thead className="bg-[#E5E7EB]/20 text-[#6B7280]">
-                <tr className="gap-5 font-semibold px-6 py-5 border-b px-auto">
-                  <td>Full Name</td>
-                  <td>Contact</td>
-                  <td>Resume</td>
-                  <td>Status</td>
-                  <td>Actions</td>
+        <div className="overflow-x-auto">
+             <table className="jm-table">
+              <thead>
+                <tr>
+                  <th>Full Name</th>
+                  <th>Contact</th>
+                  <th>Resume</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {displayedCandidates.map((candidate, ind) => (
-                  <tr key={ind} className="border-b border-[#E5E7EB]/10 bg-white">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
+                  <tr key={ind}>
+                    <td className="font-semibold text-navy">
+                      <div className="flex items-center gap-1">
                         {candidate.candidateId.fullname}
-                        <Link
-                          href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`}
-                          title="שלח הודעה למועמד/ת"
-                          className="text-[#11AEFF] hover:underline text-sm"
-                        >
-                          💬
-                        </Link>
+                        {messageLink(candidate, "💬")}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <div className="flex flex-col">
-                        <label className="font-outfit font-medium">
+                        <span className="font-medium text-ink">
                           {candidate.candidateId.email}
-                        </label>
-                        <label>{candidate.candidateId.phone}</label>
+                        </span>
+                        <span className="text-ink-600">{candidate.candidateId.phone}</span>
                       </div>
                     </td>
-                    <td className="flex justify-center items-center gap-2 px-6 py-4">
-                      <PdfIcon />
-                      <ResumeLink resumeKey={candidate.candidateId.resume} />
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <PdfIcon />
+                        <ResumeLink resumeKey={candidate.candidateId.resume} />
+                      </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <ApplicantStatus
                         candidate={candidate}
                         bg_option_color={bg_option_color}
@@ -345,10 +309,8 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                         setStatus={setStatus}
                       />
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center">
-                        <DeleteIcon color="#DC2626" />
-                      </div>
+                    <td>
+                      {deleteButton}
                     </td>
                   </tr>
                 ))}
@@ -356,53 +318,50 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
             </table>
         </div>
        :
-       <div className="flex flex-col gap-4 items-center mb-5">
+       <div className="flex flex-col gap-4">
             {displayedCandidates.map((candidate, ind)  => (
                <div
                 key={ind}
-                className="bg-white p-4 rounded-xl shadow  min-w-[300px] max-w-[450px] border border-gray-200 flex flex-col gap-2"
+                className="jm-card p-4 flex flex-col gap-3"
               >
-              <div>
-                <p className="text-[14px] text-gray-700">
-                    <strong>Full Name:</strong>{candidate.candidateId.fullname}{" "}
-                    <Link href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`} className="text-[#11AEFF] text-sm">
-                      💬 הודעה
-                    </Link>
-
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-base font-semibold text-navy">{candidate.candidateId.fullname}</p>
+                  {deleteButton}
+                </div>
+                <p className="text-sm text-ink-600">
+                    <strong className="text-ink">Email:</strong> {candidate.candidateId.email}
                 </p>
-        
-                <p className="text-[14px] text-gray-700">
-                    <strong>Email:</strong> {candidate.candidateId.email}
+                <p className="text-sm text-ink-600">
+                    <strong className="text-ink">Phone:</strong> {candidate.candidateId.phone}
                 </p>
-                <p className="text-[14px] text-gray-700">
-                    <strong>Phone:</strong> {candidate.candidateId.phone}
-                </p>
-                <div className="flex">
+                <div className="flex items-center gap-2">
                     <PdfIcon />
                     <ResumeLink resumeKey={candidate.candidateId.resume} />
                 </div>
-                <p className="text-[14px] text-gray-700">
-                    <strong>Status:</strong> {candidate.status}
-                </p>       
-              </div>
-               <div>
-                <button>
-                  <DeleteIcon color="#DC2626" />
-                </button>
-                   
-               </div> 
+                <div>
+                  <span className="jm-label">Status</span>
+                  <ApplicantStatus
+                    candidate={candidate}
+                    bg_option_color={bg_option_color}
+                    updateStatuses={updateStatuses}
+                    setStatus={setStatus}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  {messageLink(candidate, "💬 הודעה")}
+                </div>
               </div>
             )
-             
-            ) 
+
+            )
           }
           </div>
        }
-        
+
 
         {/* ✅ Pagination Controls */}
-        <div className="flex justify-between items-center px-6 py-4 bg-white border-t border-gray-200 rounded-b-[14px]">
-          <p className="text-sm text-gray-500">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
+          <p className="jm-muted">
             Showing {startIndex + 1}–
             {Math.min(startIndex + itemsPerPage, filteredCandidates.length)} of{" "}
             {filteredCandidates.length} candidates
@@ -412,43 +371,22 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
             <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(currentPage - 1)}
-              className={`px-3 py-1 border rounded ${
-                currentPage === 1
-                  ? "text-gray-400 border-gray-200 cursor-not-allowed"
-                  : "text-blue-600 border-gray-300 hover:bg-gray-100"
-              }`}
+              className="jm-btn jm-btn-secondary jm-btn-sm"
             >
               Previous
             </button>
-
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button
-                key={page}
-                onClick={() => setCurrentPage(page)}
-                className={`px-3 py-1 border rounded ${
-                  currentPage === page
-                    ? "bg-blue-500 text-white border-blue-500"
-                    : "text-gray-700 border-gray-300 hover:bg-gray-100"
-                }`}
-              >
-                {page}
-              </button>
-            ))}
-
+            <span className="jm-muted px-1 whitespace-nowrap">
+              Page {currentPage} of {Math.max(totalPages, 1)}
+            </span>
             <button
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(currentPage + 1)}
-              className={`px-3 py-1 border rounded ${
-                currentPage === totalPages
-                  ? "text-gray-400 border-gray-200 cursor-not-allowed"
-                  : "text-blue-600 border-gray-300 hover:bg-gray-100"
-              }`}
+              className="jm-btn jm-btn-secondary jm-btn-sm"
             >
               Next
             </button>
           </div>
         </div>
-      </div>
     </div>
   );
 };

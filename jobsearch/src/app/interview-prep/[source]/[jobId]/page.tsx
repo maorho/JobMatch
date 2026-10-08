@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
+import { EmptyState, Spinner } from "../../../components/ui";
 
 type Question = { question: string; whyAsked: string; howToAnswer: string; sampleAnswer?: string };
 type Stage = { key: string; title: string; description: string; durationHint?: string; likelyQuestions: Question[]; tips: string[] };
@@ -86,65 +87,83 @@ export default function InterviewPrepPage() {
     }
   };
 
-  if (userLoading) return <p className="text-center mt-10 font-outfit">טוען…</p>;
+  if (userLoading) {
+    return (
+      <div className="jm-page" dir="rtl">
+        <Spinner label="טוען…" />
+      </div>
+    );
+  }
   if (!user) {
     return (
-      <div className="text-center mt-10 font-outfit">
-        <p className="text-red-500">צריך להתחבר כדי להתכונן לראיון.</p>
-        <Link href="/Login" className="text-[#11AEFF] underline">התחברות</Link>
+      <div className="jm-page" dir="rtl">
+        <EmptyState
+          icon="🔒"
+          title="צריך להתחבר כדי להתכונן לראיון."
+          action={<Link href="/Login" className="jm-btn jm-btn-primary">התחברות</Link>}
+        />
       </div>
     );
   }
 
+  const sectionTitle = "jm-h2 mb-2";
+  const bulletList = "list-disc ps-5 text-sm text-ink-600 space-y-1 marker:text-teal";
+
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 font-outfit" dir="rtl">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-        <div>
-          <Link href={`/job/${source}/${jobId}`} className="text-sm text-[#11AEFF] hover:underline">← חזרה למשרה</Link>
-          <h1 className="text-2xl lg:text-[34px] font-semibold text-[#232323] mt-1">הכנה לראיון</h1>
-          {prep && <p className="text-[#232323]/60">{prep.job.title} · {prep.job.company}</p>}
+    <div className="jm-page" dir="rtl">
+      {/* Header card */}
+      <section className="jm-card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+        <div className="min-w-0">
+          <Link href={`/job/${source}/${jobId}`} className="text-sm font-medium text-sky hover:underline">← חזרה למשרה</Link>
+          <h1 className="jm-title mt-2">הכנה לראיון</h1>
+          {prep && <p className="jm-subtitle">{prep.job.title} · {prep.job.company}</p>}
         </div>
         {state === "ready" && (
-          <button onClick={() => generate(true)} className="text-sm text-[#232323]/60 underline">צור תוכנית מחדש</button>
+          <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm shrink-0">צור תוכנית מחדש</button>
         )}
-      </div>
+      </section>
 
       {state === "loading" && (
-        <div className="rounded-4xl border border-[#232323]/10 p-10 text-center">
-          <div className="text-lg font-medium text-[#232323]">הסוכן אוסף מידע על התפקיד והחברה ובונה לך תוכנית הכנה…</div>
-          <p className="text-sm text-[#232323]/50 mt-2">תיאור המשרה · משרות נוספות של החברה · אתר החברה · קורות החיים שלך (כ-30–60 שניות)</p>
+        <div className="jm-card p-8 sm:p-12 text-center flex flex-col items-center gap-3">
+          <span className="h-8 w-8 rounded-full border-2 border-teal border-t-transparent animate-spin" aria-hidden />
+          <div className="jm-h2">הסוכן אוסף מידע על התפקיד והחברה ובונה לך תוכנית הכנה…</div>
+          <p className="jm-muted">תיאור המשרה · משרות נוספות של החברה · אתר החברה · קורות החיים שלך (כ-30–60 שניות)</p>
         </div>
       )}
-      {state === "error" && <p className="text-red-600">⚠️ {error} <button onClick={() => generate()} className="underline">נסה שוב</button></p>}
+      {state === "error" && (
+        <p className="jm-alert jm-alert-err" role="alert">
+          ⚠️ {error} <button onClick={() => generate()} className="font-medium underline">נסה שוב</button>
+        </p>
+      )}
 
       {state === "ready" && prep && stage && (
-        <>
+        <div className="space-y-6">
           {/* Company + role */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="rounded-4xl border border-[#232323]/10 p-5">
-              <h2 className="font-semibold text-lg text-[#232323] mb-2">על החברה</h2>
-              <p className="text-sm text-[#232323]/80" dir="auto">{prep.plan.company.summary || prep.plan.company.whatTheyDo}</p>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+            <div className="jm-card p-5 sm:p-6">
+              <h2 className={sectionTitle}>על החברה</h2>
+              <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{prep.plan.company.summary || prep.plan.company.whatTheyDo}</p>
               {prep.plan.company.techStack.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {prep.plan.company.techStack.map((t) => <span key={t} className="rounded-full bg-[#F9F9F9] border border-[#232323]/10 px-3 py-1 text-xs">{t}</span>)}
+                  {prep.plan.company.techStack.map((t) => <span key={t} className="jm-chip">{t}</span>)}
                 </div>
               )}
               {prep.plan.company.cultureHints.length > 0 && (
-                <ul className="list-disc pe-5 mt-3 text-sm text-[#232323]/70 space-y-1">{prep.plan.company.cultureHints.map((c, i) => <li key={i} dir="auto">{c}</li>)}</ul>
+                <ul className={`${bulletList} mt-3`}>{prep.plan.company.cultureHints.map((c, i) => <li key={i} dir="auto">{c}</li>)}</ul>
               )}
             </div>
-            <div className="rounded-4xl border border-[#232323]/10 p-5">
-              <h2 className="font-semibold text-lg text-[#232323] mb-2">על התפקיד</h2>
-              <p className="text-sm text-[#232323]/80" dir="auto">{prep.plan.roleSummary}</p>
+            <div className="jm-card p-5 sm:p-6">
+              <h2 className={sectionTitle}>על התפקיד</h2>
+              <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{prep.plan.roleSummary}</p>
               {prep.plan.gaps.length > 0 && (
                 <>
-                  <h3 className="font-medium text-[#232323] mt-4 mb-1">פערים לסגור לפני הראיון</h3>
+                  <h3 className="font-medium text-navy mt-4 mb-2">פערים לסגור לפני הראיון</h3>
                   <ul className="space-y-2">
                     {prep.plan.gaps.map((g, i) => (
-                      <li key={i} className="text-sm rounded-2xl bg-amber-50 border border-amber-200 p-3" dir="auto">
+                      <li key={i} className="text-sm rounded-control bg-amber-50 border border-amber-200 p-3" dir="auto">
                         <div className="font-medium text-amber-800">{g.topic}</div>
                         <div className="text-amber-900/80">{g.whyItMatters}</div>
-                        {g.studyPlan && <div className="text-[#232323]/70 mt-1">📚 {g.studyPlan}</div>}
+                        {g.studyPlan && <div className="text-ink-600 mt-1">📚 {g.studyPlan}</div>}
                       </li>
                     ))}
                   </ul>
@@ -154,33 +173,43 @@ export default function InterviewPrepPage() {
           </section>
 
           {/* Stages */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {prep.plan.stages.map((s, i) => (
-              <button key={s.key} onClick={() => setStageKey(s.key)} className={`rounded-full px-4 py-2 text-sm border transition ${stageKey === s.key ? "bg-[#24A8A2] text-white border-[#24A8A2]" : "bg-white text-[#232323] border-[#232323]/15 hover:bg-[#F9F9F9]"}`}>
-                {i + 1}. {STAGE_ICON[s.key] ?? "•"} {s.title}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2 mb-4 text-sm">
-            <button onClick={() => setTab("plan")} className={`px-4 py-2 rounded-[14px] ${tab === "plan" ? "bg-[#11AEFF] text-white" : "bg-[#F9F9F9] text-[#232323]"}`}>שאלות וטיפים</button>
-            <button onClick={() => setTab("practice")} className={`px-4 py-2 rounded-[14px] ${tab === "practice" ? "bg-[#11AEFF] text-white" : "bg-[#F9F9F9] text-[#232323]"}`}>תרגול ראיון</button>
+          <div className="space-y-3">
+            <div className="flex gap-2 overflow-x-auto jm-scroll pb-1 -mx-1 px-1">
+              {prep.plan.stages.map((s, i) => (
+                <button
+                  key={s.key}
+                  onClick={() => setStageKey(s.key)}
+                  aria-pressed={stageKey === s.key}
+                  className={`shrink-0 cursor-pointer transition-colors ${stageKey === s.key ? "jm-chip jm-chip-navy" : "jm-chip hover:border-navy/40"}`}
+                >
+                  {i + 1}. {STAGE_ICON[s.key] ?? "•"} {s.title}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setTab("plan")} aria-pressed={tab === "plan"} className={`jm-btn jm-btn-sm ${tab === "plan" ? "jm-btn-accent" : "jm-btn-secondary"}`}>שאלות וטיפים</button>
+              <button onClick={() => setTab("practice")} aria-pressed={tab === "practice"} className={`jm-btn jm-btn-sm ${tab === "practice" ? "jm-btn-accent" : "jm-btn-secondary"}`}>תרגול ראיון</button>
+            </div>
           </div>
 
           {tab === "plan" ? (
-            <section className="rounded-4xl border border-[#232323]/10 p-5 space-y-4">
+            <section className="jm-card p-5 sm:p-6 space-y-5">
               <div>
-                <h2 className="font-semibold text-xl text-[#232323]">{stage.title}</h2>
-                <p className="text-sm text-[#232323]/70 mt-1" dir="auto">{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
+                <h2 className="jm-h2">{stage.title}</h2>
+                <p className="text-sm text-ink-600 mt-1" dir="auto">{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
               </div>
               <ul className="space-y-3">
                 {stage.likelyQuestions.map((q, i) => (
                   <li key={i}>
-                    <details className="group rounded-2xl border border-[#232323]/10 p-4">
-                      <summary className="cursor-pointer font-medium text-[#232323]" dir="auto">{q.question}</summary>
-                      <div className="mt-3 space-y-2 text-sm">
-                        {q.whyAsked && <p dir="auto"><span className="font-medium">למה שואלים: </span>{q.whyAsked}</p>}
-                        {q.howToAnswer && <p dir="auto"><span className="font-medium">איך לענות: </span>{q.howToAnswer}</p>}
-                        {q.sampleAnswer && <p dir="auto" className="rounded-xl bg-[#24A8A2]/5 p-3"><span className="font-medium">תשובה לדוגמה: </span>{q.sampleAnswer}</p>}
+                    <details className="group rounded-control border border-line bg-surface p-4 open:bg-canvas transition-colors">
+                      <summary className="cursor-pointer flex items-start gap-3 font-medium text-navy" dir="auto">
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-white text-xs font-semibold">{i + 1}</span>
+                        <span className="min-w-0 flex-1">{q.question}</span>
+                      </summary>
+                      <div className="mt-3 ps-9 space-y-2 text-sm text-ink-600">
+                        {q.whyAsked && <p dir="auto"><span className="font-medium text-navy">למה שואלים: </span>{q.whyAsked}</p>}
+                        {q.howToAnswer && <p dir="auto"><span className="font-medium text-navy">איך לענות: </span>{q.howToAnswer}</p>}
+                        {q.sampleAnswer && <p dir="auto" className="rounded-control bg-teal-50 border border-teal/20 p-3"><span className="font-medium text-navy">תשובה לדוגמה: </span>{q.sampleAnswer}</p>}
                       </div>
                     </details>
                   </li>
@@ -188,49 +217,58 @@ export default function InterviewPrepPage() {
               </ul>
               {stage.tips.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-[#232323] mb-1">טיפים לשלב הזה</h3>
-                  <ul className="list-disc pe-5 text-sm text-[#232323]/80 space-y-1">{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
+                  <h3 className="font-medium text-navy mb-2">טיפים לשלב הזה</h3>
+                  <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
                 </div>
               )}
             </section>
           ) : (
-            <section className="rounded-4xl border border-[#232323]/10 flex flex-col">
-              <div className="p-4 border-b border-[#232323]/10 text-sm text-[#232323]/70">
-                ראיון מדומה לשלב <span className="font-medium text-[#232323]">{stage.title}</span>: המראיין שואל שאלה אחת בכל פעם ונותן משוב על כל תשובה.
+            <section className="jm-card overflow-hidden flex flex-col">
+              <div className="p-4 border-b border-line text-sm text-ink-600">
+                ראיון מדומה לשלב <span className="font-medium text-navy">{stage.title}</span>: המראיין שואל שאלה אחת בכל פעם ונותן משוב על כל תשובה.
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 max-h-[50vh]">
+              <div className="jm-scroll flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] max-h-[60vh]">
                 {chat.length === 0 && !busy && (
-                  <button onClick={() => practice()} className="bg-[#24A8A2] text-white px-5 py-3 rounded-[14px] text-sm">התחל תרגול</button>
+                  <button onClick={() => practice()} className="jm-btn jm-btn-primary">התחל תרגול</button>
                 )}
                 {chat.map((t, i) => (
-                  <div key={i} className={`flex ${t.role === "user" ? "justify-start" : "justify-end"}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm whitespace-pre-line ${t.role === "user" ? "bg-[#11AEFF] text-white" : "bg-[#F9F9F9] text-[#232323]"}`} dir="auto">{t.content}</div>
+                  <div key={i} className={`flex ${t.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      dir="auto"
+                      className={`max-w-[85%] px-4 py-2.5 text-sm sm:text-base whitespace-pre-line break-words ${
+                        t.role === "user"
+                          ? "bg-navy text-white rounded-2xl rounded-ee-sm"
+                          : "bg-canvas border border-line text-ink rounded-2xl rounded-es-sm"
+                      }`}
+                    >
+                      {t.content}
+                    </div>
                   </div>
                 ))}
-                {busy && <div className="text-sm text-[#232323]/50">המראיין חושב…</div>}
+                {busy && <div className="text-sm text-ink-400 italic">המראיין חושב…</div>}
                 <div ref={bottomRef} />
               </div>
               {chat.length > 0 && (
-                <form onSubmit={(e) => { e.preventDefault(); if (answer.trim()) practice(answer.trim()); }} className="p-3 border-t border-[#232323]/10 flex gap-2">
-                  <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} rows={2} placeholder="התשובה שלך…" className="flex-1 border border-[#232323]/15 rounded-[14px] px-4 py-3 text-sm focus:outline-none focus:border-[#24A8A2]" dir="auto" />
-                  <button type="submit" disabled={busy || !answer.trim()} className="bg-[#24A8A2] text-white px-5 rounded-[14px] text-sm disabled:opacity-60">שלח</button>
+                <form onSubmit={(e) => { e.preventDefault(); if (answer.trim()) practice(answer.trim()); }} className="p-3 border-t border-line flex flex-col sm:flex-row gap-2 sm:items-end">
+                  <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} rows={2} placeholder="התשובה שלך…" className="jm-input flex-1 resize-y" dir="auto" />
+                  <button type="submit" disabled={busy || !answer.trim()} className="jm-btn jm-btn-primary">שלח</button>
                 </form>
               )}
             </section>
           )}
 
           {/* Questions to ask + checklist */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-            <div className="rounded-4xl border border-[#232323]/10 p-5">
-              <h2 className="font-semibold text-lg text-[#232323] mb-2">שאלות שכדאי לך לשאול</h2>
-              <ul className="list-disc pe-5 text-sm text-[#232323]/80 space-y-1">{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+            <div className="jm-card p-5 sm:p-6">
+              <h2 className={sectionTitle}>שאלות שכדאי לך לשאול</h2>
+              <ul className={bulletList}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
             </div>
-            <div className="rounded-4xl border border-[#232323]/10 p-5">
-              <h2 className="font-semibold text-lg text-[#232323] mb-2">צ&apos;קליסט לפני הראיון</h2>
-              <ul className="space-y-1 text-sm text-[#232323]/80">{prep.plan.checklist.map((c, i) => <li key={i} dir="auto">☐ {c}</li>)}</ul>
+            <div className="jm-card p-5 sm:p-6">
+              <h2 className={sectionTitle}>צ&apos;קליסט לפני הראיון</h2>
+              <ul className="space-y-1.5 text-sm text-ink-600">{prep.plan.checklist.map((c, i) => <li key={i} dir="auto">☐ {c}</li>)}</ul>
             </div>
           </section>
-        </>
+        </div>
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import useSWR from "swr";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
+import { PageHeader, Spinner, SignInGate, EmptyState } from "../components/ui";
 
 dayjs.extend(relativeTime);
 
@@ -34,45 +35,43 @@ export default function NotificationsPage() {
     mutate();
   };
 
-  if (loading) return <p className="text-center mt-10 font-outfit">טוען…</p>;
-  if (!user) {
-    return (
-      <div className="text-center mt-10 font-outfit">
-        <p className="text-red-500">צריך להתחבר כדי לראות התראות.</p>
-        <Link href="/Login" className="text-[#11AEFF] underline">התחברות</Link>
-      </div>
-    );
-  }
+  if (loading) return <Spinner label="טוען…" />;
+  if (!user) return <SignInGate text="צריך להתחבר כדי לראות התראות." next="/notifications" />;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 font-outfit" dir="rtl">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl lg:text-[34px] font-semibold text-[#232323]">התראות</h1>
-        {unread > 0 && (
-          <button onClick={() => markRead()} className="text-sm text-[#11AEFF] hover:underline">
+    <div className="jm-page" dir="rtl">
+      <PageHeader
+        title="התראות"
+        subtitle="סטטוס מועמדויות, הודעות חדשות ומשרות שמתאימות לך"
+        actions={unread > 0 ? (
+          <button onClick={() => markRead()} className="jm-btn jm-btn-secondary jm-btn-sm">
             סמן הכל כנקרא ({unread})
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {items.length === 0 ? (
-        <div className="rounded-4xl border border-[#232323]/10 p-10 text-center text-[#232323]/60">
-          אין התראות עדיין. כשמשהו יקרה — סטטוס מועמדות, הודעה חדשה או משרות שמתאימות לך — זה יופיע כאן.
-        </div>
+        <EmptyState icon="🔔" title="אין התראות עדיין" text="כשמשהו יקרה — סטטוס מועמדות, הודעה חדשה או משרות שמתאימות לך — זה יופיע כאן." />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-3 max-w-3xl">
           {items.map((n) => {
             const inner = (
-              <div className={`flex gap-4 rounded-[20px] border p-4 transition ${n.read ? "border-[#232323]/10 bg-white" : "border-[#24A8A2]/40 bg-[#24A8A2]/5"}`}>
-                <div className="text-2xl leading-none pt-1" aria-hidden="true">{ICON[n.type] ?? "🔔"}</div>
+              <div className={`jm-card p-4 flex items-start gap-4 transition-colors hover:bg-canvas/60 ${n.read ? "" : "border-s-4 border-s-teal"}`}>
+                <div className="h-11 w-11 shrink-0 rounded-xl bg-sky-50 text-xl flex items-center justify-center" aria-hidden="true">
+                  {ICON[n.type] ?? "🔔"}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className={`text-[#232323] ${n.read ? "font-medium" : "font-semibold"}`} dir="auto">{n.title}</h3>
-                    <span className="shrink-0 text-xs text-[#232323]/50">{dayjs(n.createdAt).fromNow()}</span>
+                    <h3 className={`text-navy ${n.read ? "font-medium" : "font-semibold"}`} dir="auto">{n.title}</h3>
+                    <span className="jm-muted shrink-0">{dayjs(n.createdAt).fromNow()}</span>
                   </div>
-                  {n.body && <p className="mt-1 text-sm text-[#232323]/70 whitespace-pre-line" dir="auto">{n.body}</p>}
+                  {n.body && <p className="mt-1 text-sm text-ink-600 whitespace-pre-line" dir="auto">{n.body}</p>}
                 </div>
-                {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-[#24A8A2]" aria-label="לא נקרא" />}
+                {n.link ? (
+                  <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">←</span>
+                ) : !n.read ? (
+                  <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" aria-label="לא נקרא" />
+                ) : null}
               </div>
             );
             return (
@@ -82,7 +81,7 @@ export default function NotificationsPage() {
                     {inner}
                   </Link>
                 ) : (
-                  <button onClick={() => !n.read && markRead([n._id])} className="block w-full text-right">
+                  <button onClick={() => !n.read && markRead([n._id])} className="block w-full text-start">
                     {inner}
                   </button>
                 )}

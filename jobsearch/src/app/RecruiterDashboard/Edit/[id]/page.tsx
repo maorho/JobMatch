@@ -13,19 +13,21 @@ export default function EditJobPage() {
   const [showModal, setShowModal] = useState(true);
   const edit = true;
   return (
-    <div className="max-w-[500px]  mx-auto mt-5">
-      <AddNewPositionRecruiter
-        jobId={jobId}
-        onSuccess={() => {
-          if (user?.admin) {
-            router.push("/AdminDashboard");
-          } else {
-            router.push("/RecruiterDashboard");
-          }
-        }}
-        setShowModal={setShowModal}
-        edit={edit}
-      />
+    <div className="jm-page">
+      <div className="jm-card p-5 sm:p-6 max-w-2xl mx-auto">
+        <AddNewPositionRecruiter
+          jobId={jobId}
+          onSuccess={() => {
+            if (user?.admin) {
+              router.push("/AdminDashboard");
+            } else {
+              router.push("/RecruiterDashboard");
+            }
+          }}
+          setShowModal={setShowModal}
+          edit={edit}
+        />
+      </div>
     </div>
   );
 }

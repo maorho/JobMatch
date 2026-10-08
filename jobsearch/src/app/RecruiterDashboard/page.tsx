@@ -6,6 +6,7 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import JobrecruiterCard from "./components/JobrecruiterCard";
 import AddNewPositionRecruiter from "./components/AddNewPositionRecruiter";
 import { RecruiterHeroImage } from "../components/HeroImages";
+import { EmptyState, Spinner } from "../components/ui";
 
 
 
@@ -50,70 +51,101 @@ const RecruiterDashboardPage: React.FC = () => {
     }
   }, [user]);
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <Spinner label="Loading..." />;
 
   if (!user) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/Login" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="You are not logged in."
+          action={
+            <Link href="/Login" className="jm-btn jm-btn-primary">
+              Go to Login
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   if (!user.recruiter && !user.admin) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not a recruiter.</p>
-        <Link href="/Dashboard" className="text-blue-600 underline">
-          Go to Dashboard
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🧭"
+          title="You are not a recruiter."
+          action={
+            <Link href="/Dashboard" className="jm-btn jm-btn-primary">
+              Go to Dashboard
+            </Link>
+          }
+        />
       </div>
     );
   }
 
+  // Stat tiles are a pure read of the loaded positions — no extra state.
+  const typeOf = (job: any) => String(job?.type ?? "").toLowerCase();
+  const stats = [
+    { label: "Active positions", value: jobLength },
+    { label: "Remote", value: jobs.filter((j) => typeOf(j) === "remote").length },
+    { label: "Hybrid", value: jobs.filter((j) => typeOf(j) === "hybrid").length },
+    { label: "On site", value: jobs.filter((j) => typeOf(j) === "on site").length },
+  ];
+
   return (
-    <div className="p-6 items-center justify-items-center min-h-screen">
-      <div
+    <div className="jm-page space-y-6">
+      <section
         id="recruiter hero section"
-        className="relative w-full pb-25 lg:mb-32 flex flex-col"
+        className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
       >
-        <div className="absolute inset-0 flex flex-col text-white items-center justify-center text-center px-4 z-10">
-          <label className="text-3xl lg:text-7xl font-semibold mb-4">
+        <RecruiterHeroImage />
+        <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
+          <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
             Welcome, {user.fullname}! 👋
-          </label>
-          
+          </h1>
+          <p className="text-sm sm:text-base text-white/80">
+            Manage your open positions and review the candidates who applied.
+          </p>
           {user.approved && (
-            <button
-            onClick={() => setShowModal(true)}
-            className="font-outfit text-[18px] mt-12 py-[10px] px-10 bg-[#11AEFF] rounded-[8px] lg:rounded-[14px] hover:bg-[#24A8A2]"
-          >
-            Add New Job +
-          </button>
+            <div>
+              <button
+                onClick={() => setShowModal(true)}
+                className="jm-btn jm-btn-accent"
+              >
+                Add New Job +
+              </button>
+            </div>
           )}
         </div>
+      </section>
 
-        <RecruiterHeroImage />
-      </div>
+      {!loadingJobs && user.approved && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className="jm-card p-5">
+              <div className="text-3xl sm:text-4xl font-semibold text-navy leading-none">{stat.value}</div>
+              <div className="jm-muted mt-2">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      <div className="max-w-full">
+      {error && <p className="jm-alert jm-alert-err">{error}</p>}
+
+      <div>
         {loadingJobs ? (
-          <p className="text-center text-gray-500">Loading your jobs...</p>
+          <Spinner label="Loading your jobs..." />
         ) : jobs.length == 0 ? (
-          <div>
-            <h2>Your Board is Empty</h2>
-          </div>
+          <EmptyState icon="🗂️" title="Your Board is Empty" />
         ) : (
           user.approved?(
-            <div>
-            <div className="pb-16">
-              <label className="font-medium font-outfit text-[#222222] text-[20px] lg:text-[45px]">
-                You Have {jobLength} Active Job Posts
-              </label>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7 pb-25 lg:pb-30">
+            <div className="space-y-5">
+            <h2 className="jm-h2">
+              You Have {jobLength} Active Job Posts
+            </h2>
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
               {jobs.map((element, ind) => {
                 return (
                   <JobrecruiterCard
@@ -127,16 +159,14 @@ const RecruiterDashboardPage: React.FC = () => {
             </div>
           </div>
           ):(
-            <div className="text-center min-h-screen">
-              <p className="text-red-500 text-lg">Your recruiter account is not approved yet. Please wait for admin approval.</p>
-            </div>
+            <p className="jm-alert jm-alert-err">Your recruiter account is not approved yet. Please wait for admin approval.</p>
           )
         )}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-[#000000]/70 bg-opacity-50 z-50">
-          <div className="bg-white max-h-[90vh] p-6 rounded-[16px] lg:rounded-4xl  w-[400px] lg:w-[650px] max-w-full flex flex-col">
+        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="jm-card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
             <AddNewPositionRecruiter
               onSuccess={() => {
                 setShowModal(false);

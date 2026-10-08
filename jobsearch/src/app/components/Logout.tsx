@@ -2,8 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
+import { LogOut } from "lucide-react";
 
-export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
+export default function LogoutButton({
+  closeNav,
+  className = "jm-btn jm-btn-secondary jm-btn-sm",
+}: {
+  closeNav?: () => void;
+  className?: string;
+}) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -21,10 +28,8 @@ export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
   }
 
   return (
-    <button
-      className="text-lg font-semibold hover:text-blue-400"
-      onClick={handleLogout}
-    >
+    <button className={className} onClick={handleLogout}>
+      <LogOut className="h-4 w-4" />
       Logout
     </button>
   );

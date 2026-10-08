@@ -57,53 +57,39 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
     }
   }
 
+  const readOnlyInput = "jm-input disabled:bg-canvas disabled:text-ink-600 disabled:cursor-default";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label>Full Name:</label>
-        <input
-          type="text"
-          value={fullname}
-          className="block w-full border p-1 rounded"
-          disabled
-        />
+        <label className="jm-label">Full Name:</label>
+        <input type="text" value={fullname} className={readOnlyInput} disabled />
       </div>
       <div>
-        <label>Phone:</label>
-        <input
-          type="tel"
-          value={phone}
-          className="block w-full border p-1 rounded"
-          disabled
-        />
+        <label className="jm-label">Phone:</label>
+        <input type="tel" value={phone} className={readOnlyInput} disabled />
       </div>
       <div>
-        <label>Email:</label>
-        <input
-          type="email"
-          value={email}
-          className="block w-full border p-1 rounded"
-          disabled
-        />
+        <label className="jm-label">Email:</label>
+        <input type="email" value={email} className={readOnlyInput} disabled />
       </div>
       <div>
-        <label>Resume:</label>
-        <ResumeLink resumeKey={resumefile} />
+        <label className="jm-label">Resume:</label>
+        <div className="rounded-control border border-line bg-canvas px-4 py-3">
+          <ResumeLink resumeKey={resumefile} />
+        </div>
       </div>
-      {error && <p className="text-red-500">{error}</p>}
-      <div className="flex justify-between mt-4">
-        <button
-          type="submit"
-          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-        >
-          Apply
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowModal(false)}
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-gray-500"
-        >
+      {error && (
+        <p className="jm-alert jm-alert-err" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+        <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-secondary">
           Cancel
+        </button>
+        <button type="submit" className="jm-btn jm-btn-primary">
+          Apply
         </button>
       </div>
     </form>

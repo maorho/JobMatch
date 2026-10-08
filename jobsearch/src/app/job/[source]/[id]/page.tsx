@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import JobDescription from "@/app/components/JobDescription";
 import { getExternalJobById } from "@/app/lib/Externaljobs";
+import { Spinner } from "@/app/components/ui";
 
 export default function JobPage() {
   const { source, id } = useParams() as { source: string; id: string };
@@ -69,8 +70,20 @@ export default function JobPage() {
     };
   }, [id, source]);
 
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!job) return <div className="p-6">Loading...</div>;
+  if (error)
+    return (
+      <div className="jm-page">
+        <div className="jm-alert jm-alert-err" role="alert">
+          {error}
+        </div>
+      </div>
+    );
+  if (!job)
+    return (
+      <div className="jm-page">
+        <Spinner label="Loading..." />
+      </div>
+    );
 
   return <JobDescription job={job} />;
 }

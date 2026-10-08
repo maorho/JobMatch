@@ -1,2 +1,190 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+
+/*
+ * JobMatch design tokens. The palette is the one the product already used
+ * (navy / teal / blue + Outfit); everything else here makes it consistent.
+ */
+@theme {
+  --font-outfit: var(--font-outfit-next), "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-outfit);
+
+  --color-navy: #102b39;
+  --color-navy-800: #0b1f2a;
+  --color-navy-700: #163a4c;
+  --color-teal: #24a8a2;
+  --color-teal-600: #1d8f8a;
+  --color-teal-50: #e9f6f5;
+  --color-sky: #11aeff;
+  --color-sky-600: #0d8ed6;
+  --color-sky-50: #e7f6ff;
+  --color-ink: #232323;
+  --color-ink-600: #4b5563;
+  --color-ink-400: #8a94a0;
+  --color-line: #e6ebf0;
+  --color-canvas: #f6f9fb;
+  --color-surface: #ffffff;
+
+  --radius-card: 24px;
+  --radius-control: 14px;
+  --shadow-card: 0 1px 2px rgb(16 43 57 / 0.04), 0 8px 24px -12px rgb(16 43 57 / 0.14);
+  --shadow-card-hover: 0 2px 4px rgb(16 43 57 / 0.05), 0 18px 36px -14px rgb(16 43 57 / 0.22);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-outfit);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-sky) 25%, transparent);
+  }
+  input, select, textarea, button {
+    font: inherit;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-sky);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/*
+ * Shared primitives. Compose base + modifier in markup:
+ *   <button class="jm-btn jm-btn-primary">, <input class="jm-input">,
+ *   <span class="jm-chip jm-chip-teal">, <div class="jm-card">
+ */
+@utility jm-container {
+  @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8;
+}
+@utility jm-page {
+  @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10;
+}
+@utility jm-card {
+  @apply bg-surface rounded-card border border-line shadow-card;
+}
+@utility jm-card-hover {
+  @apply transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-card-hover;
+}
+@utility jm-title {
+  @apply text-2xl sm:text-3xl lg:text-[34px] font-semibold text-navy tracking-tight leading-tight;
+}
+@utility jm-subtitle {
+  @apply text-sm sm:text-base text-ink-600 mt-2;
+}
+@utility jm-h2 {
+  @apply text-lg sm:text-xl font-semibold text-navy;
+}
+@utility jm-muted {
+  @apply text-sm text-ink-400;
+}
+
+@utility jm-btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-control px-5 py-3 text-sm sm:text-base font-medium
+    transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer;
+}
+@utility jm-btn-primary {
+  @apply bg-teal text-white hover:bg-teal-600;
+}
+@utility jm-btn-accent {
+  @apply bg-sky text-white hover:bg-sky-600;
+}
+@utility jm-btn-navy {
+  @apply bg-navy text-white hover:bg-navy-700;
+}
+@utility jm-btn-secondary {
+  @apply bg-surface text-navy border border-line hover:border-navy/40 hover:bg-canvas;
+}
+@utility jm-btn-ghost {
+  @apply bg-transparent text-navy hover:bg-navy/5;
+}
+@utility jm-btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700;
+}
+@utility jm-btn-sm {
+  @apply px-3.5 py-2 text-sm rounded-xl;
+}
+@utility jm-btn-icon {
+  @apply p-0 h-11 w-11 rounded-control;
+}
+
+@utility jm-input {
+  @apply w-full bg-surface border border-line rounded-control px-4 py-3 text-sm sm:text-base text-ink
+    placeholder:text-ink-400 transition-colors focus:outline-none focus:border-teal focus:ring-2 focus:ring-teal/20;
+}
+@utility jm-label {
+  @apply block text-sm font-medium text-ink-600 mb-1.5;
+}
+@utility jm-select {
+  @apply appearance-none pe-10 bg-no-repeat cursor-pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a94a0' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-position: right 0.9rem center;
+  [dir="rtl"] & {
+    background-position: left 0.9rem center;
+  }
+}
+
+@utility jm-chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-canvas text-ink-600 border border-line whitespace-nowrap;
+}
+@utility jm-chip-teal {
+  @apply bg-teal-50 text-teal-600 border-teal/20;
+}
+@utility jm-chip-sky {
+  @apply bg-sky-50 text-sky-600 border-sky/20;
+}
+@utility jm-chip-navy {
+  @apply bg-navy text-white border-navy;
+}
+
+@utility jm-alert {
+  @apply rounded-control px-4 py-3 text-sm border;
+}
+@utility jm-alert-ok {
+  @apply bg-teal-50 text-teal-600 border-teal/20;
+}
+@utility jm-alert-err {
+  @apply bg-red-50 text-red-700 border-red-200;
+}
+@utility jm-alert-info {
+  @apply bg-sky-50 text-sky-600 border-sky/20;
+}
+
+@utility jm-hero {
+  @apply relative overflow-hidden rounded-card bg-navy text-white;
+  background-image:
+    radial-gradient(60% 80% at 100% 0%, rgb(17 174 255 / 0.35) 0%, transparent 60%),
+    radial-gradient(50% 70% at 0% 100%, rgb(36 168 162 / 0.35) 0%, transparent 60%);
+}
+
+@utility jm-skeleton {
+  @apply animate-pulse rounded-xl bg-navy/8;
+}
+
+/* Tables: <table class="jm-table"> */
+.jm-table {
+  @apply w-full text-sm;
+}
+.jm-table thead th {
+  @apply bg-navy text-white font-medium text-start px-4 py-3 first:rounded-s-xl last:rounded-e-xl;
+}
+.jm-table tbody td {
+  @apply px-4 py-3 border-b border-line align-middle;
+}
+.jm-table tbody tr:last-child td {
+  @apply border-b-0;
+}
+.jm-table tbody tr:hover td {
+  @apply bg-canvas;
+}
+
+/* Thin scrollbars inside cards/lists. */
+.jm-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(16 43 57 / 0.2) transparent;
+}
