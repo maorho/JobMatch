@@ -87,6 +87,18 @@ function JobTable() {
   const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
 
+  // Deep links: /?company=Google&q=react&city=Haifa&seniority=Junior
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const list = (k: string) => sp.getAll(k).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean);
+    if (sp.get("q")) setSearchTerm(sp.get("q")!);
+    if (list("company").length) setCompany(list("company"));
+    if (list("city").length) setCity(list("city"));
+    if (list("country").length) setCountry(list("country"));
+    if (list("seniority").length) setSeniority(list("seniority"));
+    if (list("jobType").length) setJobType(list("jobType"));
+  }, []);
+
   // Filter options for the WHOLE catalog (every company/city in the DB).
   const [facets, setFacets] = useState<JobFacets | null>(null);
   useEffect(() => {
