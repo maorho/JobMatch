@@ -6,6 +6,7 @@ import User from "@/app/models/User";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { finalFeedback, type SessionTurn } from "@/app/lib/interview/simulator";
+import { computeDelivery, describeDelivery } from "@/app/lib/interview/voice";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
 export const runtime = "nodejs";
@@ -33,14 +34,20 @@ export async function POST(req: NextRequest) {
     const user: any = await User.findById(userId).select("+resumeText +resumeStructured").lean();
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const transcript: SessionTurn[] = session.transcript.map((t: any) => ({ role: t.role, content: t.content }));
-    const feedback = await finalFeedback({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, transcript });
+    let deliveryNote: string | undefined;
+    if (session.mode === "voice") {
+      const delivery = computeDelivery(session.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody })), session.impression);
+      session.delivery = delivery;
+      deliveryNote = describeDelivery(delivery, session.language);
+    }
+    const feedback = await finalFeedback({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, transcript, deliveryNote });
 
     session.feedback = feedback;
     session.status = "finished";
     session.wrappedUp = true;
     session.finishedAt = new Date();
     await session.save();
-    return NextResponse.json({ ok: true, cached: false, feedback });
+    return NextResponse.json({ ok: true, cached: false, feedback, delivery: session.delivery || null });
   } catch (err: any) {
     console.error("❌ interview feedback:", err);
     return NextResponse.json({ error: err?.message || "Could not write the feedback" }, { status: 500 });

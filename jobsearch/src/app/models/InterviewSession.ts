@@ -12,6 +12,9 @@ const TurnSchema = new mongoose.Schema(
     role: { type: String, enum: ["interviewer", "candidate"], required: true },
     content: { type: String, required: true, maxlength: 6000 },
     at: { type: Date, default: Date.now },
+    /** Voice mode: how long this turn was spoken, and the measured voice profile. */
+    seconds: { type: Number },
+    prosody: { type: mongoose.Schema.Types.Mixed },
   },
   { _id: false }
 );
@@ -26,6 +29,15 @@ const InterviewSessionSchema = new mongoose.Schema(
     company: { type: String, default: "" },
     stage: { type: String, required: true },
     language: { type: String, enum: ["he", "en"], default: "he" },
+    mode: { type: String, enum: ["chat", "voice"], default: "chat" },
+    realtime: {
+      model: { type: String, default: "" },
+      voice: { type: String, default: "" },
+    },
+    /** Voice mode: pace / fillers / answer lengths / tone (see lib/interview/voice.ts). */
+    delivery: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    /** Voice mode: what the interviewer model heard (reported with end_interview). */
+    impression: { type: mongoose.Schema.Types.Mixed, default: undefined },
     targetQuestions: { type: Number, default: 8 },
     /** What the interviewer "knows" about the company (frozen at start). */
     companyBrief: { type: String, default: "", maxlength: 6000 },

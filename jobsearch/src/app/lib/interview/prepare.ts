@@ -91,7 +91,7 @@ Return the JSON plan.`;
 }
 
 function llm(temperature: number) {
-  return new ChatOpenAI({ modelName: PREP_MODEL, temperature, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  return new ChatOpenAI({ modelName: PREP_MODEL, maxTokens: 8000, timeout: 90_000, temperature, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
 }
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
 

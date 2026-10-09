@@ -27,6 +27,8 @@ const publicSession = (s: any) => ({
   stage: s.stage,
   language: s.language,
   status: s.status,
+  mode: s.mode || "chat",
+  delivery: s.delivery || null,
   wrappedUp: !!s.wrappedUp,
   targetQuestions: s.targetQuestions,
   asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length,
@@ -51,10 +53,10 @@ export async function GET(req: NextRequest) {
   }
   const prepId = sp.get("prepId") || "";
   if (!mongoose.Types.ObjectId.isValid(prepId)) return NextResponse.json({ error: "Invalid prepId" }, { status: 400 });
-  const list: any[] = await InterviewSession.find({ userId, prepId }).sort({ createdAt: -1 }).limit(20).select("stage status wrappedUp targetQuestions transcript feedback.overallScore feedback.verdict createdAt finishedAt").lean();
+  const list: any[] = await InterviewSession.find({ userId, prepId }).sort({ createdAt: -1 }).limit(20).select("stage status mode wrappedUp targetQuestions transcript feedback.overallScore feedback.verdict createdAt finishedAt").lean();
   return NextResponse.json({
     ok: true,
-    sessions: list.map((s) => ({ sessionId: String(s._id), stage: s.stage, status: s.status, asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length, targetQuestions: s.targetQuestions, overallScore: s.feedback?.overallScore ?? null, verdict: s.feedback?.verdict ?? "", startedAt: s.createdAt, finishedAt: s.finishedAt || null })),
+    sessions: list.map((s) => ({ sessionId: String(s._id), stage: s.stage, status: s.status, mode: s.mode || "chat", asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length, targetQuestions: s.targetQuestions, overallScore: s.feedback?.overallScore ?? null, verdict: s.feedback?.verdict ?? "", startedAt: s.createdAt, finishedAt: s.finishedAt || null })),
   });
 }
 

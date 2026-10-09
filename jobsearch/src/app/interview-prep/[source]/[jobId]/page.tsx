@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
 import { EmptyState, Spinner } from "../../../components/ui";
+import VoiceInterview, { type VoiceTurn } from "../../../components/VoiceInterview";
 
 type Question = { question: string; whyAsked: string; howToAnswer: string; sampleAnswer?: string };
 type Stage = { key: string; title: string; description: string; durationHint?: string; likelyQuestions: Question[]; tips: string[] };
@@ -17,8 +18,10 @@ type Plan = {
 };
 type Prep = { prepId: string; job: { title: string; company: string }; plan: Plan; cached: boolean };
 type Turn = { role: "interviewer" | "candidate"; content: string };
+type Delivery = { answers: number; totalSpeakingSeconds: number; avgAnswerSeconds: number; wordsPerMinute: number | null; fillerWords: number; fillersPerMinute: number | null; shortAnswers: number; tone: { pitchVarSemitones: number | null; expressiveness: string | null; loudnessDb: number | null; volume: string | null; pauseRatio: number | null; trailingOffAnswers: number; measuredAnswers: number }; impression?: { confidence: number; energy: number; clarity: number; warmth: number; pace: string; notes: string } };
 type Feedback = {
   overallScore: number;
+  delivery?: { score: number; notes: string };
   verdict: string;
   summary: string;
   dimensions: { name: string; score: number; notes: string }[];
@@ -27,7 +30,7 @@ type Feedback = {
   answerReviews: { question: string; answerSummary: string; score: number; whatWorked: string; betterAnswer: string }[];
   nextSteps: string[];
 };
-type Session = { sessionId: string; stage: string; status: string; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null };
+type Session = { sessionId: string; stage: string; status: string; mode?: "chat" | "voice"; delivery?: Delivery | null; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null };
 type SessionRow = { sessionId: string; stage: string; status: string; asked: number; targetQuestions: number; overallScore: number | null; verdict: string; startedAt: string };
 
 const STAGE_ICON: Record<string, string> = { hr: "☎️", technical: "💻", home_assignment: "🏠", system_design: "🧩", behavioral: "🤝", final: "🏁" };
@@ -47,6 +50,8 @@ export default function InterviewPrepPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [questions, setQuestions] = useState(6);
+  const [mode, setMode] = useState<"voice" | "chat">("voice");
+  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -104,8 +109,36 @@ export default function InterviewPrepPage() {
     setBusy("start");
     setError("");
     try {
-      const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
-      setSession(d.session);
+      if (mode === "voice") {
+        const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
+        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions });
+        setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
+      } else {
+        const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
+        setSession(d.session);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  // Voice call ended (by the interviewer, the candidate, or an error): save the transcript and go straight to the debrief.
+  const onVoiceEnded = async (turns: VoiceTurn[], reason: "interviewer" | "candidate" | "error") => {
+    if (!voice) return;
+    const answered = turns.filter((t) => t.role === "candidate").length;
+    setVoice(null);
+    setSession((s) => s && { ...s, transcript: turns.map((t) => ({ role: t.role, content: t.content })), asked: turns.filter((t) => t.role === "interviewer").length, wrappedUp: true });
+    if (answered === 0) {
+      setError(reason === "error" ? "השיחה לא התחברה." : "השיחה הסתיימה לפני שענית על שאלה — אין על מה לתת משוב.");
+      setSession(null);
+      return;
+    }
+    setBusy("finish");
+    try {
+      const d = await call("/api/interview/session/finish", "POST", { sessionId: voice.sessionId });
+      setSession((s) => s && { ...s, status: "finished", feedback: d.feedback, delivery: d.delivery });
+      if (prep) loadHistory(prep.prepId);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -269,6 +302,16 @@ export default function InterviewPrepPage() {
                       המראיין/ת מכיר/ה את החברה, את התפקיד ואת קורות החיים שלך, ומנהל/ת שיחה כמו בראיון אמיתי: שאלה אחת בכל פעם, שאלות המשך, ובלי רמזים.
                       <span className="font-medium text-navy"> המשוב המלא — ציון, חוזקות, מה לשפר ותשובות טובות יותר — מגיע רק בסיום.</span>
                     </p>
+                    <div className="grid sm:grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setMode("voice")} aria-pressed={mode === "voice"} className={`rounded-control border p-3 text-start transition-colors ${mode === "voice" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
+                        <div className="font-semibold">🎙️ שיחה קולית (מומלץ)</div>
+                        <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>מדברים עם המראיין/ת בקול, מצלמה לעצמך, והמשוב כולל ניתוח של הקול והטון: ביטחון, קצב, אנרגיה, מונוטוניות, מילות מילוי.</div>
+                      </button>
+                      <button type="button" onClick={() => setMode("chat")} aria-pressed={mode === "chat"} className={`rounded-control border p-3 text-start transition-colors ${mode === "chat" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
+                        <div className="font-semibold">⌨️ בכתב</div>
+                        <div className={`text-xs mt-1 ${mode === "chat" ? "text-white/80" : "text-ink-600"}`}>אותו מראיין/ת, בצ&apos;אט. מתאים כשאין מיקרופון או כשרוצים לחשוב על כל תשובה.</div>
+                      </button>
+                    </div>
                     <div className="flex flex-wrap items-end gap-3">
                       <label>
                         <span className="jm-label">מספר שאלות</span>
@@ -276,12 +319,16 @@ export default function InterviewPrepPage() {
                           {[4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </label>
-                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : "🎙️ התחל ראיון"}</button>
+                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : mode === "voice" ? "🎙️ התחל שיחה" : "⌨️ התחל ראיון"}</button>
                     </div>
                     {error && <div className="jm-alert jm-alert-err">{error}</div>}
                   </div>
+                ) : voice ? (
+                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} onEnded={onVoiceEnded} />
                 ) : session.feedback ? (
-                  <FeedbackView fb={session.feedback} onNew={() => setSession(null)} stageTitle={stage.title} />
+                  <FeedbackView fb={session.feedback} delivery={session.delivery || null} onNew={() => setSession(null)} stageTitle={stage.title} />
+                ) : session.mode === "voice" ? (
+                  <div className="p-6"><Spinner label="המראיין/ת כותב/ת את המשוב על הראיון…" />{error && <div className="jm-alert jm-alert-err">{error}</div>}</div>
                 ) : (
                   <>
                     <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
@@ -337,7 +384,10 @@ export default function InterviewPrepPage() {
   );
 }
 
-function FeedbackView({ fb, onNew, stageTitle }: { fb: Feedback; onNew: () => void; stageTitle: string }) {
+function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; delivery?: Delivery | null; onNew: () => void; stageTitle: string }) {
+  const tone = delivery?.tone;
+  const imp = delivery?.impression;
+  const stars = (n: number) => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
   return (
     <div className="p-5 sm:p-6 space-y-6">
       <div className="flex flex-wrap items-center gap-4">
@@ -349,6 +399,36 @@ function FeedbackView({ fb, onNew, stageTitle }: { fb: Feedback; onNew: () => vo
         </div>
         <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">ראיון חדש</button>
       </div>
+
+      {(fb.delivery || (tone && tone.measuredAnswers > 0) || imp) && (
+        <div className="rounded-control border border-line p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-navy">🎙️ קול וטון</h3>
+            {fb.delivery && <span className={`jm-chip ${fb.delivery.score >= 7 ? "jm-chip-teal" : fb.delivery.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{fb.delivery.score}/10</span>}
+          </div>
+          {fb.delivery?.notes && <p className="text-sm text-ink-600 leading-relaxed whitespace-pre-line" dir="auto">{fb.delivery.notes}</p>}
+          {delivery && (
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {delivery.wordsPerMinute !== null && <span className="jm-chip">קצב {delivery.wordsPerMinute} מילים/דק׳</span>}
+              <span className="jm-chip">ממוצע תשובה {delivery.avgAnswerSeconds}s</span>
+              <span className="jm-chip">{delivery.fillerWords} מילות מילוי{delivery.fillersPerMinute !== null ? ` (${delivery.fillersPerMinute}/דק׳)` : ""}</span>
+              {tone?.expressiveness && <span className={`jm-chip ${tone.expressiveness === "monotone" || tone.expressiveness === "flat" ? "jm-chip-sky" : "jm-chip-teal"}`}>אינטונציה: {{ monotone: "מונוטונית", flat: "שטוחה", natural: "טבעית", expressive: "אקספרסיבית" }[tone.expressiveness] ?? tone.expressiveness}</span>}
+              {tone?.volume && <span className="jm-chip">עוצמה: {{ quiet: "שקטה", normal: "רגילה", loud: "חזקה" }[tone.volume] ?? tone.volume}</span>}
+              {tone && tone.pauseRatio !== null && <span className="jm-chip">הפסקות {Math.round(tone.pauseRatio * 100)}%</span>}
+              {!!tone?.trailingOffAnswers && <span className="jm-chip jm-chip-sky">{tone.trailingOffAnswers} תשובות &quot;נמוגות&quot; בסוף</span>}
+            </div>
+          )}
+          {imp && (
+            <div className="grid sm:grid-cols-2 gap-2 text-sm">
+              <div><span className="jm-muted">ביטחון </span><span className="text-teal">{stars(imp.confidence)}</span></div>
+              <div><span className="jm-muted">אנרגיה </span><span className="text-teal">{stars(imp.energy)}</span></div>
+              <div><span className="jm-muted">בהירות </span><span className="text-teal">{stars(imp.clarity)}</span></div>
+              <div><span className="jm-muted">חום </span><span className="text-teal">{stars(imp.warmth)}</span></div>
+              <div className="sm:col-span-2 text-ink-600" dir="auto"><span className="jm-muted">מה המראיין/ת שמע/ה: </span>{imp.notes}{imp.pace && imp.pace !== "good" ? ` · קצב: ${imp.pace}` : ""}</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {fb.dimensions.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-3">

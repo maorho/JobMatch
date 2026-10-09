@@ -90,6 +90,8 @@ export async function interviewerTurn(input: SimInput): Promise<{ message: strin
 
 export const feedbackSchema = z.object({
   overallScore: z.number().min(0).max(100),
+  /** Voice interviews only: how it sounded. */
+  delivery: z.object({ score: z.number().min(0).max(10), notes: z.string().default("") }).optional(),
   verdict: z.string().default(""), // e.g. "strong hire / lean hire / lean no-hire"
   summary: z.string().default(""),
   dimensions: z.array(z.object({ name: z.string(), score: z.number().min(0).max(10), notes: z.string().default("") })).default([]),
@@ -102,19 +104,22 @@ export const feedbackSchema = z.object({
 });
 export type InterviewFeedback = z.infer<typeof feedbackSchema>;
 
-export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions">): { system: string; user: string } {
+export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string }): { system: string; user: string } {
   const stage = input.plan.stages.find((s) => s.key === input.stage) || input.plan.stages[0];
   const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
+  const voice = input.deliveryNote
+    ? `\nThis was a SPOKEN interview (transcribed). Also score "delivery" 0–10 with notes on VOICE and TONE: pace, filler words, pauses, answer length, pitch variation (monotone vs expressive), volume, trailing off, and the confidence/energy/clarity the interviewer heard — based on these measurements and impressions: ${input.deliveryNote}. Give 2–3 concrete, practical voice tips (e.g. "end sentences with a downward tone", "slow down on numbers"). Transcription may contain small errors; don't penalise typos.`
+    : "";
   const system = `You are the interviewer who just finished a "${stage.title}" interview for ${input.job.title} at ${input.job.company}, now writing the hiring-committee debrief AND an honest, useful debrief for the candidate. Write in ${lang}.
 Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance), each dimension 0–10, each answer 0–10.
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
-For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience).
-Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]}. Nothing else.`;
+For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience).${voice}
+Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}}. Nothing else.`;
   const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}`;
   return { system, user };
 }
 
-export async function finalFeedback(input: Omit<SimInput, "targetQuestions">): Promise<InterviewFeedback> {
+export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string }): Promise<InterviewFeedback> {
   const { system, user } = buildFeedbackPrompt(input);
   const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
   const parsed = feedbackSchema.safeParse(extractJson(contentOf(res)));
