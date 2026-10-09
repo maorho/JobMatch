@@ -33,7 +33,13 @@ const InterviewSessionSchema = new mongoose.Schema(
     realtime: {
       model: { type: String, default: "" },
       voice: { type: String, default: "" },
+      name: { type: String, default: "" },
+      gender: { type: String, default: "" },
     },
+    /** Per-question reviews written while the interview runs (voice mode). */
+    reviews: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    /** Lock + timestamp for the background debrief generation. */
+    feedbackStartedAt: { type: Date },
     /** Voice mode: pace / fillers / answer lengths / tone (see lib/interview/voice.ts). */
     delivery: { type: mongoose.Schema.Types.Mixed, default: undefined },
     /** Voice mode: what the interviewer model heard (reported with end_interview). */

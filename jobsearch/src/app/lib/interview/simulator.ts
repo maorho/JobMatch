@@ -35,6 +35,8 @@ export type SimInput = {
   language: "he" | "en";
   targetQuestions: number;
   transcript: SessionTurn[];
+  /** Who the interviewer is (name + gender drive the voice and the self-introduction). */
+  interviewer?: { name: string; gender: "female" | "male" };
 };
 
 /** A compact, factual brief the interviewer can quote from. */
@@ -56,8 +58,9 @@ export function buildInterviewerPrompt(input: SimInput): string {
   const persona = PERSONA[input.stage] || PERSONA.hr;
   const lang = input.language === "en" ? "English" : "Hebrew (natural spoken register; technical terms in English)";
   const asked = input.transcript.filter((t) => t.role === "interviewer").length;
+  const who = input.interviewer ? `${input.interviewer.name} (${input.interviewer.gender}), ${persona.en}` : persona.en;
   return `
-You are ${persona.en} at ${input.job.company}, interviewing a candidate for "${input.job.title}". This is the "${stage.title}" stage${stage.description ? ` — ${stage.description}` : ""}.
+You are ${who} at ${input.job.company}, interviewing a candidate for "${input.job.title}". This is the "${stage.title}" stage${stage.description ? ` — ${stage.description}` : ""}.
 Speak ${lang}. You ARE the interviewer, not a coach.
 
 WHAT YOU KNOW ABOUT YOUR COMPANY (use it naturally — mention real products, stack and context when relevant; never invent facts beyond this):
@@ -73,8 +76,9 @@ HOW TO BEHAVE:
 - React briefly and neutrally to the previous answer ("Got it.", "Interesting — and…") and probe when an answer is vague, generic or evasive: ask for a concrete example, a number, a trade-off, or "what would you do differently".
 - Do NOT evaluate, grade, coach, hint at the "right answer" or say how the candidate is doing. Feedback comes only after the interview.
 - Stay in character even if the candidate asks for feedback: politely say you'll share impressions at the end.
-- Plan for ${input.targetQuestions} main questions. Asked so far: ${asked}. When you have asked all of them and received the last answer — or when the candidate asks to stop — close the interview in 1–2 sentences (thank them, say what happens next) and append the exact token ${END_MARK} at the very end of that message.
-- If the transcript is empty: introduce yourself in one line (role at ${input.job.company}), set expectations for this stage in one line, and ask the first question.`.trim();
+- If the candidate asks YOU something (about the company, the team, the role, the process, salary range you don't know…), answer it briefly and honestly from what you know — say "I don't have that information" when you don't — then give them room to react before moving on. Candidates are expected to ask questions; it's a good sign.
+- Plan for ${input.targetQuestions} main questions (your opening and the candidate's self-introduction do NOT count). Interviewer turns so far: ${asked}. When you have asked all of them and received the last answer — or when the candidate asks to stop — close the interview in 1–2 sentences (thank them, say what happens next) and append the exact token ${END_MARK} at the very end of that message.
+- OPENING (when the transcript is empty): introduce yourself by name and role, say one or two sentences about ${input.job.company} and the "${input.job.title}" role and what this stage is about, then invite the candidate to introduce themselves briefly — and STOP there. Your first real question comes only after they have introduced themselves.`.trim();
 }
 
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
@@ -104,7 +108,32 @@ export const feedbackSchema = z.object({
 });
 export type InterviewFeedback = z.infer<typeof feedbackSchema>;
 
-export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string }): { system: string; user: string } {
+export const answerReviewSchema = z.object({
+  question: z.string(),
+  answerSummary: z.string().default(""),
+  score: z.number().min(0).max(10),
+  whatWorked: z.string().default(""),
+  betterAnswer: z.string().default(""),
+});
+export type AnswerReview = z.infer<typeof answerReviewSchema>;
+
+/**
+ * Review ONE question/answer pair (cheap, fast model). Called while the
+ * interview is still running so the final debrief has almost nothing left
+ * to write when the candidate hangs up.
+ */
+export async function reviewAnswer(input: { question: string; answer: string; job: { title: string; company: string }; stage: string; resumeText?: string; language: "he" | "en" }): Promise<AnswerReview> {
+  const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
+  const system = `You are an interviewer at ${input.job.company} reviewing one answer from a "${input.stage}" interview for ${input.job.title}. Write in ${lang}. Be specific and fair; quote what they said. Score 0–10 (7+ = solid). "betterAnswer": a stronger version in the candidate's own voice, 3–5 sentences, using ONLY their real experience from the résumé — never invent. The answer is a speech transcript: ignore small transcription slips.
+Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.`;
+  const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\nQUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
+  const res = await new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2, maxTokens: 900, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+  const parsed = answerReviewSchema.safeParse(extractJson(contentOf(res)));
+  if (!parsed.success) throw new Error("Answer review invalid");
+  return { ...parsed.data, question: parsed.data.question || input.question };
+}
+
+export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): { system: string; user: string } {
   const stage = input.plan.stages.find((s) => s.key === input.stage) || input.plan.stages[0];
   const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
   const voice = input.deliveryNote
@@ -113,16 +142,18 @@ export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & {
   const system = `You are the interviewer who just finished a "${stage.title}" interview for ${input.job.title} at ${input.job.company}, now writing the hiring-committee debrief AND an honest, useful debrief for the candidate. Write in ${lang}.
 Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance), each dimension 0–10, each answer 0–10.
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
-For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience).${voice}
+${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); copy them into "answerReviews" UNCHANGED and base the rest on them.` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${voice}
 Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}}. Nothing else.`;
-  const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}`;
+  const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}${input.priorReviews?.length ? `\n\nPER-QUESTION REVIEWS (already done):\n${JSON.stringify(input.priorReviews)}` : ""}`;
   return { system, user };
 }
 
-export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string }): Promise<InterviewFeedback> {
+export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): Promise<InterviewFeedback> {
   const { system, user } = buildFeedbackPrompt(input);
-  const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+  const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, maxTokens: 4000, timeout: 90_000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
   const parsed = feedbackSchema.safeParse(extractJson(contentOf(res)));
   if (!parsed.success) throw new Error("Feedback output invalid: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).slice(0, 5).join("; "));
+  // The reviews written live are the source of truth for the per-question part.
+  if (input.priorReviews?.length) parsed.data.answerReviews = input.priorReviews;
   return parsed.data;
 }

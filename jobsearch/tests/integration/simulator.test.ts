@@ -22,7 +22,7 @@ vi.mock("@langchain/openai", () => ({
       if (this.opts.modelKwargs?.response_format) return { content: JSON.stringify(sys.includes("debrief") ? FEEDBACK : { stages: [] }) };
       // Interviewer: never coaches; wraps up after the target count.
       const target = Number(/Plan for (\d+) main questions/.exec(sys)?.[1] || 8);
-      const asked = Number(/Asked so far: (\d+)/.exec(sys)?.[1] || 0);
+      const asked = Number(/Interviewer turns so far: (\d+)/.exec(sys)?.[1] || 0);
       turns++;
       if (asked >= target) return { content: "תודה רבה, זה הכול מצידי. נחזור אליך בימים הקרובים. <<END>>" };
       return { content: asked === 0 ? "היי, אני מהנדס בכיר ב-Acme. נדבר על React — מה זה hook?" : `הבנתי. שאלה ${asked + 1}: ספר/י על באג קשה שפתרת.` };
@@ -73,7 +73,8 @@ describe("interviewer prompt", () => {
     expect(sys).toMatch(/senior engineer on the team at Acme/);
     expect(sys).toMatch(/Do NOT evaluate, grade, coach/);
     expect(sys).toContain(END_MARK);
-    expect(sys).toMatch(/Asked so far: 1/);
+    expect(sys).toMatch(/Interviewer turns so far: 1/);
+    expect(sys).toMatch(/OPENING/);
   });
 });
 

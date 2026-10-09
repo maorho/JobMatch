@@ -10,6 +10,7 @@ vi.mock("@langchain/openai", () => ({
     async invoke(msgs: any[]) {
       const sys = String(msgs[0]?.content || "");
       const user = String(msgs[1]?.content || "");
+      if (sys.includes("reviewing one answer")) return { content: JSON.stringify({ question: /QUESTION: (.*)/.exec(user)?.[1] || "q", answerSummary: "תשובה ברורה", score: 7, whatWorked: "דוגמה", betterAnswer: "בפרויקט X…" }) };
       return { content: JSON.stringify({ overallScore: 68, verdict: "lean hire", summary: "ok", dimensions: [], strengths: ["x"], improvements: ["y"], answerReviews: [], nextSteps: [], delivery: { score: sys.includes("VOICE and TONE") && (sys + user).includes("monotone") ? 5 : 8, notes: "דבר/י עם יותר וריאציה בטון; סיים/י משפטים בירידה." } }) };
     }
   },
@@ -28,7 +29,8 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { signJwt } from "@/app/lib/jwt";
-import { buildVoiceInstructions, computeDelivery, describeDelivery, countFillers, summarizeTone, END_TOOL, END_TOOL_DEF, createRealtimeClientSecret } from "@/app/lib/interview/voice";
+import { buildVoiceInstructions, computeDelivery, describeDelivery, countFillers, summarizeTone, END_TOOL, END_TOOL_DEF, createRealtimeClientSecret, pickVoice, SILENCE_MS } from "@/app/lib/interview/voice";
+import { pairQuestions, detectLanguage, reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 import { buildFeedbackPrompt } from "@/app/lib/interview/simulator";
 import { POST as voicePOST, PATCH as voicePATCH, GET as voiceGET } from "@/app/api/interview/voice/route";
 import { POST as finishPOST } from "@/app/api/interview/session/finish/route";
@@ -53,8 +55,16 @@ beforeAll(async () => {
 
 describe("voice instructions + tool", () => {
   it("turns the interviewer prompt into call etiquette and makes the model report what it heard", () => {
-    const sys = buildVoiceInstructions({ plan: PLAN as any, stage: "hr", job: { title: "Dev", company: "Acme" }, companyBrief: "About: Acme", language: "he", targetQuestions: 5, transcript: [] });
+    const sys = buildVoiceInstructions({ plan: PLAN as any, stage: "hr", job: { title: "Dev", company: "Acme" }, companyBrief: "About: Acme", language: "he", targetQuestions: 5, transcript: [], interviewer: { name: "דנה", gender: "female" } });
     expect(sys).toMatch(/LIVE VOICE CALL/);
+    expect(sys).toMatch(/You are דנה \(female\), HR recruiter at Acme/);
+    expect(sys).toMatch(/OPENING .*introduce yourself by name and role/);
+    expect(sys).toMatch(/Hebrew or English/);
+    expect(sys).toMatch(new RegExp(`silent for about ${Math.round(SILENCE_MS / 1000)} seconds`));
+    expect(sys).toMatch(/When they ask you something, answer it/);
+    expect(pickVoice(0.1)).toMatchObject({ voice: "marin", gender: "female" });
+    expect(pickVoice(0.9)).toMatchObject({ voice: "cedar", gender: "male" });
+    expect(pickVoice(0.1).name).not.toBe(pickVoice(0.7).name);
     expect(sys).toMatch(/Listen to HOW they speak/);
     expect(sys).toContain(`call the ${END_TOOL} tool`);
     expect(sys).not.toContain("<<END>>");
@@ -67,7 +77,8 @@ describe("voice instructions + tool", () => {
     expect(s).toMatchObject({ value: "ek_test_123", endpoint: "calls", model: "gpt-realtime-mini" });
     const call = realtimeCalls.find((c) => c.url.endsWith("/client_secrets"));
     expect(call.body.session.tools[0].name).toBe(END_TOOL);
-    expect(call.body.session.audio.input.transcription.language).toBe("he");
+    expect(call.body.session.audio.input.transcription.language).toBeUndefined(); // the candidate picks the language on the call
+    expect(call.body.session.audio.input.turn_detection).toMatchObject({ type: "server_vad", silence_duration_ms: SILENCE_MS });
     expect(call.body.session.instructions).toBe("hi");
   });
 });
@@ -107,12 +118,15 @@ describe("voice session routes", () => {
     const started = await j(await voicePOST(new NextRequest(`${O}/api/interview/voice`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId, stage: "hr", questions: 4 }) })));
     expect(started.status).toBe(200);
     expect(started.body).toMatchObject({ clientSecret: "ek_test_123", endpoint: "calls", targetQuestions: 4, stage: "hr" });
+    expect(["female", "male"]).toContain(started.body.interviewer.gender);
+    expect(started.body.interviewer.name.length).toBeGreaterThan(1);
     const sessionId = started.body.sessionId;
     const doc: any = await InterviewSession.findById(sessionId).lean();
     expect(doc.mode).toBe("voice");
+    expect(doc.realtime.name).toBe(started.body.interviewer.name);
     expect(doc.companyBrief).toContain("Acme builds cloud security.");
     const instr = realtimeCalls.filter((c) => c.url.endsWith("/client_secrets")).pop().body.session.instructions;
-    expect(instr).toMatch(/HR recruiter at Acme/);
+    expect(instr).toMatch(new RegExp(`You are ${started.body.interviewer.name} \\(${started.body.interviewer.gender}\\), HR recruiter at Acme`));
     expect(instr).toMatch(/Junior React developer/); // the candidate's résumé is in the interviewer's head
 
     const turns = [
@@ -128,8 +142,22 @@ describe("voice session routes", () => {
     expect(saved.body.delivery.impression).toMatchObject({ confidence: 2, pace: "too slow" });
     expect(saved.body.delivery.impression.junk).toBeUndefined();
 
+    // Live reviews: every answered question gets its review while the call is on; the intro-length answer is skipped.
+    expect(pairQuestions(turns as any).map((p) => p.index)).toEqual([1, 3]);
+    expect(await reviewPendingAnswers(sessionId)).toBe(2);
+    expect(await reviewPendingAnswers(sessionId)).toBe(0); // idempotent
+    expect(((await InterviewSession.findById(sessionId).lean()) as any).reviews.map((r: any) => r.score)).toEqual([7, 7]);
+    expect(detectLanguage(turns as any, "en")).toBe("he");
+
+    // The goodbye kicks off the debrief in the background; a second caller just waits for it.
+    const first = await generateAndStoreFeedback(sessionId);
+    expect(first?.answerReviews).toHaveLength(2); // copied from the live reviews
+    expect(first?.answerReviews[0].betterAnswer).toMatch(/בפרויקט X/);
+    expect(await generateAndStoreFeedback(sessionId)).toEqual(first); // lock: no second generation
+
     const fb = await j(await finishPOST(new NextRequest(`${O}/api/interview/session/finish`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ sessionId }) })));
     expect(fb.status).toBe(200);
+    expect(fb.body.cached).toBe(true); // ready before the candidate asked
     expect(fb.body.feedback.delivery).toEqual({ score: 5, notes: expect.stringMatching(/וריאציה/) }); // the LLM saw "monotone" in the note
     expect(fb.body.delivery.tone.measuredAnswers).toBe(2);
 

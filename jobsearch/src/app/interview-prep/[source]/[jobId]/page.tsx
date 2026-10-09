@@ -51,7 +51,7 @@ export default function InterviewPrepPage() {
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [questions, setQuestions] = useState(6);
   const [mode, setMode] = useState<"voice" | "chat">("voice");
-  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number } | null>(null);
+  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" } } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -111,7 +111,7 @@ export default function InterviewPrepPage() {
     try {
       if (mode === "voice") {
         const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
-        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions });
+        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer });
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
       } else {
         const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
@@ -305,7 +305,7 @@ export default function InterviewPrepPage() {
                     <div className="grid sm:grid-cols-2 gap-2">
                       <button type="button" onClick={() => setMode("voice")} aria-pressed={mode === "voice"} className={`rounded-control border p-3 text-start transition-colors ${mode === "voice" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
                         <div className="font-semibold">🎙️ שיחה קולית (מומלץ)</div>
-                        <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>מדברים עם המראיין/ת בקול, מצלמה לעצמך, והמשוב כולל ניתוח של הקול והטון: ביטחון, קצב, אנרגיה, מונוטוניות, מילות מילוי.</div>
+                        <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>מראיין/ת (גבר או אישה) שמציג/ה את עצמו/ה והחברה, שואל/ת באיזו שפה לנהל את הראיון, ומגיב/ה לשתיקות. המשוב כולל ניתוח קול וטון ומוכן מיד בסיום.</div>
                       </button>
                       <button type="button" onClick={() => setMode("chat")} aria-pressed={mode === "chat"} className={`rounded-control border p-3 text-start transition-colors ${mode === "chat" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
                         <div className="font-semibold">⌨️ בכתב</div>
@@ -324,7 +324,7 @@ export default function InterviewPrepPage() {
                     {error && <div className="jm-alert jm-alert-err">{error}</div>}
                   </div>
                 ) : voice ? (
-                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} onEnded={onVoiceEnded} />
+                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} onEnded={onVoiceEnded} />
                 ) : session.feedback ? (
                   <FeedbackView fb={session.feedback} delivery={session.delivery || null} onNew={() => setSession(null)} stageTitle={stage.title} />
                 ) : session.mode === "voice" ? (

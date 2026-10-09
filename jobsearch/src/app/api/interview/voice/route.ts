@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
@@ -8,7 +8,18 @@ import InterviewSession from "@/app/models/InterviewSession";
 import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import { buildCompanyBrief } from "@/app/lib/interview/simulator";
-import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, REALTIME_MODEL, REALTIME_VOICE } from "@/app/lib/interview/voice";
+import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, REALTIME_MODEL } from "@/app/lib/interview/voice";
+import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
+
+/** Run work after the response is sent (Next `after`); inline when outside a request scope (tests). */
+function background(fn: () => Promise<unknown>) {
+  if (process.env.NODE_ENV === "test") return; // tests drive these jobs explicitly
+  try {
+    after(() => fn().catch((e) => console.warn("[interview] background job failed:", e?.message)));
+  } catch {
+    void fn().catch((e) => console.warn("[interview] background job failed:", e?.message));
+  }
+}
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
 export const runtime = "nodejs";
@@ -39,12 +50,13 @@ export async function POST(req: NextRequest) {
     const [ctx, user]: [any, any] = await Promise.all([gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null), User.findById(userId).select("+resumeText +resumeStructured").lean()]);
     const companyBrief = buildCompanyBrief(prep.plan, ctx);
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
-    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [] });
-    const secret = await createRealtimeClientSecret({ instructions, language });
+    const who = pickVoice();
+    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender } });
+    const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice });
 
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief,
-      mode: "voice", realtime: { model: secret.model, voice: secret.voice }, transcript: [],
+      mode: "voice", realtime: { model: secret.model, voice: secret.voice, name: who.name, gender: who.gender }, transcript: [],
     });
     return NextResponse.json({
       ok: true,
@@ -53,6 +65,7 @@ export async function POST(req: NextRequest) {
       expiresAt: secret.expiresAt,
       model: secret.model,
       voice: secret.voice,
+      interviewer: { name: who.name, gender: who.gender },
       endpoint: secret.endpoint,
       targetQuestions,
       stage,
@@ -95,7 +108,11 @@ export async function PATCH(req: NextRequest) {
   if (impression) session.impression = impression;
   session.delivery = computeDelivery(turns, session.impression);
   await session.save();
-  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery });
+  // Keep the debrief one step behind the conversation: review the new
+  // answers now; when the interviewer has said goodbye, write the whole thing.
+  const id = String(session._id);
+  background(() => (session.wrappedUp ? generateAndStoreFeedback(id) : reviewPendingAnswers(id)));
+  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery, reviews: (session.reviews || []).length });
 }
 
 const num = (v: unknown, lo: number, hi: number) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : 0);
@@ -117,5 +134,5 @@ function cleanImpression(i: any) {
 
 /** Model/voice in use (for the UI). */
 export async function GET() {
-  return NextResponse.json({ ok: true, configured: !!process.env.OPENAI_API_KEY, model: REALTIME_MODEL, voice: REALTIME_VOICE });
+  return NextResponse.json({ ok: true, configured: !!process.env.OPENAI_API_KEY, model: REALTIME_MODEL });
 }

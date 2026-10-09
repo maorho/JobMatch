@@ -21,12 +21,16 @@ type Props = {
   targetQuestions: number;
   stageTitle: string;
   company: string;
+  interviewer?: { name: string; gender: "female" | "male" };
   onEnded: (turns: VoiceTurn[], reason: "interviewer" | "candidate" | "error") => void;
 };
 
+/** If the candidate says nothing for this long after a question, the interviewer checks in. */
+const CHECK_IN_MS = 12_000;
+
 type Status = "connecting" | "live" | "ended" | "error";
 
-export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, onEnded }: Props) {
+export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, onEnded }: Props) {
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState("");
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
@@ -50,6 +54,25 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const impressionRef = useRef<VocalImpression | null>(null);
   const endedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const checkInRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkInsRef = useRef(0);
+
+  // After the interviewer stops talking, give the candidate CHECK_IN_MS; if
+  // nothing is heard, ask the model to check in / rephrase (max twice per call).
+  const armCheckIn = () => {
+    if (checkInRef.current) clearTimeout(checkInRef.current);
+    checkInRef.current = setTimeout(() => {
+      if (endedRef.current || checkInsRef.current >= 2) return;
+      checkInsRef.current++;
+      try {
+        dcRef.current?.send(JSON.stringify({ type: "response.create", response: { instructions: "The candidate has been silent for a while after your last question. Gently check in in one short sentence — offer to repeat or rephrase the question, or to move on. Do not ask a new question yet." } }));
+      } catch {}
+    }, CHECK_IN_MS);
+  };
+  const disarmCheckIn = () => {
+    if (checkInRef.current) clearTimeout(checkInRef.current);
+    checkInRef.current = null;
+  };
 
   const pushTurn = useCallback((t: VoiceTurn) => {
     turnsRef.current = [...turnsRef.current, t];
@@ -74,6 +97,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       if (endedRef.current) return;
       endedRef.current = true;
       setStatus(reason === "error" ? "error" : "ended");
+      disarmCheckIn();
       try { dcRef.current?.close(); } catch {}
       try { pcRef.current?.close(); } catch {}
       meterRef.current?.dispose();
@@ -156,6 +180,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     const type: string = ev?.type || "";
     switch (type) {
       case "input_audio_buffer.speech_started":
+        disarmCheckIn();
         speechStartRef.current = Date.now();
         meterRef.current?.start();
         setSpeaking("candidate");
@@ -172,7 +197,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
           const prosody = pendingProsodyRef.current ?? meterRef.current?.stop() ?? undefined;
           pendingProsodyRef.current = null;
           pushTurn({ role: "candidate", content: text, seconds, prosody: prosody || undefined });
-          if (turnsRef.current.length % 2 === 0) sync();
+          sync(); // every answer → the server reviews it while the interview goes on
         }
         break;
       }
@@ -182,6 +207,9 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         setSpeaking("interviewer");
         break;
       case "output_audio_buffer.stopped":
+        setSpeaking("");
+        armCheckIn();
+        break;
       case "output_audio_buffer.cleared":
         setSpeaking("");
         break;
@@ -240,14 +268,15 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
         <span className={`h-2.5 w-2.5 rounded-full ${status === "live" ? "bg-red-500 animate-pulse" : status === "connecting" ? "bg-sky" : "bg-ink-400"}`} />
         <span className="font-medium text-navy">{status === "connecting" ? "מתחבר…" : status === "live" ? `שיחה חיה · ${mm}:${ss}` : status === "ended" ? "השיחה הסתיימה" : "שגיאה"}</span>
-        <span className="jm-chip">שאלה {Math.min(Math.max(asked, 1), targetQuestions)} מתוך {targetQuestions}</span>
-        <span className="jm-muted">{stageTitle} · {company}</span>
+        <span className="jm-chip">שאלה {Math.min(Math.max(asked - 1, 1), targetQuestions)} מתוך {targetQuestions}</span>
+        <span className="jm-muted">{interviewer ? `${interviewer.name} · ` : ""}{stageTitle} · {company}</span>
       </div>
 
       <div className="grid md:grid-cols-[minmax(0,1fr)_260px] gap-0">
         {/* Interviewer presence */}
         <div className="relative bg-navy text-white min-h-[260px] flex flex-col items-center justify-center p-6 gap-4">
-          <div className={`h-28 w-28 rounded-full bg-white/10 flex items-center justify-center text-5xl transition-transform ${speaking === "interviewer" ? "scale-110 ring-4 ring-sky/60" : ""}`} aria-hidden>🧑‍💼</div>
+          <div className={`h-28 w-28 rounded-full bg-white/10 flex items-center justify-center text-5xl transition-transform ${speaking === "interviewer" ? "scale-110 ring-4 ring-sky/60" : ""}`} aria-hidden>{interviewer?.gender === "female" ? "👩‍💼" : "👨‍💼"}</div>
+          {interviewer && <div className="font-semibold">{interviewer.name}</div>}
           <div className="flex items-end gap-1 h-8" aria-hidden>
             {[0, 1, 2, 3, 4, 5, 6].map((i) => (
               <span key={i} className={`w-1.5 rounded-full bg-sky transition-all duration-150 ${speaking === "interviewer" ? "animate-pulse" : ""}`} style={{ height: speaking === "interviewer" ? `${8 + ((i * 7) % 20)}px` : "4px" }} />

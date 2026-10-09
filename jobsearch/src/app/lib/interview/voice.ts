@@ -11,8 +11,22 @@ import { buildInterviewerPrompt, END_MARK, type SimInput, type SessionTurn } fro
  * impression when it ends the call. The debrief uses both.
  */
 export const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-mini";
-export const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || "cedar";
+export const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || "";
 export const END_TOOL = "end_interview";
+/** Seconds of silence after which the interviewer reacts (follow-up or next question). */
+export const SILENCE_MS = 2500;
+
+/** A believable interviewer per call: the voice decides the name's gender. */
+export const VOICES: { voice: string; gender: "female" | "male"; names: string[] }[] = [
+  { voice: "marin", gender: "female", names: ["דנה", "נועה", "מיכל", "שירה", "יעל", "רותם"] },
+  { voice: "cedar", gender: "male", names: ["יואב", "עומר", "אלון", "רון", "אורי", "איתי"] },
+];
+export function pickVoice(seed?: number): { voice: string; gender: "female" | "male"; name: string } {
+  const r = seed ?? Math.random();
+  const forced = REALTIME_VOICE ? VOICES.find((v) => v.voice === REALTIME_VOICE) : undefined;
+  const v = forced || VOICES[Math.floor(r * VOICES.length) % VOICES.length];
+  return { voice: v.voice, gender: v.gender, name: v.names[Math.floor((r * 1000) % v.names.length)] };
+}
 
 export function buildVoiceInstructions(input: SimInput): string {
   const base = buildInterviewerPrompt(input).replace(`and append the exact token ${END_MARK} at the very end of that message.`, `and then call the ${END_TOOL} tool.`);
@@ -20,7 +34,9 @@ export function buildVoiceInstructions(input: SimInput): string {
 
 THIS IS A LIVE VOICE CALL, not text:
 - Talk like a person on a call: short sentences, natural pauses, no lists, no markdown, no headings. One question per turn, then stop and wait — never answer for the candidate.
-- If the candidate goes quiet for a while, gently check in ("Take your time" / "קח/י את הזמן") once; don't repeat the question unless asked.
+- LANGUAGE: open in Hebrew. Right after introducing yourself, ask whether they prefer to do the interview in Hebrew or English, and continue in whatever they choose (if they just start talking in a language, follow it). Technical terms stay in English either way.
+- PAUSES: you get the floor whenever the candidate is silent for about ${Math.round(SILENCE_MS / 1000)} seconds. If their answer sounded unfinished or thin, ask a short follow-up that helps them continue ("ומה יצא מזה?", "תן/י לי דוגמה"); if it was complete, acknowledge briefly and move to the next question. Never leave a silence hanging. If they stay silent after a question, check in once ("קח/י את הזמן — או שאשאל אחרת?") and offer to rephrase.
+- When they ask you something, answer it (briefly, honestly) and then wait for their reaction instead of jumping to your next question.
 - If you can't hear or understand something, say so briefly and ask them to repeat.
 - Keep each of your turns under 25 seconds of speech.
 - Listen to HOW they speak as well as what they say (confidence, energy, clarity, pace, hesitation) — you will report it at the end, never during the call.
@@ -66,8 +82,9 @@ export async function createRealtimeClientSecret(opts: { instructions: string; l
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
   const f = opts.fetchImpl || fetch;
   const model = opts.model || REALTIME_MODEL;
-  const voice = opts.voice || REALTIME_VOICE;
-  const transcription = { model: "gpt-4o-mini-transcribe", language: opts.language };
+  const voice = opts.voice || pickVoice().voice;
+  // No fixed language: the candidate picks Hebrew or English on the call.
+  const transcription = { model: "gpt-4o-mini-transcribe" };
 
   const ga = await f("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -81,7 +98,9 @@ export async function createRealtimeClientSecret(opts: { instructions: string; l
         tools: [END_TOOL_DEF],
         tool_choice: "auto",
         audio: {
-          input: { transcription, turn_detection: { type: "semantic_vad", eagerness: "medium", create_response: true, interrupt_response: true } },
+          // Server VAD with a fixed silence window: the interviewer reacts after
+          // SILENCE_MS of quiet (follow-up or next question), never sooner.
+          input: { transcription, turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: SILENCE_MS, create_response: true, interrupt_response: true } },
           output: { voice },
         },
       },
@@ -97,7 +116,7 @@ export async function createRealtimeClientSecret(opts: { instructions: string; l
   const legacy = await f("https://api.openai.com/v1/realtime/sessions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: legacyModel, voice: ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"].includes(voice) ? voice : "ash", instructions: opts.instructions, tools: [END_TOOL_DEF], tool_choice: "auto", input_audio_transcription: { model: "whisper-1", language: opts.language }, turn_detection: { type: "server_vad", silence_duration_ms: 700 } }),
+    body: JSON.stringify({ model: legacyModel, voice: ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"].includes(voice) ? voice : "ash", instructions: opts.instructions, tools: [END_TOOL_DEF], tool_choice: "auto", input_audio_transcription: { model: "whisper-1" }, turn_detection: { type: "server_vad", silence_duration_ms: SILENCE_MS } }),
   });
   if (!legacy.ok) throw new Error(`Realtime session failed: ${ga.status} ${gaErr.slice(0, 200)} / ${legacy.status} ${(await legacy.text().catch(() => "")).slice(0, 200)}`);
   const d: any = await legacy.json();
