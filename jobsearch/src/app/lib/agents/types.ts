@@ -3,7 +3,7 @@
  * types and the payload shape listed next to it. Keep this file the single
  * source of truth when adding an agent or a new kind of message.
  */
-export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier"] as const;
+export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
 /** Non-agent senders. */
@@ -39,6 +39,12 @@ export type Payloads = {
   "catalog.sweep": { staleDays?: number };
   /** Matcher → Applier: postings that cleared the user's auto-apply bar. */
   "apply.request": { userId: string; jobs: { jobId: string; jobModel: "Job" | "ExternalJobs"; score: number; title: string; company: string }[]; trigger: "new_postings" | "resume_updated" | "manual" };
+  /** Writer: pick `count` timely topics and write them. */
+  "content.plan": { count: number; publish?: boolean };
+  /** Writer: write one article. */
+  "content.request": { topic: string; angle?: string; audience?: string; publish?: boolean };
+  /** Writer → Notifier: an article is drafted/published. */
+  "content.ready": { articleId: string; slug: string; title: string; status: "draft" | "published"; words: number };
   /** Applier → Notifier: what happened with the auto-applications. */
   "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number };
 };
@@ -60,6 +66,9 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "catalog.sweep": "janitor",
   "apply.request": "applier",
   "apply.report": "notifier",
+  "content.plan": "writer",
+  "content.request": "writer",
+  "content.ready": "notifier",
 };
 
 export type BusMessage<T extends MessageType = MessageType> = {

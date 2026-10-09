@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "./components/LayoutWrapper";
+import { siteUrl } from "./lib/seo/site";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -11,8 +12,15 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: { default: "JobMatch", template: "%s · JobMatch" },
-  description: "AI job search: fresh openings, resume matching and interview prep.",
+  metadataBase: new URL(siteUrl()),
+  title: { default: "JobMatch — משרות הייטק בישראל עם התאמה אישית", template: "%s · JobMatch" },
+  description: "4,000+ משרות הייטק חיות מ-120+ חברות בישראל, מותאמות לקורות החיים שלך: התאמה חכמה, הכנה לראיון, הפניות והגשה אוטומטית. חינם.",
+  applicationName: "JobMatch",
+  keywords: ["משרות הייטק", "משרות ג'וניור", "חיפוש עבודה", "קורות חיים", "הכנה לראיון", "tech jobs Israel", "junior developer jobs"],
+  openGraph: { type: "website", siteName: "JobMatch", locale: "he_IL", url: siteUrl(), images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
+  twitter: { card: "summary_large_image" },
+  robots: { index: true, follow: true },
+  alternates: { canonical: "/" },
 };
 
 export const viewport: Viewport = {

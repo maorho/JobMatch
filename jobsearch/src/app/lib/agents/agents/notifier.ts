@@ -1,6 +1,7 @@
 import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
-import { notify } from "@/app/lib/notifications/notify";
+import { notify, notifyMany } from "@/app/lib/notifications/notify";
+import User from "@/app/models/User";
 import { runJobMatchDigest } from "@/app/lib/notifications/digest";
 
 const STAGE_TITLES: Record<string, string> = {
@@ -13,9 +14,21 @@ export const notifierAgent = registerAgent({
   name: "notifier",
   title: "Notifier",
   description: "The only agent that talks to people: turns what the others found into in-app notifications.",
-  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report"],
+  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready"],
   async handle(msg) {
     switch (msg.type) {
+      case "content.ready": {
+        const p = msg.payload as Payloads["content.ready"];
+        const admins: any[] = await User.find({ admin: true }).select("_id").limit(20).lean();
+        await notifyMany(admins.map((a) => String(a._id)), {
+          type: "system",
+          title: p.status === "published" ? `מאמר חדש פורסם: ${p.title}` : `טיוטת מאמר מחכה לאישור: ${p.title}`,
+          body: `${p.words} מילים · /Articels/${p.slug}`,
+          link: "/AdminDashboard/articles",
+          meta: { agent: "writer", articleId: p.articleId },
+        });
+        return `Told ${admins.length} admin${admins.length === 1 ? "" : "s"} about "${p.title}".`;
+      }
       case "apply.report": {
         const p = msg.payload as Payloads["apply.report"];
         if (p.submitted.length) {

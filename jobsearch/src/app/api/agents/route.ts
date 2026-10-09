@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
 const STARTABLE: Record<string, { type: MessageType; payload: () => any; title: string; says: string }> = {
   "catalog.refresh": { type: "catalog.refresh", payload: () => ({ since: new Date().toISOString() }), title: "Catalog refresh", says: "Scout — time to poll every source." },
   "catalog.sweep": { type: "catalog.sweep", payload: () => ({}), title: "Stale-job sweep", says: "Janitor — anything unseen for two weeks goes." },
+  "content.plan": { type: "content.plan", payload: () => ({ count: 1 }), title: "Write an article", says: "Writer — one new article, your pick of topic." },
   "digest": { type: "jobs.embedded", payload: () => ({ since: new Date().toISOString(), embedded: 0, remaining: 0 }), title: "Match digest", says: "Notifier — run the match digest now." },
 };
 

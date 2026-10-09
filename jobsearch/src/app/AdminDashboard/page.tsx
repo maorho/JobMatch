@@ -248,9 +248,14 @@ function EmployerDashboard() {
           <p className="text-sm sm:text-base text-white/80">
             Review your company&apos;s positions and approve recruiters.
           </p>
-          <Link href="/AdminDashboard/agents" className="jm-btn jm-btn-accent w-fit">
-            🤖 Agent team
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/AdminDashboard/agents" className="jm-btn jm-btn-accent w-fit">
+              🤖 Agent team
+            </Link>
+            <Link href="/AdminDashboard/articles" className="jm-btn jm-btn-secondary w-fit">
+              ✍️ Articles
+            </Link>
+          </div>
         </div>
       </section>
 

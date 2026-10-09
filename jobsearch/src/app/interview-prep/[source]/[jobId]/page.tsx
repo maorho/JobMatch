@@ -16,9 +16,23 @@ type Plan = {
   checklist: string[];
 };
 type Prep = { prepId: string; job: { title: string; company: string }; plan: Plan; cached: boolean };
-type Turn = { role: "user" | "assistant"; content: string };
+type Turn = { role: "interviewer" | "candidate"; content: string };
+type Feedback = {
+  overallScore: number;
+  verdict: string;
+  summary: string;
+  dimensions: { name: string; score: number; notes: string }[];
+  strengths: string[];
+  improvements: string[];
+  answerReviews: { question: string; answerSummary: string; score: number; whatWorked: string; betterAnswer: string }[];
+  nextSteps: string[];
+};
+type Session = { sessionId: string; stage: string; status: string; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null };
+type SessionRow = { sessionId: string; stage: string; status: string; asked: number; targetQuestions: number; overallScore: number | null; verdict: string; startedAt: string };
 
 const STAGE_ICON: Record<string, string> = { hr: "☎️", technical: "💻", home_assignment: "🏠", system_design: "🧩", behavioral: "🤝", final: "🏁" };
+const bulletList = "list-disc ps-5 space-y-1.5 text-ink-600 leading-relaxed";
+const scoreColor = (s: number, max = 100) => ((s / max) >= 0.7 ? "bg-teal" : (s / max) >= 0.5 ? "bg-sky" : "bg-red-500");
 
 export default function InterviewPrepPage() {
   const { source, jobId } = useParams() as { source: string; jobId: string };
@@ -27,12 +41,14 @@ export default function InterviewPrepPage() {
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [error, setError] = useState("");
   const [stageKey, setStageKey] = useState<string>("");
-  const [tab, setTab] = useState<"plan" | "practice">("plan");
+  const [tab, setTab] = useState<"plan" | "interview">("plan");
 
-  // Practice chat (per stage, kept client-side).
-  const [turns, setTurns] = useState<Record<string, Turn[]>>({});
+  // Mock interview
+  const [session, setSession] = useState<Session | null>(null);
+  const [history, setHistory] = useState<SessionRow[]>([]);
+  const [questions, setQuestions] = useState(6);
   const [answer, setAnswer] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const generate = async (force = false) => {
@@ -53,7 +69,6 @@ export default function InterviewPrepPage() {
 
   useEffect(() => {
     if (!user || state !== "idle") return;
-    // Cached plan first; generate only if there is none.
     fetch(`/api/interview/prep?jobId=${jobId}&source=${source}`).then(async (r) => {
       if (r.ok) {
         const data = await r.json();
@@ -64,210 +79,328 @@ export default function InterviewPrepPage() {
     });
   }, [user, jobId, source, state]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [turns, stageKey, tab]);
+  const loadHistory = async (prepId: string) => {
+    const r = await fetch(`/api/interview/session?prepId=${prepId}`, { cache: "no-store" });
+    if (r.ok) setHistory((await r.json()).sessions);
+  };
+  useEffect(() => {
+    if (prep?.prepId) loadHistory(prep.prepId);
+  }, [prep?.prepId]);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [session?.transcript.length, busy]);
 
   const stage = prep?.plan.stages.find((s) => s.key === stageKey) || prep?.plan.stages[0];
-  const chat = turns[stageKey] || [];
 
-  const practice = async (userText?: string) => {
-    if (!prep || busy) return;
-    const next: Turn[] = userText ? [...chat, { role: "user", content: userText }] : chat;
-    setTurns((t) => ({ ...t, [stageKey]: next }));
-    setAnswer("");
-    setBusy(true);
+  const call = async (url: string, method: string, body: object) => {
+    const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error || "משהו השתבש");
+    return d;
+  };
+
+  const start = async () => {
+    if (!prep) return;
+    setBusy("start");
+    setError("");
     try {
-      const res = await fetch("/api/interview/practice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prepId: prep.prepId, stage: stageKey, transcript: next, language: "he" }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "התרגול נכשל");
-      setTurns((t) => ({ ...t, [stageKey]: [...next, { role: "assistant", content: data.reply }] }));
+      const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
+      setSession(d.session);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy("");
+    }
+  };
+  const send = async () => {
+    if (!session || !answer.trim()) return;
+    const text = answer.trim();
+    setAnswer("");
+    setBusy("turn");
+    setSession((s) => s && { ...s, transcript: [...s.transcript, { role: "candidate", content: text }] });
+    try {
+      const d = await call("/api/interview/session", "PATCH", { sessionId: session.sessionId, answer: text });
+      setSession(d.session);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  const finish = async () => {
+    if (!session) return;
+    setBusy("finish");
+    try {
+      const d = await call("/api/interview/session/finish", "POST", { sessionId: session.sessionId });
+      setSession((s) => s && { ...s, status: "finished", feedback: d.feedback });
+      if (prep) loadHistory(prep.prepId);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  const openSession = async (id: string) => {
+    const r = await fetch(`/api/interview/session?sessionId=${id}`, { cache: "no-store" });
+    if (r.ok) {
+      setSession((await r.json()).session);
+      setTab("interview");
     }
   };
 
-  if (userLoading) {
-    return (
-      <div className="jm-page" dir="rtl">
-        <Spinner label="טוען…" />
-      </div>
-    );
-  }
+  if (userLoading) return <div className="jm-page" dir="rtl"><Spinner label="טוען…" /></div>;
   if (!user) {
     return (
       <div className="jm-page" dir="rtl">
-        <EmptyState
-          icon="🔒"
-          title="צריך להתחבר כדי להתכונן לראיון."
-          action={<Link href="/Login" className="jm-btn jm-btn-primary">התחברות</Link>}
-        />
+        <EmptyState icon="🔒" title="צריך להתחבר" text="ההכנה לראיון נבנית מקורות החיים שלך." action={<Link href="/Login" className="jm-btn jm-btn-primary">התחברות</Link>} />
       </div>
     );
   }
 
-  const sectionTitle = "jm-h2 mb-2";
-  const bulletList = "list-disc ps-5 text-sm text-ink-600 space-y-1 marker:text-teal";
-
   return (
     <div className="jm-page" dir="rtl">
-      {/* Header card */}
-      <section className="jm-card p-5 sm:p-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <Link href={`/job/${source}/${jobId}`} className="text-sm font-medium text-sky hover:underline">← חזרה למשרה</Link>
-          <h1 className="jm-title mt-2">הכנה לראיון</h1>
-          {prep && <p className="jm-subtitle">{prep.job.title} · {prep.job.company}</p>}
-        </div>
-        {state === "ready" && (
-          <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm shrink-0">צור תוכנית מחדש</button>
-        )}
-      </section>
-
-      {state === "loading" && (
-        <div className="jm-card p-8 sm:p-12 text-center flex flex-col items-center gap-3">
-          <span className="h-8 w-8 rounded-full border-2 border-teal border-t-transparent animate-spin" aria-hidden />
-          <div className="jm-h2">הסוכן אוסף מידע על התפקיד והחברה ובונה לך תוכנית הכנה…</div>
-          <p className="jm-muted">תיאור המשרה · משרות נוספות של החברה · אתר החברה · קורות החיים שלך (כ-30–60 שניות)</p>
-        </div>
-      )}
+      {state === "loading" && <Spinner label="הסוכן אוסף מידע על החברה ובונה את התוכנית…" />}
       {state === "error" && (
-        <p className="jm-alert jm-alert-err" role="alert">
-          ⚠️ {error} <button onClick={() => generate()} className="font-medium underline">נסה שוב</button>
-        </p>
+        <div className="jm-alert jm-alert-err flex flex-wrap items-center justify-between gap-2">
+          <span>{error}</span>
+          <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">נסה שוב</button>
+        </div>
       )}
 
       {state === "ready" && prep && stage && (
-        <div className="space-y-6">
-          {/* Company + role */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-            <div className="jm-card p-5 sm:p-6">
-              <h2 className={sectionTitle}>על החברה</h2>
-              <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{prep.plan.company.summary || prep.plan.company.whatTheyDo}</p>
-              {prep.plan.company.techStack.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {prep.plan.company.techStack.map((t) => <span key={t} className="jm-chip">{t}</span>)}
-                </div>
-              )}
-              {prep.plan.company.cultureHints.length > 0 && (
-                <ul className={`${bulletList} mt-3`}>{prep.plan.company.cultureHints.map((c, i) => <li key={i} dir="auto">{c}</li>)}</ul>
-              )}
+        <div className="space-y-5">
+          <section className="jm-card p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wider text-teal mb-1">הכנה לראיון</div>
+                <h1 className="jm-title">{prep.job.title}</h1>
+                <p className="jm-subtitle">{prep.job.company}{prep.plan.company.whatTheyDo ? ` · ${prep.plan.company.whatTheyDo}` : ""}</p>
+              </div>
+              <div className="flex gap-2">
+                <Link href={`/job/${source}/${jobId}`} className="jm-btn jm-btn-ghost jm-btn-sm">← למשרה</Link>
+                <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">צור תוכנית מחדש</button>
+              </div>
             </div>
-            <div className="jm-card p-5 sm:p-6">
-              <h2 className={sectionTitle}>על התפקיד</h2>
-              <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{prep.plan.roleSummary}</p>
-              {prep.plan.gaps.length > 0 && (
-                <>
-                  <h3 className="font-medium text-navy mt-4 mb-2">פערים לסגור לפני הראיון</h3>
-                  <ul className="space-y-2">
-                    {prep.plan.gaps.map((g, i) => (
-                      <li key={i} className="text-sm rounded-control bg-amber-50 border border-amber-200 p-3" dir="auto">
-                        <div className="font-medium text-amber-800">{g.topic}</div>
-                        <div className="text-amber-900/80">{g.whyItMatters}</div>
-                        {g.studyPlan && <div className="text-ink-600 mt-1">📚 {g.studyPlan}</div>}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
+            {prep.plan.company.summary && <p className="mt-4 text-ink-600 leading-relaxed" dir="auto">{prep.plan.company.summary}</p>}
+            {prep.plan.company.techStack.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">{prep.plan.company.techStack.map((t) => <span key={t} className="jm-chip">{t}</span>)}</div>
+            )}
           </section>
 
-          {/* Stages */}
-          <div className="space-y-3">
-            <div className="flex gap-2 overflow-x-auto jm-scroll pb-1 -mx-1 px-1">
-              {prep.plan.stages.map((s, i) => (
-                <button
-                  key={s.key}
-                  onClick={() => setStageKey(s.key)}
-                  aria-pressed={stageKey === s.key}
-                  className={`shrink-0 cursor-pointer transition-colors ${stageKey === s.key ? "jm-chip jm-chip-navy" : "jm-chip hover:border-navy/40"}`}
-                >
-                  {i + 1}. {STAGE_ICON[s.key] ?? "•"} {s.title}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-2 overflow-x-auto jm-scroll pb-1 flex-1 min-w-0">
+              {prep.plan.stages.map((s) => (
+                <button key={s.key} onClick={() => { setStageKey(s.key); if (session && !session.feedback) setSession(null); }} aria-pressed={stageKey === s.key} className={`shrink-0 cursor-pointer transition-colors ${stageKey === s.key ? "jm-chip jm-chip-navy" : "jm-chip hover:border-navy/40"}`}>
+                  {STAGE_ICON[s.key] ?? "•"} {s.title}
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setTab("plan")} aria-pressed={tab === "plan"} className={`jm-btn jm-btn-sm ${tab === "plan" ? "jm-btn-accent" : "jm-btn-secondary"}`}>שאלות וטיפים</button>
-              <button onClick={() => setTab("practice")} aria-pressed={tab === "practice"} className={`jm-btn jm-btn-sm ${tab === "practice" ? "jm-btn-accent" : "jm-btn-secondary"}`}>תרגול ראיון</button>
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => setTab("plan")} aria-pressed={tab === "plan"} className={`jm-btn jm-btn-sm ${tab === "plan" ? "jm-btn-accent" : "jm-btn-secondary"}`}>תוכנית</button>
+              <button onClick={() => setTab("interview")} aria-pressed={tab === "interview"} className={`jm-btn jm-btn-sm ${tab === "interview" ? "jm-btn-accent" : "jm-btn-secondary"}`}>🎙️ ראיון מדומה</button>
             </div>
           </div>
 
           {tab === "plan" ? (
-            <section className="jm-card p-5 sm:p-6 space-y-5">
-              <div>
-                <h2 className="jm-h2">{stage.title}</h2>
-                <p className="text-sm text-ink-600 mt-1" dir="auto">{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
-              </div>
-              <ul className="space-y-3">
-                {stage.likelyQuestions.map((q, i) => (
-                  <li key={i}>
-                    <details className="group rounded-control border border-line bg-surface p-4 open:bg-canvas transition-colors">
-                      <summary className="cursor-pointer flex items-start gap-3 font-medium text-navy" dir="auto">
-                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy text-white text-xs font-semibold">{i + 1}</span>
-                        <span className="min-w-0 flex-1">{q.question}</span>
-                      </summary>
-                      <div className="mt-3 ps-9 space-y-2 text-sm text-ink-600">
-                        {q.whyAsked && <p dir="auto"><span className="font-medium text-navy">למה שואלים: </span>{q.whyAsked}</p>}
-                        {q.howToAnswer && <p dir="auto"><span className="font-medium text-navy">איך לענות: </span>{q.howToAnswer}</p>}
-                        {q.sampleAnswer && <p dir="auto" className="rounded-control bg-teal-50 border border-teal/20 p-3"><span className="font-medium text-navy">תשובה לדוגמה: </span>{q.sampleAnswer}</p>}
-                      </div>
-                    </details>
-                  </li>
-                ))}
-              </ul>
-              {stage.tips.length > 0 && (
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+              <section className="jm-card p-5 sm:p-6 space-y-5">
                 <div>
-                  <h3 className="font-medium text-navy mb-2">טיפים לשלב הזה</h3>
-                  <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
+                  <h2 className="jm-h2">{stage.title}</h2>
+                  <p className="text-sm text-ink-600 mt-1" dir="auto">{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
                 </div>
-              )}
-            </section>
-          ) : (
-            <section className="jm-card overflow-hidden flex flex-col">
-              <div className="p-4 border-b border-line text-sm text-ink-600">
-                ראיון מדומה לשלב <span className="font-medium text-navy">{stage.title}</span>: המראיין שואל שאלה אחת בכל פעם ונותן משוב על כל תשובה.
-              </div>
-              <div className="jm-scroll flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] max-h-[60vh]">
-                {chat.length === 0 && !busy && (
-                  <button onClick={() => practice()} className="jm-btn jm-btn-primary">התחל תרגול</button>
-                )}
-                {chat.map((t, i) => (
-                  <div key={i} className={`flex ${t.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div
-                      dir="auto"
-                      className={`max-w-[85%] px-4 py-2.5 text-sm sm:text-base whitespace-pre-line break-words ${
-                        t.role === "user"
-                          ? "bg-navy text-white rounded-2xl rounded-ee-sm"
-                          : "bg-canvas border border-line text-ink rounded-2xl rounded-es-sm"
-                      }`}
-                    >
-                      {t.content}
-                    </div>
+                <ol className="space-y-3">
+                  {stage.likelyQuestions.map((q, i) => (
+                    <li key={i} className="rounded-control border border-line p-4">
+                      <div className="font-semibold text-navy" dir="auto">{i + 1}. {q.question}</div>
+                      {q.whyAsked && <p className="text-xs text-ink-400 mt-1" dir="auto">למה שואלים: {q.whyAsked}</p>}
+                      {q.howToAnswer && <p className="text-sm text-ink-600 mt-2 leading-relaxed" dir="auto">{q.howToAnswer}</p>}
+                      {q.sampleAnswer && (
+                        <details className="mt-2">
+                          <summary className="text-sm text-teal cursor-pointer">תשובה לדוגמה</summary>
+                          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{q.sampleAnswer}</p>
+                        </details>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+                {stage.tips.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-navy mb-2">טיפים לשלב</h3>
+                    <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
                   </div>
-                ))}
-                {busy && <div className="text-sm text-ink-400 italic">המראיין חושב…</div>}
-                <div ref={bottomRef} />
-              </div>
-              {chat.length > 0 && (
-                <form onSubmit={(e) => { e.preventDefault(); if (answer.trim()) practice(answer.trim()); }} className="p-3 border-t border-line flex flex-col sm:flex-row gap-2 sm:items-end">
-                  <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} rows={2} placeholder="התשובה שלך…" className="jm-input flex-1 resize-y" dir="auto" />
-                  <button type="submit" disabled={busy || !answer.trim()} className="jm-btn jm-btn-primary">שלח</button>
-                </form>
-              )}
-            </section>
-          )}
+                )}
+              </section>
+              <aside className="space-y-4">
+                {prep.plan.gaps.length > 0 && (
+                  <section className="jm-card p-5">
+                    <h3 className="jm-h2 mb-2">פערים לסגור</h3>
+                    <ul className="space-y-2">
+                      {prep.plan.gaps.map((g, i) => (
+                        <li key={i} className="text-sm" dir="auto">
+                          <span className="font-medium text-navy">{g.topic}</span>
+                          {g.whyItMatters && <span className="text-ink-600"> — {g.whyItMatters}</span>}
+                          {g.studyPlan && <p className="text-xs text-ink-400 mt-0.5">{g.studyPlan}</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                {prep.plan.questionsToAsk.length > 0 && (
+                  <section className="jm-card p-5">
+                    <h3 className="jm-h2 mb-2">שאלות שכדאי לשאול</h3>
+                    <ul className={bulletList + " text-sm"}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
+                  </section>
+                )}
+                {prep.plan.checklist.length > 0 && (
+                  <section className="jm-card p-5">
+                    <h3 className="jm-h2 mb-2">צ׳קליסט</h3>
+                    <ul className="space-y-1.5 text-sm">{prep.plan.checklist.map((c, i) => <li key={i} className="flex items-start gap-2" dir="auto"><input type="checkbox" className="mt-1 accent-teal" />{c}</li>)}</ul>
+                  </section>
+                )}
+              </aside>
+            </div>
+          ) : (
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_300px] gap-5 items-start">
+              <section className="jm-card overflow-hidden flex flex-col">
+                {!session ? (
+                  <div className="p-6 space-y-4">
+                    <h2 className="jm-h2">ראיון {stage.title} ב-{prep.job.company}</h2>
+                    <p className="text-sm text-ink-600 leading-relaxed">
+                      המראיין/ת מכיר/ה את החברה, את התפקיד ואת קורות החיים שלך, ומנהל/ת שיחה כמו בראיון אמיתי: שאלה אחת בכל פעם, שאלות המשך, ובלי רמזים.
+                      <span className="font-medium text-navy"> המשוב המלא — ציון, חוזקות, מה לשפר ותשובות טובות יותר — מגיע רק בסיום.</span>
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <label>
+                        <span className="jm-label">מספר שאלות</span>
+                        <select value={questions} onChange={(e) => setQuestions(Number(e.target.value))} className="jm-input jm-select w-32">
+                          {[4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </label>
+                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : "🎙️ התחל ראיון"}</button>
+                    </div>
+                    {error && <div className="jm-alert jm-alert-err">{error}</div>}
+                  </div>
+                ) : session.feedback ? (
+                  <FeedbackView fb={session.feedback} onNew={() => setSession(null)} stageTitle={stage.title} />
+                ) : (
+                  <>
+                    <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-medium text-navy">{STAGE_ICON[session.stage]} ראיון {stage.title}</span>
+                      <span className="jm-chip">שאלה {Math.min(session.asked, session.targetQuestions)} מתוך {session.targetQuestions}</span>
+                      <button onClick={finish} disabled={busy !== "" || session.transcript.filter((t) => t.role === "candidate").length === 0} className="jm-btn jm-btn-secondary jm-btn-sm ms-auto">
+                        {busy === "finish" ? "כותב משוב…" : session.wrappedUp ? "קבל משוב" : "סיים ראיון וקבל משוב"}
+                      </button>
+                    </div>
+                    <div className="jm-scroll flex-1 overflow-y-auto p-4 space-y-3 min-h-[260px] max-h-[60vh]">
+                      {session.transcript.map((t, i) => (
+                        <div key={i} className={`flex ${t.role === "candidate" ? "justify-end" : "justify-start"}`}>
+                          <div dir="auto" className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-line ${t.role === "candidate" ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line rounded-2xl rounded-es-sm"}`}>
+                            {t.content}
+                          </div>
+                        </div>
+                      ))}
+                      {busy === "turn" && <div className="jm-muted flex items-center gap-2"><span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" /> המראיין/ת חושב/ת…</div>}
+                      {session.wrappedUp && !session.feedback && (
+                        <div className="jm-alert jm-alert-info">הראיון הסתיים. לחץ/י על “קבל משוב” כדי לראות את הניתוח המלא.</div>
+                      )}
+                      <div ref={bottomRef} />
+                    </div>
+                    {!session.wrappedUp && (
+                      <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex flex-col sm:flex-row gap-2">
+                        <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} rows={2} placeholder="ענה/י כמו בראיון אמיתי… (Ctrl+Enter לשליחה)" className="jm-input flex-1" dir="auto" disabled={busy !== ""} />
+                        <button type="submit" disabled={busy !== "" || !answer.trim()} className="jm-btn jm-btn-primary">שלח</button>
+                      </form>
+                    )}
+                    {error && <div className="m-3 jm-alert jm-alert-err">{error}</div>}
+                  </>
+                )}
+              </section>
 
-          {/* Questions to ask + checklist */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-            <div className="jm-card p-5 sm:p-6">
-              <h2 className={sectionTitle}>שאלות שכדאי לך לשאול</h2>
-              <ul className={bulletList}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
+              <aside className="jm-card p-4 space-y-2">
+                <h3 className="jm-h2 text-base">ראיונות קודמים</h3>
+                {history.length === 0 && <p className="jm-muted">עדיין לא תרגלת. הציונים יישמרו כאן.</p>}
+                {history.map((h) => (
+                  <button key={h.sessionId} onClick={() => openSession(h.sessionId)} className="w-full text-start rounded-xl border border-line px-3 py-2 hover:bg-canvas">
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="font-medium text-navy">{STAGE_ICON[h.stage]} {prep.plan.stages.find((s) => s.key === h.stage)?.title || h.stage}</span>
+                      {h.overallScore !== null ? <span className={`jm-chip ${h.overallScore >= 70 ? "jm-chip-teal" : "jm-chip-sky"}`}>{h.overallScore}</span> : <span className="jm-chip">{h.status === "active" ? "פתוח" : "ללא משוב"}</span>}
+                    </div>
+                    <div className="jm-muted text-xs" dir="ltr">{new Date(h.startedAt).toLocaleString("he-IL")} · {h.asked}/{h.targetQuestions}</div>
+                  </button>
+                ))}
+              </aside>
             </div>
-            <div className="jm-card p-5 sm:p-6">
-              <h2 className={sectionTitle}>צ&apos;קליסט לפני הראיון</h2>
-              <ul className="space-y-1.5 text-sm text-ink-600">{prep.plan.checklist.map((c, i) => <li key={i} dir="auto">☐ {c}</li>)}</ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FeedbackView({ fb, onNew, stageTitle }: { fb: Feedback; onNew: () => void; stageTitle: string }) {
+  return (
+    <div className="p-5 sm:p-6 space-y-6">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className={`h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold text-white ${scoreColor(fb.overallScore)}`}>{fb.overallScore}</div>
+        <div className="min-w-0 flex-1">
+          <h2 className="jm-h2">משוב על ראיון ה{stageTitle}</h2>
+          {fb.verdict && <div className="text-sm font-medium text-navy mt-0.5" dir="auto">{fb.verdict}</div>}
+          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{fb.summary}</p>
+        </div>
+        <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">ראיון חדש</button>
+      </div>
+
+      {fb.dimensions.length > 0 && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {fb.dimensions.map((d, i) => (
+            <div key={i} className="rounded-control border border-line p-3">
+              <div className="flex items-center justify-between text-sm"><span className="font-medium text-navy" dir="auto">{d.name}</span><span className="jm-muted">{d.score}/10</span></div>
+              <div className="h-2 rounded-full bg-line mt-2 overflow-hidden"><div className={`h-full ${scoreColor(d.score, 10)}`} style={{ width: `${d.score * 10}%` }} /></div>
+              {d.notes && <p className="text-xs text-ink-600 mt-2 leading-relaxed" dir="auto">{d.notes}</p>}
             </div>
-          </section>
+          ))}
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="rounded-control bg-teal-50 border border-teal/20 p-4">
+          <h3 className="font-semibold text-teal-600 mb-2">מה עבד</h3>
+          <ul className={bulletList + " text-sm"}>{fb.strengths.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
+        </div>
+        <div className="rounded-control bg-sky-50 border border-sky/20 p-4">
+          <h3 className="font-semibold text-sky-600 mb-2">מה לשפר</h3>
+          <ul className={bulletList + " text-sm"}>{fb.improvements.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
+        </div>
+      </div>
+
+      {fb.answerReviews.length > 0 && (
+        <div>
+          <h3 className="jm-h2 mb-3">שאלה-שאלה</h3>
+          <ol className="space-y-3">
+            {fb.answerReviews.map((r, i) => (
+              <li key={i} className="rounded-control border border-line p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="font-semibold text-navy" dir="auto">{i + 1}. {r.question}</div>
+                  <span className={`jm-chip shrink-0 ${r.score >= 7 ? "jm-chip-teal" : r.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{r.score}/10</span>
+                </div>
+                {r.answerSummary && <p className="text-xs text-ink-400 mt-1" dir="auto">ענית: {r.answerSummary}</p>}
+                {r.whatWorked && <p className="text-sm text-ink-600 mt-2" dir="auto">{r.whatWorked}</p>}
+                {r.betterAnswer && (
+                  <details className="mt-2">
+                    <summary className="text-sm text-teal cursor-pointer">תשובה חזקה יותר (בקול שלך)</summary>
+                    <p className="text-sm text-ink-600 mt-1 leading-relaxed whitespace-pre-line" dir="auto">{r.betterAnswer}</p>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {fb.nextSteps.length > 0 && (
+        <div>
+          <h3 className="jm-h2 mb-2">מה לעשות לפני הראיון האמיתי</h3>
+          <ul className={bulletList + " text-sm"}>{fb.nextSteps.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
         </div>
       )}
     </div>

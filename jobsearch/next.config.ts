@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/chat/download-resume": ["./src/app/lib/fonts/**"],
   },
+  // Friendly URLs for the (historically misspelled) articles route.
+  async redirects() {
+    return [
+      { source: "/articles", destination: "/Articels", permanent: true },
+      { source: "/articles/:slug", destination: "/Articels/:slug", permanent: true },
+      { source: "/jobs", destination: "/", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

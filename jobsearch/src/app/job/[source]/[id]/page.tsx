@@ -1,89 +1,47 @@
-"use client";
-
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import JobDescription from "@/app/components/JobDescription";
-import { getExternalJobById } from "@/app/lib/Externaljobs";
-import { Spinner } from "@/app/components/ui";
+import { loadJob } from "@/app/lib/jobs/loadJob";
+import { jobPostingJsonLd, breadcrumbJsonLd } from "@/app/lib/seo/jsonld";
+import { excerpt } from "@/app/lib/seo/site";
 
-export default function JobPage() {
-  const { source, id } = useParams() as { source: string; id: string };
+export const dynamic = "force-dynamic";
 
-  const [job, setJob] = useState<any>(null);
-  const [error, setError] = useState("");
+type Params = Promise<{ source: string; id: string }>;
 
-  useEffect(() => {
-    let cancelled = false;
+const companyName = (job: any) => (job?.source === "internal" ? job?.company?.companyName : job?.company) || "";
 
-    async function fetchJob() {
-      try {
-        if (source === "internal") {
-          const res = await fetch(
-            `/api/jobsDashboard/getJobDetails?jobId=${id}`,
-            { cache: "no-store" }
-          );
-          const data = await res.json();
-          if (!cancelled) {
-            if (res.ok) {
-              // ⬅️ הוספת source כדי isInternalJob יעבוד נכון
-              setJob({ ...data, source: "internal" });
-            } else {
-              setError(data.message || "Job not found");
-            }
-          }
-          return;
-        }
+/** Server-rendered so crawlers get the title, description and JobPosting data; the interactive parts stay client-side. */
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { source, id } = await params;
+  const job = await loadJob(source, id);
+  if (!job) return { title: "Job not found", robots: { index: false } };
+  const company = companyName(job);
+  const where = [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ");
+  const title = `${job.job} — ${company}${where ? ` (${where})` : ""}`;
+  const description = excerpt(job.description || `${job.job} at ${company}.`, 160);
+  return {
+    title,
+    description,
+    alternates: { canonical: `/job/${source}/${id}` },
+    openGraph: { title, description, type: "article", url: `/job/${source}/${id}` },
+    robots: { index: true, follow: true },
+  };
+}
 
-        if (source === "external") {
-          // נסה cache מקומי קודם
-          const cached = getExternalJobById(id);
-          if (cached && !cancelled) {
-            setJob({ ...cached, source: "external" }); // ⬅️ הוספת source פה גם
-            return;
-          }
-
-          // נפילה לשרת
-          const res = await fetch(
-            `/api/jobsDashboard/getExternalJobDetails?jobId=${id}`,
-            { cache: "no-store" }
-          );
-          const data = await res.json();
-          if (!cancelled) {
-            if (res.ok) {
-              setJob({ ...data, source: "external" }); // ⬅️ הוספת source
-            } else {
-              setError(data.message || "External job not found");
-            }
-          }
-          return;
-        }
-
-        if (!cancelled) setError("Invalid job source");
-      } catch {
-        if (!cancelled) setError("Failed to fetch job details");
-      }
-    }
-
-    fetchJob();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, source]);
-
-  if (error)
-    return (
-      <div className="jm-page">
-        <div className="jm-alert jm-alert-err" role="alert">
-          {error}
-        </div>
-      </div>
-    );
-  if (!job)
-    return (
-      <div className="jm-page">
-        <Spinner label="Loading..." />
-      </div>
-    );
-
-  return <JobDescription job={job} />;
+export default async function JobPage({ params }: { params: Params }) {
+  const { source, id } = await params;
+  const job = await loadJob(source, id);
+  if (!job) notFound();
+  const company = companyName(job);
+  const jsonLd = [
+    jobPostingJsonLd({ ...job, _id: String(job._id), source: job.source, company }),
+    breadcrumbJsonLd([{ name: "Jobs", path: "/" }, { name: company, path: `/?company=${encodeURIComponent(company)}` }, { name: job.job, path: `/job/${source}/${id}` }]),
+  ];
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <JobDescription job={job} />
+    </>
+  );
 }
