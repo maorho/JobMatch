@@ -10,13 +10,14 @@ export const dynamic = "force-dynamic";
 
 // Values come normalized from the location agent; this is the safety net for
 // anything not yet normalized (multi-location strings, addresses, "Unknown").
-const JUNK = /;|\||•|\d{2,}|\b(st\.|street|floor|suite)\b/i;
-const clean = (values: unknown[]): string[] =>
+const JUNK = /;|\||•|\b(st\.|street|floor|suite)\b/i;
+const ADDRESS_NUMBERS = /\d{2,}/; // street numbers / zip codes in location strings — not for company names (Team8, "Company 12")
+const clean = (values: unknown[], opts: { location?: boolean } = {}): string[] =>
   Array.from(
     new Set(
       values
         .map((v) => (typeof v === "string" ? v.trim() : ""))
-        .filter((v) => v && v !== "Unknown" && v !== "Remote" && v.length <= 40 && !JUNK.test(v))
+        .filter((v) => v && v !== "Unknown" && v !== "Remote" && v.length <= 40 && !JUNK.test(v) && !(opts.location && ADDRESS_NUMBERS.test(v)))
     )
   ).sort((a, b) => a.localeCompare(b));
 
@@ -45,8 +46,8 @@ export async function GET() {
 
     const res = NextResponse.json({
       companies: clean([...extCompanies, ...internalCompanies]),
-      cities: clean([...extCities, ...internalCities]),
-      countries: clean([...extCountries, ...internalCountries]),
+      cities: clean([...extCities, ...internalCities], { location: true }),
+      countries: clean([...extCountries, ...internalCountries], { location: true }),
       jobTypes: [...WORK_MODES],
       seniority: [...SENIORITY_LEVELS],
     });

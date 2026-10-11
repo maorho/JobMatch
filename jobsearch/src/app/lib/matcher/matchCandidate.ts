@@ -1,10 +1,8 @@
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
 import { embedText } from "./embeddings";
-import { cosineSimilarity, toMatchScore } from "./cosine";
 import { buildCandidateText } from "./text";
-import { getCandidateVector } from "./candidateProfile";
+import { rankJobs, rankForUser, type RankedJob } from "./hybrid";
 
 export type MatchedJob = {
   _id: string;
@@ -16,8 +14,11 @@ export type MatchedJob = {
   companyDomain?: string;
   applyUrl?: string;
   postedAt?: Date;
-  matchScore: number; // 0-100 (heuristic)
+  matchScore: number; // 0-100: reranker fit when available, else cosine heuristic adjusted for level
   cosine: number;
+  why?: string;
+  gaps?: string[];
+  reranked?: boolean;
 };
 
 type MatchOptions = {
@@ -26,56 +27,14 @@ type MatchOptions = {
   minScore?: number; // filter by match score
 };
 
-// In-app cosine scales fine into the low thousands; cap the working set so a
-// single request can't blow up memory. Migrate to Atlas Vector Search before
-// this cap starts dropping relevant jobs.
-const MAX_JOBS = 5000;
-
-/** Rank jobs by semantic similarity to a candidate embedding. */
-export async function matchByVector(
-  candidateVec: number[],
-  opts: MatchOptions = {}
-): Promise<MatchedJob[]> {
-  await connectToDatabase();
-
-  const limit = opts.limit ?? 20;
-  const skip = opts.skip ?? 0;
-  const minScore = opts.minScore ?? 0;
-
+/** Rank jobs by semantic similarity to a candidate embedding (Atlas vector search, level-agnostic). */
+export async function matchByVector(candidateVec: number[], opts: MatchOptions = {}): Promise<MatchedJob[]> {
   if (!candidateVec || candidateVec.length === 0) return [];
-
-  const jobs = await ExternalJobs.find({ embedding: { $exists: true } })
-    .select(
-      "+embedding job company city country logoUrl companyDomain applyUrl postedAt"
-    )
-    .sort({ postedAt: -1 })
-    .limit(MAX_JOBS)
-    .lean();
-
-  const scored: MatchedJob[] = [];
-  for (const j of jobs as any[]) {
-    if (!Array.isArray(j.embedding)) continue;
-    const cosine = cosineSimilarity(candidateVec, j.embedding);
-    const matchScore = toMatchScore(cosine);
-    if (matchScore < minScore) continue;
-    scored.push({
-      _id: String(j._id),
-      job: j.job,
-      company: j.company,
-      city: j.city,
-      country: j.country,
-      logoUrl: j.logoUrl,
-      companyDomain: j.companyDomain,
-      applyUrl: j.applyUrl,
-      postedAt: j.postedAt,
-      matchScore,
-      cosine,
-    });
-  }
-
-  scored.sort((a, b) => b.cosine - a.cosine);
-  return scored.slice(skip, skip + limit);
+  const { jobs } = await rankJobs({ vector: candidateVec, level: "mid", resumeSummary: "", resumeVersion: 0 }, { limit: opts.limit ?? 20, skip: opts.skip ?? 0, minScore: opts.minScore, rerank: false });
+  return jobs.map(toMatched);
 }
+
+const toMatched = (r: RankedJob): MatchedJob => ({ _id: r._id, job: r.job, company: r.company, city: r.city, country: r.country, logoUrl: r.logoUrl, companyDomain: r.companyDomain, applyUrl: r.applyUrl, postedAt: r.postedAt, matchScore: r.matchScore, cosine: r.cosine, why: r.why, gaps: r.gaps, reranked: r.reranked });
 
 /** Embed a free-text profile and match (ResumeAI flow, before a profile exists). */
 export async function matchByText(
@@ -87,14 +46,10 @@ export async function matchByText(
   return matchByVector(vec, opts);
 }
 
-/** Match jobs for a signed-in user using their stored (or freshly built) vector. */
-export async function matchForUser(
-  userId: string,
-  opts: MatchOptions = {}
-): Promise<MatchedJob[]> {
-  const vec = await getCandidateVector(userId);
-  if (!vec) return [];
-  return matchByVector(vec, opts);
+/** Match jobs for a signed-in user: vector recall + level fit (+ LLM rerank on page 1 when `rerank`). */
+export async function matchForUser(userId: string, opts: MatchOptions & { rerank?: boolean; query?: string } = {}): Promise<MatchedJob[]> {
+  const { jobs } = await rankForUser(userId, { limit: opts.limit ?? 20, skip: opts.skip ?? 0, minScore: opts.minScore, rerank: opts.rerank ?? false, query: opts.query });
+  return jobs.map(toMatched);
 }
 
 /** Build the candidate text from a user's profile, then match (legacy helper). */

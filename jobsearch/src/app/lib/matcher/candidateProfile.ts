@@ -2,6 +2,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import { embedText } from "./embeddings";
 import { buildCandidateText } from "./text";
+import { inferCandidateLevel } from "./level";
 
 /**
  * Build the candidate's profile text (résumé + memory), embed it, and store the
@@ -21,7 +22,7 @@ export async function embedAndStoreResume(
   const vec = await embedText(text);
   await User.updateOne(
     { _id: userId },
-    { $set: { resumeText: (resumeText || "").slice(0, 20000), embedding: vec } }
+    { $set: { resumeText: (resumeText || "").slice(0, 20000), embedding: vec, level: inferCandidateLevel(resumeText || "", (user as any).currentJob || "") } }
   );
   return vec;
 }

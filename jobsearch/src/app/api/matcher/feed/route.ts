@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
-import { matchForUser } from "@/app/lib/matcher/matchCandidate";
+import { rankForUser } from "@/app/lib/matcher/hybrid";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,17 +26,13 @@ export async function GET(req: NextRequest) {
   const skip = (page - 1) * limit;
 
   try {
-    const matches = await matchForUser(userId, { limit, skip });
+    // Page 1 gets the LLM rerank (cached per résumé version); later pages are vector + level only.
+    const { jobs: matches, total } = await rankForUser(userId, { limit, skip, rerank: page === 1 });
 
     if (matches.length === 0 && page === 1) {
       // No profile vector (or no embedded jobs) → let the client use the normal feed.
       return NextResponse.json({ personalized: false, jobs: [] });
     }
-
-    await connectToDatabase();
-    const total = await ExternalJobs.countDocuments({
-      embedding: { $exists: true },
-    });
 
     const jobs = matches.map((m) => ({
       ...m,

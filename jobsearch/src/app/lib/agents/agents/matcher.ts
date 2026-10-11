@@ -36,7 +36,7 @@ export const matcherAgent = registerAgent({
           `${embedded} postings now have vectors${remaining ? ` (${remaining} left for the next tick)` : ""}. Notifier — tell people about their new matches.`
         );
         // Opted-in candidates: anything new that clears their bar goes to the Applier.
-        const picks = await autoApplyCandidatesSince(new Date(p.since), (u, j) => toMatchScore(cosineSimilarity(u, j)));
+        const picks = await autoApplyCandidatesSince(new Date(p.since));
         for (const [userId, jobs] of picks) {
           await ctx.send("apply.request", { userId, jobs, trigger: "new_postings" }, `Applier — ${jobs.length} new posting${jobs.length === 1 ? "" : "s"} clear this candidate's auto-apply bar (best ${jobs[0].score}%).`);
         }
@@ -45,7 +45,7 @@ export const matcherAgent = registerAgent({
 
       case "resume.updated": {
         const { userId } = msg.payload as Payloads["resume.updated"];
-        const matches = await matchForUser(userId, { limit: TOP_N, minScore: MIN_SCORE });
+        const matches = await matchForUser(userId, { limit: TOP_N, minScore: MIN_SCORE, rerank: true });
         if (!matches.length) return "No postings score above the bar for this résumé yet.";
         const top = matches.map((m) => ({ jobId: String(m._id), title: m.job, company: m.company, score: m.matchScore }));
         await ctx.send("candidate.matched", { userId, top }, `Top ${top.length} for this résumé: ${top.map((t) => `${t.title} @ ${t.company} (${t.score}%)`).join("; ")}. Notifier — let them know.`);

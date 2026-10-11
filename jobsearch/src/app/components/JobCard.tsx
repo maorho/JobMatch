@@ -73,11 +73,15 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         {level && <span className={`jm-chip ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{level}</span>}
       </div>
 
-      {job.description && (
+      {(job as any).why ? (
+        <p className="text-sm text-teal-600 leading-relaxed line-clamp-2" dir="auto" title={(job as any).why}>
+          ✓ {(job as any).why}
+        </p>
+      ) : job.description ? (
         <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir="auto">
           {job.description}
         </p>
-      )}
+      ) : null}
 
       {skills.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

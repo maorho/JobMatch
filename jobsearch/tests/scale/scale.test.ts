@@ -88,7 +88,7 @@ describe(`search at ${N} postings`, () => {
   it("facets over 300 companies and 6 cities", async () => {
     const [body, ms] = await timed("facets", () => facetsGET().then((r) => r.json()));
     expect(body.companies).toHaveLength(300);
-    expect(body.cities).toHaveLength(CITIES.length);
+    expect(body.cities).toHaveLength(CITIES.filter((c) => c !== "Remote").length); // "Remote" is a work mode, not a city facet
     expect(ms).toBeLessThan(5000);
   });
 });

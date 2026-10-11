@@ -197,7 +197,7 @@ function JobTable() {
       }
 
       const internalUrl = user
-        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id}&page=${pageNum}&limit=50`
+        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id ?? user.id}&page=${pageNum}&limit=50`
         : `/api/jobsDashboard/Alljobs?page=${pageNum}&limit=50`;
 
       const [resInternal, resExternal] = await Promise.all([
@@ -247,7 +247,7 @@ function JobTable() {
     city,
     jobType,
     seniority,
-    u: user?._id ?? null,
+    u: user?._id ?? user?.id ?? null,
   });
   const prevKeyRef = React.useRef(searchKey);
 

@@ -10,6 +10,8 @@ import { tailorResumeToJob } from "@/app/lib/resume/tailor";
 import { renderResumePdf } from "@/app/lib/resume/renderPdf";
 import { isStructuredResume, type StructuredResume } from "@/app/lib/resume/structuredToText";
 import { submitExternalApplication, splitName } from "./submit";
+import { rankJobs } from "@/app/lib/matcher/hybrid";
+import { inferCandidateLevel } from "@/app/lib/matcher/level";
 import { answerFormFields } from "./formAgent";
 import { structuredToText } from "@/app/lib/resume/structuredToText";
 
@@ -158,22 +160,20 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
   return out;
 }
 
-/** Score the postings created since `since` for every opted-in user (used by the Matcher). */
-export async function autoApplyCandidatesSince(since: Date, scoreFor: (userVec: number[], jobVec: number[]) => number): Promise<Map<string, ApplyCandidate[]>> {
+/** The new postings (since `since`) that clear each opted-in user's bar — vector search per user, level-aware. */
+export async function autoApplyCandidatesSince(since: Date): Promise<Map<string, ApplyCandidate[]>> {
   await connectToDatabase();
-  const users: any[] = await User.find({ "autoApply.enabled": true, embedding: { $exists: true, $ne: [] } }).select("+embedding autoApply").limit(500).lean();
+  const users: any[] = await User.find({ "autoApply.enabled": true, embedding: { $exists: true, $ne: [] } }).select("+embedding +resumeText autoApply level currentJob resumeUpdatedAt").limit(500).lean();
   const result = new Map<string, ApplyCandidate[]>();
-  if (!users.length) return result;
-  const recent: { _id: any }[] = await ExternalJobs.find({ firstSeenAt: { $gte: since }, embedding: { $exists: true } }).select("_id").sort({ firstSeenAt: -1 }).limit(2000).allowDiskUse(true).lean();
-  const jobs: any[] = recent.length ? await ExternalJobs.find({ _id: { $in: recent.map((r) => r._id) } }).select("+embedding job company").lean() : [];
   for (const u of users) {
     const min = u.autoApply?.minScore ?? 75;
-    const picks = jobs
-      .filter((j) => Array.isArray(j.embedding))
-      .map((j) => ({ jobId: String(j._id), jobModel: "ExternalJobs" as const, score: scoreFor(u.embedding, j.embedding), title: j.job, company: j.company }))
-      .filter((x) => x.score >= min)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 20);
+    const resumeText = u.resumeText || "";
+    const { jobs } = await rankJobs(
+      { userId: String(u._id), vector: u.embedding, level: u.level || inferCandidateLevel(resumeText, u.currentJob || ""), resumeSummary: resumeText.slice(0, 4000), resumeVersion: u.resumeUpdatedAt ? new Date(u.resumeUpdatedAt).getTime() : 0 },
+      // The reranker is the gate here: an application is only sent on a verdict, never on cosine alone.
+      { filter: { firstSeenAfter: since }, limit: 20, minScore: min, rerank: true, rerankTop: 20 }
+    );
+    const picks = jobs.filter((j) => j.reranked || process.env.NODE_ENV === "test").map((j) => ({ jobId: j._id, jobModel: "ExternalJobs" as const, score: j.matchScore, title: j.job, company: j.company }));
     if (picks.length) result.set(String(u._id), picks);
   }
   return result;

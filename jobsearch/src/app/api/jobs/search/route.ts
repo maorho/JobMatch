@@ -5,6 +5,9 @@ import Company from "@/app/models/Company";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
+import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
+import { levelFit } from "@/app/lib/matcher/level";
+import User from "@/app/models/User";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import {
   INTERN_RE,
@@ -111,6 +114,14 @@ export async function GET(req: NextRequest) {
 
     // ---------- external (ATS) postings: the bulk, paginated ----------
     const extAnd: object[] = [];
+    // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
+    // falls back to the every-word regex when Atlas Search isn't available.
+    let rankedIds: string[] | null = null;
+    if (q) {
+      const hits = await textSearch(q, { limit: 600, filter: { company, city, country } }).catch(() => []);
+      // Only trust the ranking when it came from Atlas Search; the regex fallback is just a prefilter.
+      if (hits.length && isAtlasSearchAvailable()) rankedIds = hits.map((h) => h._id);
+    }
     const extText = textMatch(["job", "description", "company", "city", "country"]);
     if (extText) extAnd.push(extText);
     if (company.length) extAnd.push({ company: { $in: company } });
@@ -158,26 +169,42 @@ export async function GET(req: NextRequest) {
     // Personalisation: only pull embeddings when we can actually score.
     const userId = await getUserIdFromRequest(req).catch(() => null);
     let vector: number[] | null = null;
+    let level: "junior" | "mid" | "senior" = "mid";
     if (userId) {
-      vector = await getCandidateVector(userId).catch(() => null);
+      const [v, u]: [number[] | null, any] = await Promise.all([getCandidateVector(userId).catch(() => null), User.findById(userId).select("level").lean()]);
+      vector = v;
+      if (u?.level) level = u.level;
     }
 
     let pageQuery = ExternalJobs.find(extFilter);
     if (vector) pageQuery = pageQuery.select("+embedding");
-    const [externalTotal, externalDocs] = await Promise.all([
-      ExternalJobs.countDocuments(extFilter),
-      pageQuery.sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
-    ]);
+    const rankPos = rankedIds ? new Map(rankedIds.map((id, i) => [id, i])) : null;
+    let externalTotal = 0;
+    let externalDocs: any[] = [];
+    // The total always counts the whole catalog (every-word match); relevance
+    // order covers the first 600 hits, deeper pages continue newest-first.
+    externalTotal = await ExternalJobs.countDocuments(extFilter);
+    if (rankPos && skip < rankedIds!.length) {
+      // Relevance order: the page's ids first (cheap, ids only, honouring the other filters), then just those documents.
+      const matchingIds: any[] = await ExternalJobs.find({ ...extFilter, _id: { $in: rankedIds } }).select("_id").lean();
+      const ordered = matchingIds.map((d) => String(d._id)).sort((a, b) => (rankPos.get(a) ?? 1e9) - (rankPos.get(b) ?? 1e9));
+      const pageIds = ordered.slice(skip, skip + limit);
+      const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: pageIds } }).select("+embedding") : ExternalJobs.find({ _id: { $in: pageIds } })).lean();
+      const pos = new Map(pageIds.map((id, i) => [id, i]));
+      externalDocs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
+    } else {
+      externalDocs = await pageQuery.sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean();
+    }
 
     let external = externalDocs.map((d: any) => {
       const { embedding, ...rest } = d;
       const matchScore =
         vector && Array.isArray(embedding) && embedding.length
-          ? toMatchScore(cosineSimilarity(vector, embedding))
+          ? Math.round(toMatchScore(cosineSimilarity(vector, embedding)) * (0.55 + 0.45 * levelFit(level, d.job, d.seniority)))
           : undefined;
       return { ...rest, ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
     });
-    if (vector) {
+    if (vector && !rankPos) {
       external = external.sort(
         (a: any, b: any) => (b.matchScore ?? -1) - (a.matchScore ?? -1)
       );

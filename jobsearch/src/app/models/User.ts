@@ -34,6 +34,7 @@ export interface IUser extends Document {
   resumeScore?: number;
   resumeIssues?: string[];
   resumeUpdatedAt?: Date;
+  level?: "junior" | "mid" | "senior";
   lastMatchDigestAt?: Date;
   gmail?: {
     address?: string;
@@ -92,6 +93,8 @@ const UserSchema = new Schema<IUser>(
     resumeScore: { type: Number, default: undefined },
     resumeIssues: { type: [String], default: undefined },
     resumeUpdatedAt: { type: Date, default: undefined },
+    /** Inferred seniority (junior | mid | senior) — drives level-aware matching. */
+    level: { type: String, enum: ["junior", "mid", "senior"], default: undefined },
     // Last time the daily "new matching jobs" digest ran for this user.
     lastMatchDigestAt: { type: Date, default: undefined },
 

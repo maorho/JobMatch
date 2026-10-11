@@ -45,8 +45,8 @@ export default function ResumeAIPage() {
         const res = await fetch("/api/auth/me");
         if (!res.ok) return;
         const data = await res.json();
-        if (data?.user?._id) {
-          setUserId(data.user._id);
+        if (data?.user?._id || data?.user?.id || data?.id) {
+          setUserId(data.user?._id ?? data.user?.id ?? data.id);
         }
       } catch (err) {
         console.error("❌ failed to load me:", err);
