@@ -13,6 +13,7 @@ import { researchToText } from "@/app/lib/interview/companyResearch";
 import { buildVoiceInstructions, pickVoice, END_TOOL_DEF, SILENCE_MS, REALTIME_MODEL } from "@/app/lib/interview/voice";
 import { phoneConfigured, toE164, placeCall, endCall } from "@/app/lib/interview/phone";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { loadCoachMemory, memoryToText } from "@/app/lib/interview/coachMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const who = pickVoice();
-    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language: "he", targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender } }) + "\n\nTHIS IS A PHONE CALL: audio quality is lower — speak a little slower and clearer, confirm when you didn't catch something.";
+    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language: "he", targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined }) + "\n\nTHIS IS A PHONE CALL: audio quality is lower — speak a little slower and clearer, confirm when you didn't catch something.";
 
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language: "he", targetQuestions, companyBrief,

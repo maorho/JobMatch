@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
 import { EmptyState, Spinner } from "../../../components/ui";
 import VoiceInterview, { type VoiceTurn } from "../../../components/VoiceInterview";
+import ProgressCard from "../../../components/ProgressCard";
 
 type Question = { question: string; whyAsked: string; howToAnswer: string; sampleAnswer?: string };
 type Stage = { key: string; title: string; description: string; durationHint?: string; likelyQuestions: Question[]; tips: string[] };
@@ -22,6 +23,7 @@ type Delivery = { answers: number; totalSpeakingSeconds: number; avgAnswerSecond
 type Feedback = {
   overallScore: number;
   delivery?: { score: number; notes: string };
+  progress?: { note: string; improved: string[]; stillOpen: string[] };
   verdict: string;
   summary: string;
   dimensions: { name: string; score: number; notes: string }[];
@@ -410,7 +412,9 @@ export default function InterviewPrepPage() {
                 )}
               </section>
 
-              <aside className="jm-card p-4 space-y-2">
+              <aside className="space-y-4">
+               <ProgressCard refreshKey={history.length} />
+               <div className="jm-card p-4 space-y-2">
                 <h3 className="jm-h2 text-base">ראיונות קודמים</h3>
                 {history.length === 0 && <p className="jm-muted">עדיין לא תרגלת. הציונים יישמרו כאן.</p>}
                 {history.map((h) => (
@@ -422,6 +426,7 @@ export default function InterviewPrepPage() {
                     <div className="jm-muted text-xs" dir="ltr">{new Date(h.startedAt).toLocaleString("he-IL")} · {h.asked}/{h.targetQuestions}</div>
                   </button>
                 ))}
+               </div>
               </aside>
             </div>
           )}
@@ -446,6 +451,17 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
         </div>
         <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">ראיון חדש</button>
       </div>
+
+      {fb.progress?.note && (
+        <div className="rounded-control border border-teal/30 bg-teal-50 p-4 space-y-2">
+          <h3 className="font-semibold text-teal-600">📈 לעומת הראיונות הקודמים</h3>
+          <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{fb.progress.note}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {fb.progress.improved.map((t, i) => <span key={`i${i}`} className="jm-chip jm-chip-teal">↑ {t}</span>)}
+            {fb.progress.stillOpen.map((t, i) => <span key={`o${i}`} className="jm-chip jm-chip-sky">עדיין: {t}</span>)}
+          </div>
+        </div>
+      )}
 
       {(fb.delivery || (tone && tone.measuredAnswers > 0) || imp) && (
         <div className="rounded-control border border-line p-4 space-y-3">

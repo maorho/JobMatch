@@ -5,6 +5,7 @@ import InterviewSession from "@/app/models/InterviewSession";
 import { finalFeedback, reviewAnswer, type AnswerReview, type SessionTurn, type InterviewFeedback } from "./simulator";
 import { computeDelivery, describeDelivery } from "./voice";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { loadCoachMemory, memoryToText, rebuildCoachMemory } from "./coachMemory";
 
 /**
  * Background work that makes the debrief instant: while the interview runs,
@@ -98,8 +99,11 @@ export async function generateAndStoreFeedback(sessionId: string, opts: { force?
     delivery = computeDelivery(claimed.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody })), fresh?.impression);
     deliveryNote = describeDelivery(delivery, language);
   }
-  const feedback = await finalFeedback({ plan: prep.plan, stage: claimed.stage, job: { title: claimed.jobTitle, company: claimed.company }, companyBrief: claimed.companyBrief, resumeText, language, transcript, deliveryNote, priorReviews: priorReviews.length ? priorReviews : undefined });
+  const memory = await loadCoachMemory(String(claimed.userId));
+  const feedback = await finalFeedback({ plan: prep.plan, stage: claimed.stage, job: { title: claimed.jobTitle, company: claimed.company }, companyBrief: claimed.companyBrief, resumeText, language, transcript, deliveryNote, priorReviews: priorReviews.length ? priorReviews : undefined, coachMemory: memoryToText(memory) || undefined });
   await InterviewSession.updateOne({ _id: sessionId }, { $set: { feedback, status: "finished", wrappedUp: true, finishedAt: new Date(), language, ...(delivery ? { delivery } : {}) } });
+  // The coach remembers this one from now on.
+  await rebuildCoachMemory(String(claimed.userId)).catch((e) => console.warn("[coachMemory] rebuild skipped:", (e as Error)?.message));
   return feedback;
 }
 

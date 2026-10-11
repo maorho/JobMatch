@@ -11,6 +11,7 @@ import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
 import { buildCompanyBrief, interviewerTurn, type SessionTurn } from "@/app/lib/interview/simulator";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { loadCoachMemory, memoryToText } from "@/app/lib/interview/coachMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,7 +84,8 @@ export async function POST(req: NextRequest) {
     const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
     const resumeText = await resumeTextFor(userId);
     const job = { title: prep.jobTitle, company: prep.company };
-    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [] });
+    const coachMemory = memoryToText(await loadCoachMemory(userId)) || undefined;
+    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [], coachMemory });
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief,
       transcript: [{ role: "interviewer", content: first.message }],
@@ -116,7 +118,7 @@ export async function PATCH(req: NextRequest) {
     session.transcript.push({ role: "candidate", content: answer });
     const transcript: SessionTurn[] = session.transcript.map((t: any) => ({ role: t.role, content: t.content }));
     const resumeText = await resumeTextFor(userId);
-    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript });
+    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined });
     session.transcript.push({ role: "interviewer", content: turn.message });
     if (turn.done) session.wrappedUp = true;
     await session.save();

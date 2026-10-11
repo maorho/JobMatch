@@ -35,6 +35,7 @@ export interface IUser extends Document {
   resumeIssues?: string[];
   resumeUpdatedAt?: Date;
   level?: "junior" | "mid" | "senior";
+  coachMemory?: unknown;
   lastMatchDigestAt?: Date;
   gmail?: {
     address?: string;
@@ -93,6 +94,8 @@ const UserSchema = new Schema<IUser>(
     resumeScore: { type: Number, default: undefined },
     resumeIssues: { type: [String], default: undefined },
     resumeUpdatedAt: { type: Date, default: undefined },
+    /** The coach's memory across mock interviews (lib/interview/coachMemory.ts). */
+    coachMemory: { type: mongoose.Schema.Types.Mixed, default: undefined },
     /** Inferred seniority (junior | mid | senior) — drives level-aware matching. */
     level: { type: String, enum: ["junior", "mid", "senior"], default: undefined },
     // Last time the daily "new matching jobs" digest ran for this user.

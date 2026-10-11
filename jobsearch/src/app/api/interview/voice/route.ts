@@ -23,6 +23,7 @@ function background(fn: () => Promise<unknown>) {
   }
 }
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { loadCoachMemory, memoryToText } from "@/app/lib/interview/coachMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const who = pickVoice();
-    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender } });
+    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined });
     const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice });
 
     const session = await InterviewSession.create({
