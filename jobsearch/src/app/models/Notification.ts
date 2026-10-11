@@ -11,6 +11,7 @@ export const NOTIFICATION_TYPES = [
   "new_message", // new chat message
   "job_match", // new postings that match my résumé
   "system",
+  "referral", // insiders network: a request for a referral, or the insider's answer
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

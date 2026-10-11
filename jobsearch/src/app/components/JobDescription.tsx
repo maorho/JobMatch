@@ -9,6 +9,7 @@ import CompanyLogo from "./CompanyLogo";
 import DescriptionBlocks from "./DescriptionBlocks";
 import TailorResumePanel from "./TailorResumePanel";
 import ReferralsCard from "./ReferralsCard";
+import InsidersCard from "./InsidersCard";
 import FitCard from "./FitCard";
 import { IUser } from "../models/User";
 import dayjs from "dayjs";
@@ -256,6 +257,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         {(showAboutCompany || (user && jobKey)) && (
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto jm-scroll">
             {user && jobKey && !internal && <FitCard jobId={String(job._id ?? job.id)} />}
+            {user && jobKey && companyName && <InsidersCard company={companyName} jobId={String(job._id ?? job.id)} jobModel={internal ? "Job" : "ExternalJobs"} matchScore={typeof (job as any).matchScore === "number" ? (job as any).matchScore : null} />}
             {user && jobKey && companyName && (
               <ReferralsCard company={companyName} jobId={String(job._id ?? job.id)} source={internal ? "internal" : "external"} jobUrl={job?.finalUrl || job?.url} />
             )}

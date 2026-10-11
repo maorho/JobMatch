@@ -7,6 +7,8 @@ import ContactsCard from "../components/ContactsCard";
 import AutoApplyCard from "../components/AutoApplyCard";
 import McpCard from "../components/McpCard";
 import PartnerCard from "../components/PartnerCard";
+import ChannelsCard from "../components/ChannelsCard";
+import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string };
@@ -135,6 +137,16 @@ export default function SettingsPage() {
           ) : (
             <p className="jm-muted">לא מוגדר בסביבה הזו (נדרשים GOOGLE_CLIENT_ID ו-TOKEN_ENCRYPTION_KEY).</p>
           )}
+        </div>
+
+        <div id="messaging" className={card}>
+          <h2 className="jm-h2">💬 התאמות ועדכונים בוואטסאפ / טלגרם</h2>
+          <ChannelsCard />
+        </div>
+
+        <div id="insider" className={card}>
+          <h2 className="jm-h2">🧑‍💻 אני עובד/ת בחברת הייטק: להיות ממליץ/ה מבפנים</h2>
+          <InsiderCard />
         </div>
 
         <div id="contacts" className={card}>

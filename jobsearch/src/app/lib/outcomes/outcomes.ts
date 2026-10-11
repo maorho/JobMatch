@@ -10,6 +10,7 @@ import User from "@/app/models/User";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { inferCandidateLevel, levelFit, type CandidateLevel } from "@/app/lib/matcher/level";
+import { hasInsiderReferral } from "@/app/lib/referrals/hasReferral";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 
@@ -71,7 +72,7 @@ export async function snapshotFeatures(userId: string, jobId: string, jobModel: 
   const cached: any = user ? await MatchCache.findOne({ userId, jobId, resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0 }).select("fit").lean() : null;
   const blended = cosine !== null && lf !== null ? Math.round(toMatchScore(cosine) * (0.55 + 0.45 * lf)) : null;
   const posted = job?.postedAt || job?.firstSeenAt || job?.createdAt;
-  const hasReferral = company ? (await contactsAtCompany(userId, company, 1).catch(() => [])).length > 0 : false;
+  const hasReferral = company ? (await hasInsiderReferral(userId, company).catch(() => false)) || (await contactsAtCompany(userId, company, 1).catch(() => [])).length > 0 : false;
   const seniority = Array.isArray(job?.seniority) ? job.seniority[0] || "" : job?.seniority || "";
   return {
     company,
