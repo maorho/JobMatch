@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const FLOWS = ["catalog.refresh", "catalog.sweep", "content.plan"] as const;
+const FLOWS = ["catalog.refresh", "catalog.sweep", "content.plan", "outcomes.ask"] as const;
 
 /**
  * The agents' heartbeat (cron, cron_secret). Drains the bus for up to
@@ -31,6 +31,8 @@ export async function GET(req: NextRequest) {
     } else if (flow === "content.plan") {
       const count = Math.min(parseInt(sp.get("count") ?? "", 10) || 1, 5);
       runId = (await startFlow("content.plan", { count }, { from: "cron", startedBy: "cron", title: "Weekly articles", says: `Writer — ${count} new article${count === 1 ? "" : "s"} for this week, please.` })).runId;
+    } else if (flow === "outcomes.ask") {
+      runId = (await startFlow("outcomes.ask", {}, { from: "cron", startedBy: "cron", title: "Outcome loop", says: "Tracker — who should we ask about their applications and interviews today?" })).runId;
     } else if (flow) {
       return NextResponse.json({ error: `Unknown flow "${flow}"` }, { status: 400 });
     }

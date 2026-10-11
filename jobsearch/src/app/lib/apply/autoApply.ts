@@ -4,6 +4,7 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import Candidates from "@/app/models/Candidates";
+import { ensureOutcome } from "@/app/lib/outcomes/outcomes";
 import AutoApplication from "@/app/models/AutoApplication";
 import { notify } from "@/app/lib/notifications/notify";
 import { tailorResumeToJob } from "@/app/lib/resume/tailor";
@@ -85,8 +86,9 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       AutoApplication.create({ userId, jobId: c.jobId, jobModel: c.jobModel, jobTitle: c.title, company: c.company, score: c.score, status, ...extra }).catch(() => null);
 
     if (c.jobModel === "Job") {
-      await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "Job", status: "Submitted Resume" });
+      const created = await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "Job", status: "Submitted Resume" });
       await record("submitted", { ats: "jobmatch" });
+      await ensureOutcome(userId, String(created._id), { score: c.score, autoApplied: !deps.explicit });
       usedToday++;
       out.submitted.push({ jobId: c.jobId, title: c.title, company: c.company, score: c.score });
       // Tell the publisher, like a manual application does.
@@ -149,8 +151,9 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       r = { ...r, reason: `The form asks for: ${unanswered.join(", ")}.` };
     }
     if (r.status === "submitted") {
-      await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "ExternalJobs", status: "Submitted Resume" });
+      const created = await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "ExternalJobs", status: "Submitted Resume" });
       await record("submitted", { url, ats: r.mode === "agent" ? `${r.ats} (agent)` : r.ats, note: r.confirmation || "", resumeStructured: resume });
+      await ensureOutcome(userId, String(created._id), { score: c.score, autoApplied: !deps.explicit });
       usedToday++;
       out.submitted.push({ jobId: c.jobId, title: c.title, company: c.company, score: c.score });
     } else if (r.status === "needs_user") {

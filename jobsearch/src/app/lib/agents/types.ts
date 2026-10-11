@@ -49,6 +49,10 @@ export type Payloads = {
   "content.request": { topic: string; angle?: string; audience?: string; publish?: boolean };
   /** Writer → Notifier: an article is drafted/published. */
   "content.ready": { articleId: string; slug: string; title: string; status: "draft" | "published"; words: number };
+  /** Tracker (cron): close the outcome loop — expire silent applications, find who to ask. */
+  "outcomes.ask": { limit?: number };
+  /** Tracker → Notifier: ask this candidate about their applications / interviews. */
+  "outcome.prompt": { userId: string; replies: { applicationId: string; title: string; company: string; daysAgo: number }[]; questions: { applicationId: string; title: string; company: string; stage: string }[] };
   /** Applier → Notifier: what happened with the auto-applications. */
   "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number };
 };
@@ -71,6 +75,8 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "prep.ready": "notifier",
   "catalog.sweep": "janitor",
   "apply.request": "applier",
+  "outcomes.ask": "tracker",
+  "outcome.prompt": "notifier",
   "apply.report": "notifier",
   "content.plan": "writer",
   "content.request": "writer",

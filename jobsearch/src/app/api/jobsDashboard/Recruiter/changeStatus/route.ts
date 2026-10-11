@@ -5,6 +5,7 @@ import { requireRecruiterOrAdmin } from "@/app/lib/authGuard";
 import { notify } from "@/app/lib/notifications/notify";
 import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
+import { recordStatusChange } from "@/app/lib/outcomes/outcomes";
 
 export async function PUT(req: NextRequest) {
   try {
@@ -54,6 +55,10 @@ export async function PUT(req: NextRequest) {
     }
 
     const result = await Candidates.bulkWrite(updates);
+
+    // Outcome loop: a recruiter's decision is ground truth for the likelihood model.
+    const changed: any[] = await Candidates.find({ jobId, candidateId: { $in: updates.map((u) => u.updateOne.filter.candidateId) } }).select("_id candidateId status").lean();
+    await Promise.all(changed.map((c) => recordStatusChange(String(c.candidateId), String(c._id), c.status, "recruiter")));
 
     // Tell each candidate their application moved (best-effort, in parallel).
     await Promise.all(

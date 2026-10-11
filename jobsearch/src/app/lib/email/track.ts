@@ -6,6 +6,7 @@ import Company from "@/app/models/Company";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import ApplicationEvent from "@/app/models/ApplicationEvent";
 import { notify } from "@/app/lib/notifications/notify";
+import { recordStatusChange } from "@/app/lib/outcomes/outcomes";
 import { open } from "@/app/lib/crypto/secretBox";
 import { refreshAccessToken, listApplicationMessages, type GmailMessage } from "./gmail";
 import { classifyEmails, type EmailClassification, APPLICATION_STATUSES } from "./classify";
@@ -106,6 +107,7 @@ export async function syncUserEmails(userId: string, deps: SyncDeps = {}): Promi
         await Candidates.updateOne({ _id: app._id }, { $set: { status } });
         app.status = status;
         applied = true;
+        await recordStatusChange(userId, app._id, status, "email");
         result.updated++;
         const change: ApplicationChange = { userId, applicationId: app._id, jobId: app.jobId, jobModel: app.jobModel, status, title: app.title, company: app.company };
         result.changes.push(change);

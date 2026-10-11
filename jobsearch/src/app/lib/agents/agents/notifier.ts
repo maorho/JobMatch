@@ -14,9 +14,32 @@ export const notifierAgent = registerAgent({
   name: "notifier",
   title: "Notifier",
   description: "The only agent that talks to people: turns what the others found into in-app notifications.",
-  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready"],
+  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready", "outcome.prompt"],
   async handle(msg) {
     switch (msg.type) {
+      case "outcome.prompt": {
+        const p = msg.payload as Payloads["outcome.prompt"];
+        const STAGE: Record<string, string> = { hr: "שיחת ה-HR", technical: "הראיון הטכני", final: "הראיון הסופי" };
+        if (p.replies.length) {
+          await notify(p.userId, {
+            type: "application_status",
+            title: p.replies.length === 1 ? `קיבלת תשובה מ-${p.replies[0].company}?` : `קיבלת תשובה? ${p.replies.length} הגשות מחכות לעדכון`,
+            body: p.replies.map((r) => `${r.title} · ${r.company} — לפני ${r.daysAgo} ימים`).join("\n"),
+            link: "/Dashboard#outcomes",
+            meta: { agent: "tracker", applicationIds: p.replies.map((r) => r.applicationId) },
+          });
+        }
+        if (p.questions.length) {
+          await notify(p.userId, {
+            type: "system",
+            title: p.questions.length === 1 ? `מה שאלו אותך ב${STAGE[p.questions[0].stage] || "ראיון"} ב-${p.questions[0].company}?` : `מה שאלו אותך? ${p.questions.length} ראיונות לתעד`,
+            body: "דקה אחת של תיעוד — והשאלות האמיתיות יחכו לך (ולאחרים) בהכנה הבאה.",
+            link: "/Dashboard#outcomes",
+            meta: { agent: "tracker", applicationIds: p.questions.map((q) => q.applicationId) },
+          });
+        }
+        return `Asked about ${p.replies.length} application${p.replies.length === 1 ? "" : "s"} and ${p.questions.length} interview${p.questions.length === 1 ? "" : "s"}.`;
+      }
       case "content.ready": {
         const p = msg.payload as Payloads["content.ready"];
         const admins: any[] = await User.find({ admin: true }).select("_id").limit(20).lean();

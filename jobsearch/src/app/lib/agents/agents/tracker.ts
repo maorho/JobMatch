@@ -1,13 +1,32 @@
 import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
 import { syncUserEmails } from "@/app/lib/email/track";
+import { expireUnanswered, usersWithDuePrompts, duePrompts, markAsked } from "@/app/lib/outcomes/outcomes";
 
 export const trackerAgent = registerAgent({
   name: "tracker",
   title: "Tracker",
-  description: "Reads the candidate's Gmail (read-only), classifies recruiter emails and moves applications to their new status.",
-  handles: ["inbox.sync"],
+  description: "Reads the candidate's Gmail (read-only), classifies recruiter emails and moves applications to their new status; closes the outcome loop by asking candidates what happened.",
+  handles: ["inbox.sync", "outcomes.ask"],
   async handle(msg, ctx) {
+    if (msg.type === "outcomes.ask") {
+      const p = msg.payload as Payloads["outcomes.ask"];
+      const expired = await expireUnanswered();
+      const users = await usersWithDuePrompts(new Date(), p.limit ?? 200);
+      let prompted = 0;
+      for (const userId of users) {
+        const due = await duePrompts(userId);
+        if (!due.replies.length && !due.questions.length) continue;
+        await markAsked(due);
+        await ctx.send(
+          "outcome.prompt",
+          { userId, replies: due.replies.map((r) => ({ applicationId: r.applicationId, title: r.title, company: r.company, daysAgo: r.daysAgo })), questions: due.questions.map((q) => ({ applicationId: q.applicationId, title: q.title, company: q.company, stage: q.stage })) },
+          `Notifier — ask this candidate about ${due.replies.length} application${due.replies.length === 1 ? "" : "s"} and ${due.questions.length} interview${due.questions.length === 1 ? "" : "s"}.`
+        );
+        prompted++;
+      }
+      return `Closed ${expired} silent application${expired === 1 ? "" : "s"} as "no reply"; ${prompted} candidate${prompted === 1 ? "" : "s"} to ask.`;
+    }
     const { userId } = msg.payload as Payloads["inbox.sync"];
     const r = await syncUserEmails(userId, {
       // Report every status change into THIS conversation so the coach picks it up.
