@@ -36,8 +36,14 @@ export const envSchema = z
     APP_URL: z.string().url().optional(),
     // Gmail application tracking: refresh tokens are sealed with this key.
     TOKEN_ENCRYPTION_KEY: z.string().min(16).optional(),
-    // Contact form relay (optional).
+    // Outbound email (password reset, contact relay). One of: RESEND_API_KEY, or SMTP_HOST + SMTP_USER + SMTP_PASS
+    // (Gmail: smtp.gmail.com, port 465, an App Password). Without either, dev mode shows the reset link on screen.
     RESEND_API_KEY: z.string().optional(),
+    SMTP_HOST: z.string().min(1).optional(),
+    SMTP_PORT: z.string().regex(/^\d+$/).optional(),
+    SMTP_USER: z.string().min(1).optional(),
+    SMTP_PASS: z.string().min(1).optional(),
+    EMAIL_FROM: z.string().min(3).optional(),
     CONTACT_TO_EMAIL: z.string().email().optional(),
   })
   .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {

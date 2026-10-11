@@ -4,6 +4,8 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password: string;
+  resetTokenHash?: string;
+  resetTokenExpires?: Date;
   fullname: string;
   recruiter: boolean;
   admin: boolean;
@@ -66,6 +68,9 @@ const UserSchema = new Schema<IUser>(
       lowercase: true,
     },
     password: { type: String, required: true },
+    // Email password reset (lib/auth/passwordReset.ts): sha256 of a single-use token + its expiry.
+    resetTokenHash: { type: String, select: false, index: true },
+    resetTokenExpires: { type: Date },
     fullname: { type: String, required: true },
 
     recruiter: { type: Boolean, default: false },
