@@ -85,8 +85,10 @@ export async function POST(req: NextRequest) {
  * lost if the tab dies mid-call.
  */
 export async function PATCH(req: NextRequest) {
-  const userId = await getUserIdFromRequest(req);
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // The phone bridge (server/phone.ts) writes transcripts with the service token instead of a user cookie.
+  const service = !!process.env.CRON_SECRET && (req.headers.get("x-service-token") || "") === process.env.CRON_SECRET;
+  const userId = service ? null : await getUserIdFromRequest(req);
+  if (!service && !userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   const sessionId = String(body?.sessionId || "");
   if (!mongoose.Types.ObjectId.isValid(sessionId)) return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
@@ -103,7 +105,7 @@ export async function PATCH(req: NextRequest) {
     : [];
   const impression = body?.impression && typeof body.impression === "object" ? cleanImpression(body.impression) : undefined;
   await connectToDatabase();
-  const session: any = await InterviewSession.findOne({ _id: sessionId, userId, mode: "voice" });
+  const session: any = await InterviewSession.findOne({ _id: sessionId, ...(userId ? { userId } : {}), mode: "voice" });
   if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (session.status === "finished") return NextResponse.json({ ok: true, frozen: true });
   session.transcript = turns;

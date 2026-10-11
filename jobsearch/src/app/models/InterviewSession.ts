@@ -30,6 +30,12 @@ const InterviewSessionSchema = new mongoose.Schema(
     stage: { type: String, required: true },
     language: { type: String, enum: ["he", "en"], default: "he" },
     mode: { type: String, enum: ["chat", "voice"], default: "chat" },
+    /** Voice sessions: browser WebRTC or a Twilio phone call. */
+    channel: { type: String, enum: ["web", "phone"], default: "web" },
+    phone: { type: String, default: "" },
+    callSid: { type: String, default: "" },
+    /** Phone: the compiled interviewer instructions the bridge runs with. */
+    instructions: { type: String, default: "", select: false },
     realtime: {
       model: { type: String, default: "" },
       voice: { type: String, default: "" },

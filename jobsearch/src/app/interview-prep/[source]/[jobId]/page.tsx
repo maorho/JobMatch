@@ -50,7 +50,30 @@ export default function InterviewPrepPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [questions, setQuestions] = useState(6);
-  const [mode, setMode] = useState<"voice" | "chat">("voice");
+  const [mode, setMode] = useState<"voice" | "chat" | "phone">("voice");
+  const [phone, setPhone] = useState("");
+  const [phoneCfg, setPhoneCfg] = useState<{ configured: boolean } | null>(null);
+  const [calling, setCalling] = useState<{ sessionId: string; to: string; interviewer?: { name: string; gender: "female" | "male" } } | null>(null);
+  useEffect(() => {
+    fetch("/api/interview/phone/status").then(async (r) => r.ok && setPhoneCfg(await r.json())).catch(() => setPhoneCfg({ configured: false }));
+  }, []);
+  // While the phone rings/runs, poll the session until it is finished (feedback written by the bridge + finish job).
+  useEffect(() => {
+    if (!calling) return;
+    const t = setInterval(async () => {
+      const r = await fetch(`/api/interview/session?sessionId=${calling.sessionId}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const d = await r.json();
+      setSession(d.session);
+      if (d.session.wrappedUp && !d.session.feedback) {
+        const f = await fetch("/api/interview/session/finish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) });
+        if (f.ok) { const fd = await f.json(); setSession((s) => s && { ...s, status: "finished", feedback: fd.feedback, delivery: fd.delivery }); }
+      }
+      if (d.session.status === "finished" || d.session.feedback) { setCalling(null); if (prep) loadHistory(prep.prepId); }
+    }, 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calling]);
   const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" } } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
@@ -109,7 +132,11 @@ export default function InterviewPrepPage() {
     setBusy("start");
     setError("");
     try {
-      if (mode === "voice") {
+      if (mode === "phone") {
+        const d = await call("/api/interview/phone", "POST", { prepId: prep.prepId, stage: stageKey, questions, phone });
+        setCalling({ sessionId: d.sessionId, to: d.to, interviewer: d.interviewer });
+        setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: questions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
+      } else if (mode === "voice") {
         const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
         setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer });
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
@@ -302,7 +329,13 @@ export default function InterviewPrepPage() {
                       המראיין/ת מכיר/ה את החברה, את התפקיד ואת קורות החיים שלך, ומנהל/ת שיחה כמו בראיון אמיתי: שאלה אחת בכל פעם, שאלות המשך, ובלי רמזים.
                       <span className="font-medium text-navy"> המשוב המלא — ציון, חוזקות, מה לשפר ותשובות טובות יותר — מגיע רק בסיום.</span>
                     </p>
-                    <div className="grid sm:grid-cols-2 gap-2">
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {phoneCfg?.configured && (
+                        <button type="button" onClick={() => setMode("phone")} aria-pressed={mode === "phone"} className={`rounded-control border p-3 text-start transition-colors ${mode === "phone" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
+                          <div className="font-semibold">📞 המראיין/ת מתקשר/ת אליך</div>
+                          <div className={`text-xs mt-1 ${mode === "phone" ? "text-white/80" : "text-ink-600"}`}>ראיון טלפוני אמיתי: הטלפון שלך מצלצל, אותו/ה מראיין/ת, אותו משוב — כולל ניתוח קול.</div>
+                        </button>
+                      )}
                       <button type="button" onClick={() => setMode("voice")} aria-pressed={mode === "voice"} className={`rounded-control border p-3 text-start transition-colors ${mode === "voice" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
                         <div className="font-semibold">🎙️ שיחה קולית (מומלץ)</div>
                         <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>מראיין/ת (גבר או אישה) שמציג/ה את עצמו/ה והחברה, שואל/ת באיזו שפה לנהל את הראיון, ומגיב/ה לשתיקות. המשוב כולל ניתוח קול וטון ומוכן מיד בסיום.</div>
@@ -313,15 +346,29 @@ export default function InterviewPrepPage() {
                       </button>
                     </div>
                     <div className="flex flex-wrap items-end gap-3">
+                      {mode === "phone" && (
+                        <label className="flex-1 min-w-[200px]">
+                          <span className="jm-label">הטלפון שלך</span>
+                          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="054-1234567 (או ריק = מהפרופיל)" className="jm-input" dir="ltr" />
+                        </label>
+                      )}
                       <label>
                         <span className="jm-label">מספר שאלות</span>
                         <select value={questions} onChange={(e) => setQuestions(Number(e.target.value))} className="jm-input jm-select w-32">
                           {[4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </label>
-                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : mode === "voice" ? "🎙️ התחל שיחה" : "⌨️ התחל ראיון"}</button>
+                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : mode === "phone" ? "📞 תתקשרו אליי" : mode === "voice" ? "🎙️ התחל שיחה" : "⌨️ התחל ראיון"}</button>
                     </div>
                     {error && <div className="jm-alert jm-alert-err">{error}</div>}
+                  </div>
+                ) : calling ? (
+                  <div className="p-8 text-center space-y-3">
+                    <div className="text-5xl animate-pulse">📞</div>
+                    <h3 className="jm-h2">{calling.interviewer?.name || "המראיין/ת"} מתקשר/ת ל-<span dir="ltr">{calling.to}</span></h3>
+                    <p className="text-sm text-ink-600">ענה/י לטלפון. השיחה מתומללת ברקע; המשוב יופיע כאן כשהראיון ייגמר.</p>
+                    {session && session.transcript.length > 0 && <p className="jm-muted">{session.transcript.length} תורות עד כה…</p>}
+                    <button onClick={async () => { await fetch("/api/interview/phone", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) }); setCalling(null); setSession(null); }} className="jm-btn jm-btn-secondary jm-btn-sm">בטל שיחה</button>
                   </div>
                 ) : voice ? (
                   <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} onEnded={onVoiceEnded} />

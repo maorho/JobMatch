@@ -8,7 +8,9 @@ import fs from "fs";
 import os from "os";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import http from "http";
 import { runFormAgent, type AgentContext } from "./formAgent";
+import { attachPhoneBridge } from "./phone";
 
 // Load the Next app's env so SCRAPER_TOKEN/CRON_SECRET match between processes.
 dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
@@ -800,6 +802,8 @@ app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-app.listen(PORT, () => {
+const httpServer = http.createServer(app);
+attachPhoneBridge(httpServer);
+httpServer.listen(PORT, () => {
   console.log(`🚀 Puppeteer server running at http://localhost:${PORT}`);
 });
