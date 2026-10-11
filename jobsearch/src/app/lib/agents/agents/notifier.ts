@@ -14,9 +14,21 @@ export const notifierAgent = registerAgent({
   name: "notifier",
   title: "Notifier",
   description: "The only agent that talks to people: turns what the others found into in-app notifications.",
-  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready", "outcome.prompt"],
+  handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready", "outcome.prompt", "practice.graded"],
   async handle(msg) {
     switch (msg.type) {
+      case "practice.graded": {
+        const p = msg.payload as Payloads["practice.graded"];
+        const VERDICT: Record<string, string> = { pass: "עברת", borderline: "על הגבול", fail: "עוד לא" };
+        await notify(p.userId, {
+          type: "system",
+          title: `${p.kind === "coding" ? "הבוחן בדק" : "המשוב על עבודת הבית מוכן"}: ${p.title} — ${p.score}/100`,
+          body: `${VERDICT[p.verdict] || p.verdict}. המשוב המפורט, לפי קריטריונים, מחכה לך.`,
+          link: `/practice/${p.attemptId}`,
+          meta: { agent: p.kind === "coding" ? "examiner" : "assigner", attemptId: p.attemptId, score: p.score },
+        });
+        return `Told the candidate: ${p.score}/100 on "${p.title}".`;
+      }
       case "outcome.prompt": {
         const p = msg.payload as Payloads["outcome.prompt"];
         const STAGE: Record<string, string> = { hr: "שיחת ה-HR", technical: "הראיון הטכני", final: "הראיון הסופי" };

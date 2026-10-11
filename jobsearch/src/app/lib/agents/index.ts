@@ -12,6 +12,8 @@ import "./agents/janitor";
 import "./agents/applier";
 import "./agents/writer";
 import "./agents/researcher";
+import "./agents/examiner";
+import "./agents/assigner";
 
 export { listAgents, getAgent } from "./registry";
 export { startRun, startFlow, send, processQueue, readRun, kick } from "./bus";

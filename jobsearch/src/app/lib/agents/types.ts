@@ -1,9 +1,11 @@
+import type { PracticeRole, PracticeLevel } from "@/app/lib/practice/roles";
+
 /**
  * The vocabulary the agents share. Every message on the bus has one of these
  * types and the payload shape listed next to it. Keep this file the single
  * source of truth when adding an agent or a new kind of message.
  */
-export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer", "researcher"] as const;
+export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer", "researcher", "examiner", "assigner"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
 /** Non-agent senders. */
@@ -39,6 +41,16 @@ export type Payloads = {
   "research.reply": { company: string; confidence: "high" | "medium" | "low"; searched: boolean; headline: string; context: ApplicationChange & { score: number | null; stage: string } };
   /** Researcher (cron): write "what they do" profiles for catalog companies that have none (or a stale one). */
   "companies.describe": { limit?: number };
+  /** Examiner: make sure a role × level has `count` timed coding questions. */
+  "coding.author": { role: PracticeRole; level: PracticeLevel; count?: number };
+  /** Examiner: grade a submitted coding attempt. */
+  "coding.grade": { attemptId: string; userId: string };
+  /** Assigner: make sure a role × level has `count` take-home assignments. */
+  "assignment.author": { role: PracticeRole; level: PracticeLevel; count?: number };
+  /** Assigner: review a handed-in take-home. */
+  "assignment.review": { attemptId: string; userId: string };
+  /** Examiner / Assigner → Notifier: a grade is ready. */
+  "practice.graded": { userId: string; attemptId: string; kind: "coding" | "assignment"; title: string; score: number; verdict: "pass" | "borderline" | "fail" };
   /** Coach → Notifier: a plan for the next stage is ready. */
   "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
   /** Janitor: delete postings no source has reported for a while. */
@@ -75,6 +87,11 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "research.request": "researcher",
   "research.reply": "coach",
   "companies.describe": "researcher",
+  "coding.author": "examiner",
+  "coding.grade": "examiner",
+  "assignment.author": "assigner",
+  "assignment.review": "assigner",
+  "practice.graded": "notifier",
   "prep.ready": "notifier",
   "catalog.sweep": "janitor",
   "apply.request": "applier",
