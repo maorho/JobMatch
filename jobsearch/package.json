@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "puppeteer-server": "ts-node --project ./server/tsconfig.server.json ./server/index.ts",
+    "worker": "ts-node -r tsconfig-paths/register --project ./server/tsconfig.worker.json ./server/worker.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -73,6 +74,7 @@
     "mongodb-memory-server": "^10.4.3",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.8.3",
     "vitest": "^2.1.9"
   }

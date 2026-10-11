@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { PRIVATE_CACHE } from "@/app/lib/cache";
 import { submitAttempt } from "@/app/lib/practice/attempts";
@@ -11,6 +12,14 @@ export const maxDuration = 120;
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+  try {
+    await consumeQuota(userId, "practice_grade");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   try {

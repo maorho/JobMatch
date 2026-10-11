@@ -1,4 +1,5 @@
 "use client";
+import HealthCard from "./components/HealthCard";
 
 import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
@@ -261,6 +262,8 @@ function EmployerDashboard() {
           </div>
         </div>
       </section>
+
+      <HealthCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (

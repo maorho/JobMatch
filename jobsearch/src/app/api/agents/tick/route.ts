@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { startFlow, processQueue } from "@/app/lib/agents";
+import { alertAdmins } from "@/app/lib/ops/alerts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,9 +41,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: `Unknown flow "${flow}"` }, { status: 400 });
     }
     const result = await processQueue({ budgetMs });
+    if (result.failed > 0) await alertAdmins("agents_failed", `${result.failed} agent message${result.failed === 1 ? "" : "s"} failed in this tick`, `flow=${flow || "drain"} · handled ${result.handled} · remaining ${result.remaining}. Open the agent team view for the error log.`, "/AdminDashboard/agents");
     return NextResponse.json({ ok: true, runId, ...result });
   } catch (err: any) {
     console.error("❌ agents tick:", err);
+    await alertAdmins("tick_crashed", "The agents tick crashed", String(err?.message || err).slice(0, 500), "/AdminDashboard/agents");
     return NextResponse.json({ ok: false, error: err?.message || "tick failed" }, { status: 500 });
   }
 }

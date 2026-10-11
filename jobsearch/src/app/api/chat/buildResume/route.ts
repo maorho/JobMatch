@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import User from "@/app/models/User";
@@ -16,6 +17,14 @@ export async function POST(req: NextRequest) {
     const userId = await getUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+    try {
+      await consumeQuota(userId, "resume_build");
+    } catch (e) {
+      const q = quotaResponse(e);
+      if (q) return q;
+      throw e;
     }
     const { messages, rawResumeText } = await req.json();
     await connectToDatabase();

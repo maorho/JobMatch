@@ -65,6 +65,7 @@ describe("phone interview route", () => {
 
   it("places the call, stores the interviewer instructions for the bridge, and lets the bridge read/write with the service token", async () => {
     Object.assign(process.env, { TWILIO_ACCOUNT_SID: "AC1", TWILIO_AUTH_TOKEN: "tok", TWILIO_FROM: "+972500000000", PHONE_BRIDGE_WSS_URL: "wss://bridge.example" });
+    process.env.FEATURE_PHONE = "1"; // launch flag: the phone channel stays off until it is tested on real calls
     expect((await j(await statusGET())).body.configured).toBe(true);
     const r = await j(await phonePOST(new NextRequest(`${O}/api/interview/phone`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId, stage: "hr", questions: 5 }) })));
     expect(r.status).toBe(200);

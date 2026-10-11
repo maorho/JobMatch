@@ -53,6 +53,15 @@ export const envSchema = z
     TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
     TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(8).optional(),
+    // Feature flags (lib/flags.ts): "1" turns on, "0" turns off. Phone interviews stay off until tested live.
+    FEATURE_PHONE: z.enum(["0", "1"]).optional(),
+    FEATURE_AUTO_APPLY: z.enum(["0", "1"]).optional(),
+    FEATURE_MCP: z.enum(["0", "1"]).optional(),
+    NEXT_PUBLIC_FEATURE_PHONE: z.enum(["0", "1"]).optional(),
+    NEXT_PUBLIC_FEATURE_AUTO_APPLY: z.enum(["0", "1"]).optional(),
+    NEXT_PUBLIC_FEATURE_MCP: z.enum(["0", "1"]).optional(),
+    // Per-user daily caps on paid actions override DEFAULT_LIMITS in lib/ops/quota.ts, e.g. QUOTA_VOICE_SESSION=10.
+    ALERT_EMAIL: z.string().email().optional(),
   })
   .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {
     message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together",

@@ -7,6 +7,9 @@ on:
     - cron: "0 */12 * * *"    # cleanup-now: every 12 hours (UTC)
     - cron: "0 6 * * *"       # job-match digest: daily 06:00 UTC (09:00 Israel)
     - cron: "15 */2 * * *"    # gmail application tracking: every 2 hours
+    - cron: "45 * * * *"      # agents tick: drain the bus hourly (outcome loop, company profiles, authoring)
+    - cron: "30 5 * * *"      # outcome loop: ask "did you get a reply?" daily 05:30 UTC
+    - cron: "0 3 * * *"       # company profiles: 15 more per night
   workflow_dispatch:
 
 env:
@@ -114,3 +117,46 @@ jobs:
         run: |
           curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/cleanup-now" \
             --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+
+  agents_tick:
+    if: github.event.schedule == '45 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Drain the agent bus
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/agents/tick" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" \
+            --data-urlencode "budget=240"
+
+  outcomes_ask:
+    if: github.event.schedule == '30 5 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Outcome loop (did you get a reply? what did they ask?)
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/agents/tick" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" \
+            --data-urlencode "flow=outcomes.ask" \
+            --data-urlencode "budget=240"
+
+  company_profiles:
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Company profiles for the Companies page
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/agents/tick" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" \
+            --data-urlencode "flow=companies.describe" \
+            --data-urlencode "limit=15" \
+            --data-urlencode "budget=240"
+
+  health:
+    if: github.event.schedule == '45 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check (fails the workflow when production is unhealthy)
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/admin/health" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" | tee health.json
+          node -e 'const h=require("./health.json"); if(!h.ok){console.error("UNHEALTHY", JSON.stringify(h.checks)); process.exit(1)}'
