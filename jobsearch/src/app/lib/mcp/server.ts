@@ -11,6 +11,8 @@ import { autoApplyForUser } from "@/app/lib/apply/autoApply";
 import { ensureInterviewPlan } from "@/app/lib/interview/ensurePlan";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
 import { siteUrl } from "@/app/lib/seo/site";
+import { questionBank } from "@/app/lib/outcomes/questions";
+import { companyKey } from "@/app/lib/outcomes/companyKey";
 
 /**
  * JobMatch as an MCP server (Model Context Protocol, Streamable HTTP, stateless
@@ -129,6 +131,15 @@ export const TOOLS: Tool[] = [
     async run(args, ctx) {
       const contacts = await contactsAtCompany(ctx.userId!, String(args.company || ""), 12);
       return json({ company: args.company, count: contacts.length, contacts: contacts.map((c) => ({ name: c.fullName, position: c.position, linkedin: c.url })) });
+    },
+  },
+  {
+    name: "company_interview_questions",
+    description: "Questions candidates report being asked in real interviews at a company (HR / technical / final), from JobMatch's outcome loop. Anonymous callers get a sample; the API key unlocks the full bank.",
+    inputSchema: { type: "object", properties: { company: { type: "string" }, stage: { type: "string", enum: ["hr", "technical", "final", "other"] } }, required: ["company"] },
+    async run(args, ctx) {
+      const bank = await questionBank(String(args.company || ""), { stage: args.stage, userId: ctx.userId || undefined, limit: ctx.userId ? 200 : 5 });
+      return json({ company: bank.company, total: bank.total, reporters: bank.reporters, sample: !ctx.userId, url: `${siteUrl()}/interview-questions/${encodeURIComponent(companyKey(bank.company))}`, questions: bank.questions.map((q) => ({ question: q.question, stage: q.stage, topic: q.topic, reportedBy: q.count })) });
     },
   },
   {

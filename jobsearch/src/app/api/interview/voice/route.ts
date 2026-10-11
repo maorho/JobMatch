@@ -9,6 +9,7 @@ import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
+import { reportedQuestionsText } from "@/app/lib/outcomes/questions";
 import { buildCompanyBrief } from "@/app/lib/interview/simulator";
 import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, REALTIME_MODEL } from "@/app/lib/interview/voice";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (!prep) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const [ctx, user]: [any, any] = await Promise.all([gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null), User.findById(userId).select("+resumeText +resumeStructured").lean()]);
     const cachedResearch: any = await CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null);
-    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
+    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, await reportedQuestionsText(prep.company, { limit: 12 }).catch(() => ""));
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const who = pickVoice();
     const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined });

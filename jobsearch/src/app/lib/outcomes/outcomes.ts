@@ -21,13 +21,8 @@ import { seniorityOf } from "@/app/lib/jobTaxonomy";
  * (lib/matcher/likelihood.ts).
  */
 
-export const companyKey = (s: string) =>
-  (s || "")
-    .toLowerCase()
-    .replace(/\b(ltd|inc|llc|corp|corporation|technologies|technology|labs|group|israel|בע"מ|בעמ)\b/g, " ")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim()
-    .replace(/\s+/g, "-");
+export { companyKey } from "./companyKey";
+import { companyKey } from "./companyKey";
 
 const DAY = 86_400_000;
 /** Ask "did you get a reply?" from this many days after applying, then every REASK_DAYS, up to MAX_ASKS. */

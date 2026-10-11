@@ -42,9 +42,10 @@ export type SimInput = {
 };
 
 /** A compact, factual brief the interviewer can quote from. */
-export function buildCompanyBrief(plan: InterviewPlan, ctx?: CompanyContext | null, research?: string | null): string {
+export function buildCompanyBrief(plan: InterviewPlan, ctx?: CompanyContext | null, research?: string | null, reportedQuestions?: string | null): string {
   const lines = [
     research && `RESEARCH (web):\n${research}`,
+    reportedQuestions && `REAL QUESTIONS candidates report being asked at this company (weave several of these in, in your own words, at the right stage):\n${reportedQuestions}`,
     plan.company.summary && `About: ${plan.company.summary}`,
     plan.company.whatTheyDo && `What they do: ${plan.company.whatTheyDo}`,
     plan.company.techStack.length && `Tech stack: ${plan.company.techStack.join(", ")}`,

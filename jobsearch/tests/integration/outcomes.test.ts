@@ -63,7 +63,7 @@ describe("outcome rows", () => {
     expect(row.features.matchScore).toBeGreaterThan(0);
     expect(row.features.postedAgeDays).toBe(2);
     expect(row.features.autoApplied).toBe(false);
-    expect(companyKey("Wix.com Ltd")).toBe("wix-com");
+    expect(companyKey("Wix.com Ltd")).toBe("wix");
   });
 
   it("asks 'did you get a reply?' only after a week, and the answer moves the application forward", async () => {

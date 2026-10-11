@@ -10,6 +10,7 @@ import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import { buildCompanyBrief } from "@/app/lib/interview/simulator";
 import { researchToText } from "@/app/lib/interview/companyResearch";
+import { reportedQuestionsText } from "@/app/lib/outcomes/questions";
 import { buildVoiceInstructions, pickVoice, END_TOOL_DEF, SILENCE_MS, REALTIME_MODEL } from "@/app/lib/interview/voice";
 import { phoneConfigured, toE164, placeCall, endCall } from "@/app/lib/interview/phone";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!to) return NextResponse.json({ error: "מספר טלפון לא תקין" }, { status: 400 });
 
     const [ctx, cachedResearch]: [any, any] = await Promise.all([gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null), CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null)]);
-    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
+    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, await reportedQuestionsText(prep.company, { limit: 12 }).catch(() => ""));
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const who = pickVoice();
     const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language: "he", targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined }) + "\n\nTHIS IS A PHONE CALL: audio quality is lower — speak a little slower and clearer, confirm when you didn't catch something.";

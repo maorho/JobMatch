@@ -72,6 +72,15 @@ export function articleJsonLd(a: { slug: string; title: string; excerpt: string;
   };
 }
 
+/** FAQPage for the public part of a company's interview-question bank. */
+export function faqJsonLd(items: { question: string; answer: string }[]): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((it) => ({ "@type": "Question", name: it.question, acceptedAnswer: { "@type": "Answer", text: it.answer } })),
+  };
+}
+
 export function websiteJsonLd(): Record<string, unknown> {
   return {
     "@context": "https://schema.org",

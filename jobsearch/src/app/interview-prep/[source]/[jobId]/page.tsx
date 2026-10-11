@@ -6,6 +6,7 @@ import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
 import { EmptyState, Spinner } from "../../../components/ui";
 import VoiceInterview, { type VoiceTurn } from "../../../components/VoiceInterview";
 import ProgressCard from "../../../components/ProgressCard";
+import ReportedQuestionsCard from "../../../components/ReportedQuestionsCard";
 
 type Question = { question: string; whyAsked: string; howToAnswer: string; sampleAnswer?: string };
 type Stage = { key: string; title: string; description: string; durationHint?: string; likelyQuestions: Question[]; tips: string[] };
@@ -414,6 +415,7 @@ export default function InterviewPrepPage() {
 
               <aside className="space-y-4">
                <ProgressCard refreshKey={history.length} />
+               <ReportedQuestionsCard company={prep.job.company} stage={stage?.key} />
                <div className="jm-card p-4 space-y-2">
                 <h3 className="jm-h2 text-base">ראיונות קודמים</h3>
                 {history.length === 0 && <p className="jm-muted">עדיין לא תרגלת. הציונים יישמרו כאן.</p>}

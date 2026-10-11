@@ -47,6 +47,8 @@ export type PrepInput = {
   companyContext: CompanyContext;
   /** Output of the research agent (companyResearch.ts → researchToText), when available. */
   research?: string;
+  /** Questions candidates reported being asked at this company (lib/outcomes/questions.ts → reportedQuestionsText). */
+  reportedQuestions?: string;
   resumeText?: string;
   language?: "he" | "en";
 };
@@ -82,7 +84,7 @@ COMPANY CONTEXT (from our catalog and the company website)
 - Tech signals across their postings: ${cc.techSignals.map((t) => `${t.term}(${t.count})`).join(", ") || "-"}
 - Website: ${cc.domain || "-"}
 - Website excerpt: ${cc.websiteExcerpt ? cc.websiteExcerpt.slice(0, 2500) : "(not available)"}
-${input.research ? `\nRESEARCH BRIEF (web research, use it for company.summary/cultureHints and for stage-specific questions about recent news/products)\n${input.research}\n` : ""}
+${input.research ? `\nRESEARCH BRIEF (web research, use it for company.summary/cultureHints and for stage-specific questions about recent news/products)\n${input.research}\n` : ""}${input.reportedQuestions ? `\nREAL QUESTIONS reported by candidates after interviews at this company — include them (verbatim or lightly rephrased) in the matching stage's likelyQuestions before your own guesses:\n${input.reportedQuestions}\n` : ""}
 CANDIDATE RÉSUMÉ
 """
 ${(input.resumeText || "(no résumé on file — keep sample answers generic and say what to prepare)").slice(0, MAX)}

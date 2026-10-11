@@ -134,7 +134,10 @@ export async function questionBank(company: string, opts: { stage?: QuestionStag
     .sort((a, b) => b.reporters.size - a.reporters.size || b.count - a.count || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime())
     .slice(0, opts.limit ?? 200)
     .map(({ reporters: _r, ...q }) => q);
-  const display = rows[0]?.company || company;
+  // Display name: the spelling most reporters used (e.g. "Wix" over "WIX" / "Wix.com Ltd").
+  const spellings = new Map<string, number>();
+  for (const r of rows) spellings.set(r.company, (spellings.get(r.company) || 0) + 1);
+  const display = [...spellings.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || company;
   return { company: display, total: byKey.size, reporters: reporters.size, questions };
 }
 

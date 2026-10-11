@@ -6,6 +6,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import { gatherCompanyContext } from "./companyContext";
 import { researchCompany, researchToText } from "./companyResearch";
+import { reportedQuestionsText } from "@/app/lib/outcomes/questions";
 import { generateInterviewPlan, PREP_MODEL, type InterviewPlan } from "./prepare";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
@@ -53,7 +54,8 @@ export async function ensureInterviewPlan(opts: { userId: string; jobId: string;
     researchCompany(job.company, { domain: companyContext.domain, hints: { openRoles: companyContext.openRoles, sampleTitles: companyContext.sampleTitles, techSignals: companyContext.techSignals.slice(0, 10).map((t) => t.term) } }).catch(() => null),
     new Promise<null>((r) => setTimeout(() => r(null), 40_000)),
   ]);
-  const plan = await generateInterviewPlan({ job, companyContext, research: research ? researchToText(research.brief) : undefined, resumeText, language: opts.language || "he" });
+  const reportedQuestions = await reportedQuestionsText(job.company, { limit: 20 }).catch(() => "");
+  const plan = await generateInterviewPlan({ job, companyContext, research: research ? researchToText(research.brief) : undefined, reportedQuestions: reportedQuestions || undefined, resumeText, language: opts.language || "he" });
 
   const doc: any = await InterviewPrep.findOneAndUpdate(
     { userId, jobId, source },
