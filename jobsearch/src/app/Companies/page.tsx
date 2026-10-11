@@ -14,6 +14,10 @@ type CompanyRow = {
   domain: string;
   logoUrl: string;
   careersUrl: string;
+  summary?: string;
+  industry?: string;
+  hq?: string;
+  size?: string;
 };
 
 const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null));
@@ -26,7 +30,7 @@ export default function CompaniesPage() {
 
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
-    return rows.filter((c) => (!term || c.name.toLowerCase().includes(term)) && (!juniorOnly || c.junior > 0));
+    return rows.filter((c) => (!term || c.name.toLowerCase().includes(term) || (c.industry || "").toLowerCase().includes(term) || (c.summary || "").toLowerCase().includes(term)) && (!juniorOnly || c.junior > 0));
   }, [rows, q, juniorOnly]);
 
   const totalJobs = rows.reduce((s, c) => s + c.jobs, 0);
@@ -41,7 +45,7 @@ export default function CompaniesPage() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="חיפוש חברה…"
+              placeholder="חיפוש חברה או תחום…"
               className="jm-input sm:w-64"
             />
             <label className="flex items-center gap-2 text-sm text-ink-600 whitespace-nowrap cursor-pointer">
@@ -65,11 +69,17 @@ export default function CompaniesPage() {
               <CompanyLogo name={c.name} domain={c.domain} logoUrl={c.logoUrl} className="w-12 h-12 shrink-0 border border-line p-1" />
               <div className="min-w-0">
                 <h2 className="font-semibold text-navy truncate" dir="auto">{c.name}</h2>
-                {c.cities.length > 0 && <p className="jm-muted truncate">{c.cities.join(" · ")}</p>}
+                <p className="jm-muted truncate">{[c.industry, ...(c.cities.length ? [c.cities.join(" · ")] : [])].filter(Boolean).join(" · ") || " "}</p>
               </div>
             </div>
+            {c.summary ? (
+              <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir="auto" title={c.summary}>{c.summary}</p>
+            ) : (
+              <p className="text-sm text-ink-400 leading-relaxed">סיכום על החברה יתווסף בקרוב.</p>
+            )}
             <div className="flex flex-wrap gap-2">
               <span className="jm-chip">{c.jobs} משרות</span>
+              {c.size && <span className="jm-chip">{c.size}</span>}
               {c.junior > 0 && <span className="jm-chip jm-chip-teal">{c.junior} ג&apos;וניור</span>}
               {c.remote > 0 && <span className="jm-chip jm-chip-sky">{c.remote} remote</span>}
             </div>

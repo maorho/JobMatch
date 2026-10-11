@@ -2,14 +2,20 @@ import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
 import { researchCompany } from "@/app/lib/interview/companyResearch";
 import { ensureWebQuestions } from "@/app/lib/interview/webQuestions";
+import { describeMissingCompanies } from "@/app/lib/companies/profiles";
 import CompanySource from "@/app/models/CompanySource";
 
 export const researcherAgent = registerAgent({
   name: "researcher",
   title: "Researcher",
   description: "Reads up on a company before an interview — products, recent news, size, culture, how their interviews run, and the interview questions candidates report publicly — with web search, cached.",
-  handles: ["research.request"],
+  handles: ["research.request", "companies.describe"],
   async handle(msg, ctx) {
+    if (msg.type === "companies.describe") {
+      const { limit } = msg.payload as Payloads["companies.describe"];
+      const r = await describeMissingCompanies({ limit: limit ?? 15, log: ctx.log });
+      return `Company profiles: ${r.described} written${r.skipped ? `, ${r.skipped} without enough to say` : ""}${r.failed ? `, ${r.failed} failed` : ""}; ${Math.max(0, r.due - r.described - r.skipped - r.failed)} of ${r.considered} still waiting.`;
+    }
     const p = msg.payload as Payloads["research.request"];
     const src: any = p.domain ? null : await CompanySource.findOne({ companyName: p.company }).select("domain").lean().catch(() => null);
     const domain = p.domain || src?.domain || undefined;

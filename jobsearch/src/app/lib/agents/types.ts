@@ -37,6 +37,8 @@ export type Payloads = {
   "research.request": { company: string; domain?: string; context: ApplicationChange & { score: number | null; stage: string } };
   /** Researcher → Coach: the brief (echoes the context so the coach stays stateless). */
   "research.reply": { company: string; confidence: "high" | "medium" | "low"; searched: boolean; headline: string; context: ApplicationChange & { score: number | null; stage: string } };
+  /** Researcher (cron): write "what they do" profiles for catalog companies that have none (or a stale one). */
+  "companies.describe": { limit?: number };
   /** Coach → Notifier: a plan for the next stage is ready. */
   "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
   /** Janitor: delete postings no source has reported for a while. */
@@ -72,6 +74,7 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "fit.reply": "coach",
   "research.request": "researcher",
   "research.reply": "coach",
+  "companies.describe": "researcher",
   "prep.ready": "notifier",
   "catalog.sweep": "janitor",
   "apply.request": "applier",

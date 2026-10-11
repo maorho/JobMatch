@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const FLOWS = ["catalog.refresh", "catalog.sweep", "content.plan", "outcomes.ask"] as const;
+const FLOWS = ["catalog.refresh", "catalog.sweep", "content.plan", "outcomes.ask", "companies.describe"] as const;
 
 /**
  * The agents' heartbeat (cron, cron_secret). Drains the bus for up to
@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
       runId = (await startFlow("content.plan", { count }, { from: "cron", startedBy: "cron", title: "Weekly articles", says: `Writer — ${count} new article${count === 1 ? "" : "s"} for this week, please.` })).runId;
     } else if (flow === "outcomes.ask") {
       runId = (await startFlow("outcomes.ask", {}, { from: "cron", startedBy: "cron", title: "Outcome loop", says: "Tracker — who should we ask about their applications and interviews today?" })).runId;
+    } else if (flow === "companies.describe") {
+      const limit = Math.min(parseInt(sp.get("limit") ?? "", 10) || 15, 60);
+      runId = (await startFlow("companies.describe", { limit }, { from: "cron", startedBy: "cron", title: "Company profiles", says: `Researcher — up to ${limit} companies without a profile: what do they do?` })).runId;
     } else if (flow) {
       return NextResponse.json({ error: `Unknown flow "${flow}"` }, { status: 400 });
     }

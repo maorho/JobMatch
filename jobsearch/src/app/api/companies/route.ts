@@ -4,6 +4,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 import { resolveLogoDomain, getLogoUrl } from "@/app/lib/scout/logo";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
+import { profilesFor } from "@/app/lib/companies/profiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,10 +54,12 @@ async function computeCompanies(q: string, limit: number) {
       CompanySource.find({}, "companyName domain careersUrl atsType").lean(),
     ]);
     const bySource = new Map<string, any>((sources as any[]).map((s) => [s.companyName, s]));
+    const profiles = await profilesFor((rows as any[]).map((r) => r._id));
 
     const companies = (rows as any[]).map((r) => {
       const src = bySource.get(r._id);
       const domain = resolveLogoDomain(src?.domain || r.domain, r._id);
+      const profile = profiles.get(r._id);
       return {
         name: r._id,
         jobs: r.jobs,
@@ -67,6 +70,10 @@ async function computeCompanies(q: string, limit: number) {
         logoUrl: getLogoUrl(domain),
         careersUrl: src?.careersUrl || "",
         latest: r.latest,
+        summary: profile?.summary || "",
+        industry: profile?.industry || "",
+        hq: profile?.hq || "",
+        size: profile?.size || "",
       };
     });
     return companies;
