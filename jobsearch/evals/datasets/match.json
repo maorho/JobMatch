@@ -1,0 +1,47 @@
+{
+  "description": "Résumé × posting pairs with a human fit label (0–100). Used to check that the reranker's fit agrees with a recruiter's judgement: pairwise order, correlation, and absolute error. Labels: 85+ apply now · 70–84 good fit · 50–69 stretch · <50 not realistic.",
+  "candidates": {
+    "junior_react": { "level": "junior", "resume": "B.Sc. Computer Science, Ben-Gurion University (2024). Built three end-to-end projects: a React/TypeScript dashboard with Next.js and MongoDB, a Node.js REST API, a Python scraper. Internship (3 months) at a startup writing React components and Jest tests. Comfortable with Git, Docker basics. Hebrew native, English fluent. Based in Tel Aviv." },
+    "mid_backend": { "level": "mid", "resume": "Backend engineer, 4 years. Node.js and Go microservices on Kubernetes (GKE), PostgreSQL, Kafka, Redis. Owned the billing service at a fintech (peak 2k rps), on-call rotation, CI/CD with GitHub Actions. B.Sc. Software Engineering, Technion. Haifa." },
+    "data_junior": { "level": "junior", "resume": "M.Sc. Statistics (2025). Python, pandas, scikit-learn, SQL. Thesis on churn prediction; Kaggle bronze. Teaching assistant in probability. No industry experience yet. Jerusalem." },
+    "senior_frontend": { "level": "senior", "resume": "Senior frontend engineer, 9 years. Led a 6-person web team at a public company; architected a micro-frontend platform (React, TypeScript, Webpack module federation), design system, performance budgets. Mentoring, hiring, roadmap ownership. Tel Aviv." },
+    "qa_manual_junior": { "level": "junior", "resume": "QA tester, 1.5 years manual testing of a web app: test plans, bug reports in Jira, basic SQL, some Selenium with Python from a course. Wants to move into automation. Beer Sheva." }
+  },
+  "postings": {
+    "junior_fe": { "title": "Junior Frontend Developer", "company": "Acme", "description": "0–2 years. React, TypeScript, HTML/CSS. Work with designers and backend engineers. Nice to have: Next.js, testing. Tel Aviv, hybrid." },
+    "senior_fe": { "title": "Senior Frontend Engineer", "company": "Globex", "description": "5+ years React, ownership of a large codebase, performance, mentoring juniors, design systems. Tel Aviv." },
+    "backend_node": { "title": "Backend Engineer (Node.js)", "company": "Initech", "description": "3+ years Node.js, PostgreSQL, Kubernetes, event-driven systems (Kafka). Fintech domain a plus. Haifa or remote." },
+    "data_scientist_junior": { "title": "Junior Data Scientist", "company": "Umbrella", "description": "Python, pandas, scikit-learn, SQL; M.Sc. in a quantitative field; eager to learn; no industry experience required. Jerusalem." },
+    "ml_lead": { "title": "ML Team Lead", "company": "Umbrella", "description": "Lead 5 data scientists; 7+ years ML in production; MLOps; stakeholder management." },
+    "qa_automation": { "title": "QA Automation Engineer", "company": "Acme", "description": "2+ years test automation with Selenium/Playwright, Python or JS, CI integration, API testing." },
+    "qa_manual": { "title": "Manual QA Tester", "company": "Hooli", "description": "1+ years manual testing of web apps, test plans, Jira, basic SQL. Beer Sheva." },
+    "devops_senior": { "title": "Senior DevOps Engineer", "company": "Initech", "description": "6+ years Kubernetes, Terraform, AWS, observability, on-call leadership." },
+    "fullstack_mid": { "title": "Full Stack Developer", "company": "Hooli", "description": "2–4 years React + Node.js, MongoDB, REST APIs; small team; hybrid Tel Aviv." },
+    "student_fe": { "title": "Frontend Developer — Student Position", "company": "Globex", "description": "Students in the last year of a CS degree; React basics; 2–3 days a week." }
+  },
+  "pairs": [
+    { "candidate": "junior_react", "posting": "junior_fe", "fit": 88 },
+    { "candidate": "junior_react", "posting": "fullstack_mid", "fit": 68 },
+    { "candidate": "junior_react", "posting": "senior_fe", "fit": 20 },
+    { "candidate": "junior_react", "posting": "student_fe", "fit": 55 },
+    { "candidate": "junior_react", "posting": "backend_node", "fit": 35 },
+    { "candidate": "junior_react", "posting": "data_scientist_junior", "fit": 25 },
+    { "candidate": "mid_backend", "posting": "backend_node", "fit": 92 },
+    { "candidate": "mid_backend", "posting": "fullstack_mid", "fit": 65 },
+    { "candidate": "mid_backend", "posting": "devops_senior", "fit": 40 },
+    { "candidate": "mid_backend", "posting": "junior_fe", "fit": 30 },
+    { "candidate": "mid_backend", "posting": "ml_lead", "fit": 10 },
+    { "candidate": "data_junior", "posting": "data_scientist_junior", "fit": 90 },
+    { "candidate": "data_junior", "posting": "ml_lead", "fit": 8 },
+    { "candidate": "data_junior", "posting": "backend_node", "fit": 15 },
+    { "candidate": "data_junior", "posting": "junior_fe", "fit": 20 },
+    { "candidate": "senior_frontend", "posting": "senior_fe", "fit": 95 },
+    { "candidate": "senior_frontend", "posting": "junior_fe", "fit": 30 },
+    { "candidate": "senior_frontend", "posting": "fullstack_mid", "fit": 60 },
+    { "candidate": "senior_frontend", "posting": "student_fe", "fit": 5 },
+    { "candidate": "qa_manual_junior", "posting": "qa_manual", "fit": 90 },
+    { "candidate": "qa_manual_junior", "posting": "qa_automation", "fit": 50 },
+    { "candidate": "qa_manual_junior", "posting": "junior_fe", "fit": 20 },
+    { "candidate": "qa_manual_junior", "posting": "devops_senior", "fit": 5 }
+  ]
+}

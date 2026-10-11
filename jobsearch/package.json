@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude \"tests/scale/**\"",
     "test:watch": "vitest",
-    "test:scale": "vitest run tests/scale --testTimeout=600000"
+    "test:scale": "vitest run tests/scale --testTimeout=600000",
+    "eval": "vitest run --config vitest.evals.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.804.0",

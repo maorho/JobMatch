@@ -7,6 +7,8 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import dotenv from "dotenv";
+import OpenAI from "openai";
+import { runFormAgent, type AgentContext } from "./formAgent";
 
 // Load the Next app's env so SCRAPER_TOKEN/CRON_SECRET match between processes.
 dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
@@ -385,7 +387,25 @@ app.use(express.json({ limit: "15mb" }));
 
 type ApplyProfile = { firstName: string; lastName: string; email: string; phone: string; linkedin?: string };
 type ApplyAnswer = { selector: string; value: string };
-type ApplyBody = { url: string; profile: ApplyProfile; resumePdfBase64?: string; resumeFileName?: string; coverNote?: string; dryRun?: boolean; answers?: ApplyAnswer[] };
+type ApplyBody = { url: string; profile: ApplyProfile; resumePdfBase64?: string; resumeFileName?: string; coverNote?: string; dryRun?: boolean; answers?: ApplyAnswer[]; resumeText?: string; jobTitle?: string; company?: string; agent?: boolean };
+
+// ---- The form agent's model (gpt-4o with the screenshot); disabled without a key ----
+const AGENT_MODEL = process.env.APPLY_AGENT_MODEL || "gpt-4o";
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const agentLlm = async (system: string, user: string, screenshotB64?: string): Promise<string> => {
+  if (!openai) throw new Error("OPENAI_API_KEY missing on the apply server");
+  const content: any[] = [{ type: "text", text: user }];
+  if (screenshotB64) content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${screenshotB64}`, detail: "low" } });
+  const res = await openai.chat.completions.create({ model: AGENT_MODEL, temperature: 0, max_tokens: 900, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content }] });
+  return res.choices[0]?.message?.content || "{}";
+};
+
+/** Run the agent on the current page and translate its result to the /api/apply response shape. */
+async function applyWithAgent(page: Page, body: ApplyBody, ats: string, tmpResume: string | null) {
+  const ctx: AgentContext = { profile: body.profile, resumeText: body.resumeText || "", resumePath: tmpResume, jobTitle: body.jobTitle, company: body.company, coverNote: body.coverNote, dryRun: !!body.dryRun };
+  const r = await runFormAgent(page, ctx, agentLlm, { maxSteps: 14, budgetMs: 150_000, screenshots: true });
+  return { status: r.status, ats, mode: "agent", reason: r.reason, confirmation: r.confirmation, filled: r.filled, steps: r.steps.map((st) => ({ step: st.step, url: st.url, thought: st.thought, status: st.status, applied: st.applied })) };
+}
 type FormField = { selector: string; label: string; type: string; required: boolean; options?: string[]; value?: string };
 
 function detectAts(url: string): string {
@@ -668,8 +688,17 @@ app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
     await page.goto(targetUrl, { waitUntil: "networkidle2", timeout: 40000 });
     await page.waitForSelector("form, input[type=file]", { timeout: 10000 }).catch(() => {});
 
-    if (ats === "comeet" || ats === "workday" || ats === "ashby" || ats === "smartrecruiters") {
-      res.json({ status: "needs_user", ats, reason: `${ats} application forms are multi-step/iframe based — open the link and apply manually.` });
+    const wantAgent = body.agent !== false && !!openai;
+    if (ats === "comeet" || ats === "workday" || ats === "ashby" || ats === "smartrecruiters" || ats === "unknown") {
+      if (!wantAgent) {
+        res.json({ status: "needs_user", ats, reason: `${ats} application forms are multi-step — open the link and apply manually.` });
+        return;
+      }
+      if (body.resumePdfBase64) {
+        tmpResume = path.join(os.tmpdir(), `jm-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+        fs.writeFileSync(tmpResume, Buffer.from(body.resumePdfBase64, "base64"));
+      }
+      res.json(await applyWithAgent(page, body, ats, tmpResume));
       return;
     }
     // Greenhouse and Lever ship an invisible reCAPTCHA on every form; it only
@@ -709,6 +738,10 @@ app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
     }
 
     if (!filled.includes("email")) {
+      if (wantAgent) {
+        res.json(await applyWithAgent(page, body, ats, tmpResume));
+        return;
+      }
       res.json({ status: "needs_user", ats, reason: "Could not find a standard application form on this page.", filled, captchaPresent });
       return;
     }

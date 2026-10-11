@@ -1,0 +1,17 @@
+{
+  "description": "Résumé snippets with the level a recruiter would assign. Deterministic check of inferCandidateLevel.",
+  "cases": [
+    { "resume": "B.Sc. Computer Science 2024, student projects in React, looking for my first position", "level": "junior" },
+    { "resume": "Bootcamp graduate, 6-month full-stack program, portfolio of 3 projects", "level": "junior" },
+    { "resume": "Software developer, 1.5 years at a startup, React and Node", "level": "junior" },
+    { "resume": "Full-stack developer with 2 years of experience in Next.js and MongoDB", "level": "junior" },
+    { "resume": "Backend engineer, 4 years, Go and Kubernetes, owned the billing service", "level": "mid" },
+    { "resume": "Frontend developer, 3 years, React/TypeScript, mentored one intern", "level": "mid" },
+    { "resume": "Senior engineer, 8 years, led a team of five, architecture ownership", "level": "senior" },
+    { "resume": "Tech lead with 6 years, hiring manager for the platform group", "level": "senior" },
+    { "resume": "Staff engineer, 11 years distributed systems, principal architect", "level": "senior" },
+    { "resume": "M.Sc. Statistics 2025, thesis on churn prediction, teaching assistant, no industry experience", "level": "junior" },
+    { "resume": "QA automation engineer, 5 years Playwright and CI, team lead for 2 testers", "level": "senior" },
+    { "resume": "Data analyst, 3 years SQL and Tableau at a bank", "level": "mid" }
+  ]
+}

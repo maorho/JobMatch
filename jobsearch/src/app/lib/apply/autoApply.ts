@@ -126,7 +126,7 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
 
     const pdf = await renderResumePdf(resume);
     const submit = deps.submit || submitExternalApplication;
-    const base = { url, profile, resumePdf: pdf, resumeFileName: `${(user.fullname || "CV").replace(/\s+/g, "-")}-CV.pdf` };
+    const base = { url, profile, resumePdf: pdf, resumeFileName: `${(user.fullname || "CV").replace(/\s+/g, "-")}-CV.pdf`, resumeText: (user.resumeText || "").trim() || structuredToText(resume), jobTitle: job.job, company: job.company };
 
     // Phase 1: fill the standard fields and see what else the form wants.
     let r = await submit({ ...base, dryRun: true });
@@ -138,7 +138,8 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       answers = a.answers.map(({ selector, value }) => ({ selector, value }));
       unanswered = a.unanswered.filter((f) => f.required).map((f) => f.label);
     }
-    // Phase 2: submit for real when every required field has an honest answer.
+    // Phase 2: submit for real when every required field has an honest answer
+    // (the form agent reports "ready" itself after a dry run it could complete).
     if (r.status === "ready" || (r.status === "needs_user" && r.fields?.length && unanswered.length === 0)) {
       r = await submit({ ...base, answers });
     } else if (r.status === "needs_user" && unanswered.length) {
@@ -146,7 +147,7 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
     }
     if (r.status === "submitted") {
       await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "ExternalJobs", status: "Submitted Resume" });
-      await record("submitted", { url, ats: r.ats, note: r.confirmation || "", resumeStructured: resume });
+      await record("submitted", { url, ats: r.mode === "agent" ? `${r.ats} (agent)` : r.ats, note: r.confirmation || "", resumeStructured: resume });
       usedToday++;
       out.submitted.push({ jobId: c.jobId, title: c.title, company: c.company, score: c.score });
     } else if (r.status === "needs_user") {

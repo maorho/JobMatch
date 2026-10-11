@@ -12,6 +12,9 @@ export type SubmitResult = {
   /** `ready` only comes back from a dry run: the form is filled and nothing required is missing. */
   status: "submitted" | "needs_user" | "failed" | "ready";
   ats: string;
+  /** "agent" when the computer-use style agent handled the form. */
+  mode?: string;
+  steps?: { step: number; url: string; thought: string; status: string; applied: string[] }[];
   reason?: string;
   /** Text seen on the confirmation page, when submitted. */
   confirmation?: string;
@@ -31,6 +34,10 @@ export type SubmitInput = {
   dryRun?: boolean;
   /** Answers for fields a previous dry run reported. */
   answers?: { selector: string; value: string }[];
+  /** Context for the form agent (unknown/multi-step ATS): the résumé it may quote, and the posting. */
+  resumeText?: string;
+  jobTitle?: string;
+  company?: string;
 };
 
 export async function submitExternalApplication(input: SubmitInput): Promise<SubmitResult> {
@@ -50,6 +57,9 @@ export async function submitExternalApplication(input: SubmitInput): Promise<Sub
         resumePdfBase64: Buffer.from(input.resumePdf).toString("base64"),
         dryRun: !!input.dryRun,
         answers: input.answers || [],
+        resumeText: (input.resumeText || "").slice(0, 4000),
+        jobTitle: input.jobTitle,
+        company: input.company,
       }),
       signal: controller.signal,
       cache: "no-store",
@@ -57,7 +67,7 @@ export async function submitExternalApplication(input: SubmitInput): Promise<Sub
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { status: "failed", ats: data?.ats || "", reason: data?.error || `apply server returned ${res.status}` };
     const status = ["submitted", "needs_user", "ready"].includes(data?.status) ? data.status : "failed";
-    return { status, ats: data?.ats || "", reason: data?.reason, confirmation: data?.confirmation, fields: data?.fields, missing: data?.missing, captchaPresent: data?.captchaPresent };
+    return { status, ats: data?.ats || "", mode: data?.mode, steps: data?.steps, reason: data?.reason, confirmation: data?.confirmation, fields: data?.fields, missing: data?.missing, captchaPresent: data?.captchaPresent };
   } catch (e: any) {
     return { status: "failed", ats: "", reason: e?.name === "AbortError" ? "apply server timed out" : e?.message || "apply server unreachable" };
   } finally {
