@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { FcGoogle } from "react-icons/fc";
@@ -23,6 +23,16 @@ function SignUp() {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ref, setRef] = useState("");
+  const [partnerName, setPartnerName] = useState("");
+  // ?ref=CODE from a partner landing page: carried in the form, and in a cookie so "Continue with Google" keeps it.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("ref")?.trim().toUpperCase() || "";
+    if (!code) return;
+    setRef(code);
+    document.cookie = `jm_ref=${encodeURIComponent(code)}; path=/; max-age=2592000; samesite=lax`;
+    fetch(`/api/partners/join?code=${encodeURIComponent(code)}`).then((r) => r.json()).then((d) => d.valid && setPartnerName(d.name)).catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,6 +58,7 @@ function SignUp() {
     formData.append("recruiter", String(recruiter));
     formData.append("admin", String(admin));
     formData.append("company", company);
+    if (ref) formData.append("ref", ref);
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     resumeFile && formData.append("resume", resumeFile);
 
@@ -105,6 +116,7 @@ function SignUp() {
         <div className="w-full max-w-md lg:max-w-lg mx-auto my-auto py-8 sm:py-10 space-y-6">
           <div>
             <h1 className="jm-title">Create Your Account</h1>
+            {ref && <p className="jm-chip jm-chip-teal mt-2">🤝 {partnerName ? `Joining as part of ${partnerName}` : `Invite code ${ref}`}</p>}
             <p className="jm-subtitle">
               Sign up now to start posting and managing your jobs with ease.
             </p>

@@ -255,6 +255,9 @@ function EmployerDashboard() {
             <Link href="/AdminDashboard/articles" className="jm-btn jm-btn-secondary w-fit">
               ✍️ Articles
             </Link>
+            <Link href="/AdminDashboard/partners" className="jm-btn jm-btn-secondary w-fit">
+              🤝 Partners
+            </Link>
           </div>
         </div>
       </section>

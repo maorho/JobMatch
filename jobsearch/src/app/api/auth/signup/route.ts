@@ -8,6 +8,7 @@ import Company from "@/app/models/Company";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { v4 as uuidv4 } from "uuid";
 import mongoose from "mongoose";
+import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
   const company = form.get("company")?.toString() || "";
   const phone = form.get("phone")?.toString() || "";
   const resumeFile = form.get("resume") as File | null;
+  // Partner invite code: from the signup form (?ref= on the page) or the cookie the landing page set.
+  const ref = (form.get("ref")?.toString() || req.cookies.get(REF_COOKIE)?.value || "").trim();
 
   
   if (!email || !password || !fullname || !username || !phone) {
@@ -102,6 +105,7 @@ export async function POST(req: NextRequest) {
 
   const newUser = new User(userData);
   await newUser.save();
+  if (ref && !recruiter) await attachPartner(String(newUser._id), ref).catch((e) => console.warn("[signup] partner attach skipped:", (e as Error)?.message));
 
   // Process the résumé for the personalized feed: extract text → embedding.
   // Best-effort — never fail signup because of it.

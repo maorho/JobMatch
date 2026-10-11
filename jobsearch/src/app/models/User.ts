@@ -49,6 +49,7 @@ export interface IUser extends Document {
   };
   autoApply?: { enabled?: boolean; minScore?: number; dailyCap?: number; enabledAt?: Date };
   onboarding?: { completedAt?: Date; contactsStep?: "" | "done" | "skipped" };
+  partner?: { slug?: string; code?: string; cohort?: string; joinedAt?: Date };
 
   createdAt?: Date;
   updatedAt?: Date;
@@ -125,6 +126,13 @@ const UserSchema = new Schema<IUser>(
       minScore: { type: Number, default: 75, min: 50, max: 100 },
       dailyCap: { type: Number, default: 5, min: 1, max: 30 },
       enabledAt: { type: Date, default: undefined },
+    },
+    /** Partner program membership (lib/partners/partners.ts): the bootcamp/college cohort this user belongs to. */
+    partner: {
+      slug: { type: String, default: undefined },
+      code: { type: String, default: undefined },
+      cohort: { type: String, default: "" },
+      joinedAt: { type: Date, default: undefined },
     },
     /** Onboarding steps the user completed or skipped. */
     onboarding: {

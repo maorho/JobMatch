@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode, fetchProfile, isProvider, redirectUri, safeNext } from "@/app/lib/oauth/providers";
 import { findOrCreateOAuthUser } from "@/app/lib/oauth/users";
+import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
 import { signJwt } from "@/app/lib/jwt";
 
 export const runtime = "nodejs";
@@ -41,6 +42,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     const accessToken = await exchangeCode(provider, code, redirectUri(req, provider));
     const profile = await fetchProfile(provider, accessToken);
     const { user, created } = await findOrCreateOAuthUser(profile);
+    const ref = req.cookies.get(REF_COOKIE)?.value || "";
+    if (created && ref) await attachPartner(String(user._id), ref).catch(() => null);
 
     const token = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
     // New social accounts start with onboarding (résumé → contacts → auto-apply).
@@ -55,6 +58,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
       sameSite: "lax",
     });
     res.cookies.delete(STATE_COOKIE);
+    if (ref) res.cookies.delete(REF_COOKIE);
     return res;
   } catch (err: any) {
     console.error(`❌ oauth ${provider} callback:`, err?.message || err);
