@@ -39,3 +39,17 @@ describe("reciprocal rank fusion", () => {
     expect(fused.get("b")!).toBeLessThan(fused.get("c")!);
   });
 });
+
+describe("toMatchScore (cosine → 0–100)", () => {
+  it("spreads the real text-embedding-3 band instead of saturating it, and never calls semantics alone a strong fit", async () => {
+    const { toMatchScore } = await import("@/app/lib/matcher/cosine");
+    expect(toMatchScore(0.755)).toBeGreaterThanOrEqual(45);
+    expect(toMatchScore(0.814)).toBeLessThanOrEqual(70);
+    expect(toMatchScore(0.814)).toBeGreaterThan(toMatchScore(0.773));
+    expect(toMatchScore(0.773)).toBeGreaterThan(toMatchScore(0.755));
+    expect(toMatchScore(0.84)).toBeLessThan(85);
+    expect(toMatchScore(0.2)).toBe(0);
+    expect(toMatchScore(1)).toBe(100);
+    for (const c of [0.3, 0.5, 0.7, 0.86]) expect(toMatchScore(c + 0.001)).toBeGreaterThanOrEqual(toMatchScore(c)); // monotonic across knots
+  });
+});

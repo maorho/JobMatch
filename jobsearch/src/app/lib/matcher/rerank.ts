@@ -54,13 +54,15 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
   const pending = opts.jobs.filter((j) => !out.has(j._id));
   if (!useLLM || !pending.length) return out;
 
-  for (let i = 0; i < pending.length; i += RERANK_BATCH) {
-    const batch = pending.slice(i, i + RERANK_BATCH);
+  const batches: RerankCandidate[][] = [];
+  for (let i = 0; i < pending.length; i += RERANK_BATCH) batches.push(pending.slice(i, i + RERANK_BATCH));
+  // Batches are independent → run them together so a 48-job page costs one round-trip, not four.
+  await Promise.all(batches.map(async (batch) => {
     try {
       const { system, user } = buildRerankPrompt(opts.resumeSummary, opts.level, batch, opts.language || "he");
       const res = await new ChatOpenAI({ modelName: RERANK_MODEL, temperature: 0, maxTokens: 2500, timeout: 45_000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
       const parsed = verdictSchema.safeParse(extractJson(contentOf(res)));
-      if (!parsed.success) continue;
+      if (!parsed.success) return;
       const ops = [];
       for (const r of parsed.data.results) {
         if (!batch.some((b) => b._id === r.id)) continue;
@@ -72,6 +74,6 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
     } catch (e) {
       console.warn("[rerank] batch skipped:", (e as Error)?.message);
     }
-  }
+  }));
   return out;
 }

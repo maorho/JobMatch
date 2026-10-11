@@ -14,13 +14,28 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
- * Map a raw cosine similarity to an intuitive 0-100 match score.
- * text-embedding-3 similarities for related job/profile text cluster roughly
- * in 0.15–0.65, so we rescale that band to 0–100 (clamped). Heuristic, tune later.
+ * Map a raw cosine similarity to a 0-100 match score.
+ *
+ * Measured on text-embedding-3-small with real résumés: a software profile's
+ * top-600 recall pool sits in 0.75–0.82, with the best matches at the top of
+ * that band and unrelated-but-"techy" postings (front desk, field ops) at the
+ * bottom. The old 0.15–0.65 band saturated the whole pool at 100%. Piecewise
+ * so the realistic band spreads over ~50–80 — the semantic signal alone never
+ * claims a "strong fit" (85+ is reserved for the LLM reranker's verdict) —
+ * while low cosines (test embedders, unrelated domains) still order sensibly.
  */
+const BAND: [number, number][] = [
+  [0.3, 0],
+  [0.7, 35],
+  [0.86, 80],
+  [1.0, 100],
+];
 export function toMatchScore(cosine: number): number {
-  const lo = 0.15;
-  const hi = 0.65;
-  const pct = ((cosine - lo) / (hi - lo)) * 100;
-  return Math.max(0, Math.min(100, Math.round(pct)));
+  if (!(cosine > BAND[0][0])) return 0;
+  for (let i = 1; i < BAND.length; i++) {
+    const [c0, s0] = BAND[i - 1];
+    const [c1, s1] = BAND[i];
+    if (cosine <= c1) return Math.round(s0 + ((cosine - c0) / (c1 - c0)) * (s1 - s0));
+  }
+  return 100;
 }

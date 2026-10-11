@@ -79,6 +79,7 @@ export async function loadCandidateProfile(userId: string, opts: { light?: boole
 }
 
 const MAX_POOL = 600;
+const RERANK_TOP = 48;
 /** A signed-in user's ranked list lives this long; every page is a slice of the same list, so paging never repeats or skips a job. */
 const RANK_TTL_MS = 2 * 60_000;
 
@@ -133,7 +134,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
   const docs: any[] = await ExternalJobs.find({ _id: { $in: ids } }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority").lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
-  let ranked: RankedJob[] = ids
+  const ranked: RankedJob[] = ids
     .map((id) => {
       const d = byId.get(id);
       if (!d) return null;
@@ -154,7 +155,8 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
 
   // Rerank the head of the list with the LLM (cached per résumé version).
   if (opts.rerank && profile.userId && profile.resumeSummary) {
-    const top = ranked.slice(0, opts.rerankTop ?? 24) as any[];
+    // The whole first page gets an LLM verdict (batches run in parallel; cached per résumé version).
+    const top = ranked.slice(0, opts.rerankTop ?? RERANK_TOP) as any[];
     const descs: any[] = await ExternalJobs.find({ _id: { $in: top.map((t) => t._id) } }).select("description").lean();
     const descOf = new Map(descs.map((d) => [String(d._id), d.description || ""]));
     for (const t of top) t._description = descOf.get(t._id) || "";
@@ -174,9 +176,10 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       t.gaps = v.gaps;
       t.reranked = true;
     }
-    // Reranked items sort by fit among themselves and stay ahead of the unreranked tail.
-    const head = top.sort((a, b) => b.matchScore - a.matchScore || a._id.localeCompare(b._id));
-    ranked = [...head, ...ranked.slice(head.length)];
+    // One scale for the whole list: the reranker's fit (85+ = strong) and the semantic heuristic
+    // (tops out around 80) sort together, so a verified poor fit sinks below unverified near-matches
+    // and the highest number is always first. Reranked wins ties.
+    ranked.sort((a, b) => b.matchScore - a.matchScore || Number(b.reranked) - Number(a.reranked) || b.cosine - a.cosine || a._id.localeCompare(b._id));
   }
 
   return ranked.filter((r) => r.matchScore >= opts.minScore).map(({ _description: _d, ...r }: any) => r as RankedJob);
