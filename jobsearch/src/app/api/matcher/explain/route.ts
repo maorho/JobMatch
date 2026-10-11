@@ -7,6 +7,9 @@ import { loadCandidateProfile } from "@/app/lib/matcher/hybrid";
 import { rerankForUser } from "@/app/lib/matcher/rerank";
 import { levelFit } from "@/app/lib/matcher/level";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
+import { interviewLikelihood } from "@/app/lib/matcher/likelihood";
+import { seniorityOf } from "@/app/lib/jobTaxonomy";
+import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,5 +29,8 @@ export async function GET(req: NextRequest) {
   const heuristic = profile.vector && Array.isArray(job.embedding) ? Math.round(toMatchScore(cosineSimilarity(profile.vector, job.embedding)) * (0.55 + 0.45 * lf)) : null;
   const verdicts = await rerankForUser({ userId, resumeVersion: profile.resumeVersion, resumeSummary: profile.resumeSummary, level: profile.level, jobs: [{ _id: jobId, job: job.job, company: job.company, description: job.description || "", city: job.city, country: job.country, seniority: job.seniority }] });
   const v = verdicts.get(jobId);
-  return NextResponse.json({ ok: true, ready: true, level: profile.level, levelFit: lf, heuristic, fit: v?.fit ?? heuristic, why: v?.why || "", gaps: v?.gaps || [], reranked: !!v });
+  const fit = v?.fit ?? heuristic;
+  const hasReferral = (await contactsAtCompany(userId, job.company, 1).catch(() => [])).length > 0;
+  const likelihood = await interviewLikelihood({ matchScore: fit, cosine: profile.vector && Array.isArray(job.embedding) ? cosineSimilarity(profile.vector, job.embedding) : null, levelFit: lf, rerankFit: v?.fit ?? null, level: profile.level, jobSeniority: String(seniorityOf(job.job, job.seniority) || "").toLowerCase(), hasReferral });
+  return NextResponse.json({ ok: true, ready: true, level: profile.level, levelFit: lf, heuristic, fit, why: v?.why || "", gaps: v?.gaps || [], reranked: !!v, likelihood });
 }

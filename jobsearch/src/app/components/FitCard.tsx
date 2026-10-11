@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Target } from "lucide-react";
 
-type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; gaps: string[]; reranked: boolean };
+type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; gaps: string[]; reranked: boolean; likelihood?: { pct: number; basis: "prior" | "blended" | "learned"; samples: number } };
 const LEVEL_HE: Record<string, string> = { junior: "ג'וניור", mid: "ביניים", senior: "בכיר/ה" };
 
 /** Job page sidebar: the reranker's verdict for this user — fit score, why, what's missing. */
@@ -35,6 +35,12 @@ export default function FitCard({ jobId }: { jobId: string }) {
           <p className="jm-muted">{score >= 75 ? "מתאים — שווה להגיש" : score >= 55 ? "אפשרי, עם פער קטן" : "לא ריאלי כרגע"}{fit.level ? ` · הרמה שלך: ${LEVEL_HE[fit.level] || fit.level}` : ""}</p>
         </div>
       </div>
+      {fit.likelihood && (
+        <p className="text-sm text-ink-600" title={fit.likelihood.basis === "prior" ? "הערכה ראשונית לפי ציון ההתאמה; משתפרת ככל שמשתמשים מדווחים מה קרה עם ההגשות" : `מבוסס על ${fit.likelihood.samples} תוצאות הגשה אמיתיות של משתמשי JobMatch`}>
+          <span className="font-medium text-navy">סיכוי לראיון ~{fit.likelihood.pct}%</span>
+          <span className="jm-muted"> · {fit.likelihood.basis === "prior" ? "הערכה ראשונית" : fit.likelihood.basis === "blended" ? `נלמד מ-${fit.likelihood.samples} תוצאות` : `נלמד מ-${fit.likelihood.samples} תוצאות אמיתיות`}</span>
+        </p>
+      )}
       {fit.why && <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{fit.why}</p>}
       {fit.gaps.length > 0 && (
         <div>

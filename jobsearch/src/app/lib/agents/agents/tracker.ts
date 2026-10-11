@@ -2,6 +2,7 @@ import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
 import { syncUserEmails } from "@/app/lib/email/track";
 import { expireUnanswered, usersWithDuePrompts, duePrompts, markAsked } from "@/app/lib/outcomes/outcomes";
+import { trainLikelihood } from "@/app/lib/matcher/likelihood";
 
 export const trackerAgent = registerAgent({
   name: "tracker",
@@ -12,6 +13,8 @@ export const trackerAgent = registerAgent({
     if (msg.type === "outcomes.ask") {
       const p = msg.payload as Payloads["outcomes.ask"];
       const expired = await expireUnanswered();
+      const model = await trainLikelihood().catch((e) => { ctx.log(`Likelihood training skipped: ${(e as Error)?.message}`); return null; });
+      if (model) ctx.log(model.trained ? `Interview-likelihood model retrained on ${model.samples} outcomes (${model.positives} interviews): AUC ${model.auc}, log-loss ${model.logLoss}.` : `Interview-likelihood model: ${model.samples} outcomes so far, need ${20} — using the prior.`);
       const users = await usersWithDuePrompts(new Date(), p.limit ?? 200);
       let prompted = 0;
       for (const userId of users) {

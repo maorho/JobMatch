@@ -55,8 +55,9 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           <p className="text-sm text-ink-600 truncate">{companyName}</p>
         </div>
         {typeof job.matchScore === "number" && (
-          <span className="jm-chip jm-chip-teal shrink-0" title="Match to your résumé">
-            {job.matchScore}%
+          <span className="jm-chip jm-chip-teal shrink-0 flex-col leading-tight" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
+            <span>{job.matchScore}%</span>
+            {job.likelihood && <span className="text-[10px] font-normal opacity-80">ראיון ~{job.likelihood.pct}%</span>}
           </span>
         )}
       </div>

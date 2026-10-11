@@ -5,6 +5,8 @@ import { vectorSearch, textSearch, type VectorFilter } from "./atlas";
 import { toMatchScore } from "./cosine";
 import { inferCandidateLevel, levelFit, freshnessBoost, type CandidateLevel } from "./level";
 import { rerankForUser } from "./rerank";
+import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
+import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { getCandidateVector } from "./candidateProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
@@ -34,6 +36,8 @@ export type RankedJob = {
   why?: string;
   gaps?: string[];
   reranked: boolean;
+  /** JobMatch's own "interview likelihood" (lib/matcher/likelihood.ts), 0–100. */
+  likelihood?: Likelihood;
 };
 
 export type RankOptions = {
@@ -142,7 +146,23 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
 
   const minScore = opts.minScore ?? 0;
   const final = ranked.filter((r) => r.matchScore >= minScore).map(({ _description: _d, _seniority: _s, ...r }: any) => r as RankedJob);
-  return { jobs: final.slice(skip, skip + limit), total: final.length };
+  const page = final.slice(skip, skip + limit);
+  // The shown number: interview likelihood from the same features the outcome loop stores.
+  const model = await loadModel().catch(() => null);
+  const seniorityOfJob = new Map((ranked as any[]).map((r) => [r._id, r._seniority]));
+  for (const j of page) {
+    j.likelihood = likelihoodFrom(model, {
+      matchScore: j.matchScore,
+      cosine: j.cosine,
+      levelFit: j.levelFit,
+      rerankFit: j.reranked ? j.matchScore : null,
+      level: profile.level,
+      jobSeniority: String(seniorityOf(j.job, seniorityOfJob.get(j._id)) || "").toLowerCase(),
+      remote: !!j.remote,
+      postedAgeDays: j.firstSeenAt || j.postedAt ? Math.max(0, Math.round((Date.now() - new Date((j.firstSeenAt || j.postedAt) as Date).getTime()) / 86_400_000)) : null,
+    });
+  }
+  return { jobs: page, total: final.length };
 }
 
 /** Convenience: rank for a signed-in user. */

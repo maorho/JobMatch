@@ -21,6 +21,7 @@ interface BaseJob {
   companyDomain?: string;
   logoUrl?: string;
   matchScore?: number;
+  likelihood?: { pct: number; basis: string; samples: number };
 }
 
 export interface ExternalJob extends BaseJob {

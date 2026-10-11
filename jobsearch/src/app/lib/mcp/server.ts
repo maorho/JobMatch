@@ -78,7 +78,7 @@ export const TOOLS: Tool[] = [
     async run(args, ctx) {
       const { jobs, profile } = await rankForUser(ctx.userId!, { limit: Math.min(Math.max(Number(args.limit) || 10, 1), 30), query: args.query ? String(args.query) : undefined, rerank: true });
       if (!profile?.vector) return text("No résumé on file yet — upload one at " + siteUrl() + "/ResumeAI first.");
-      return json({ level: profile.level, count: jobs.length, jobs: jobs.map((j) => ({ ...brief(j), fit: j.matchScore, why: j.why || "", gaps: j.gaps || [] })) });
+      return json({ level: profile.level, count: jobs.length, jobs: jobs.map((j) => ({ ...brief(j), fit: j.matchScore, interviewLikelihoodPct: j.likelihood?.pct ?? null, why: j.why || "", gaps: j.gaps || [] })) });
     },
   },
   {
