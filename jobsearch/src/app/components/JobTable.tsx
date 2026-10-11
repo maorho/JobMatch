@@ -133,6 +133,7 @@ function JobTable() {
       params.set("page", String(pageNum));
       params.set("limit", "48");
 
+      if (user) params.set("me", "1"); // personalised responses are private; a distinct URL keeps them apart from the public cached copy
       const res = await fetch(`/api/jobs/search?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to search jobs");
       const data = await res.json();

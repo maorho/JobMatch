@@ -3,6 +3,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 import { resolveLogoDomain, getLogoUrl } from "@/app/lib/scout/logo";
+import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,16 @@ export async function GET(req: NextRequest) {
   const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 1000) : 300;
 
   try {
+    const companies = await memo(`companies:${q}:${limit}`, ttl(5 * 60_000), () => computeCompanies(q, limit));
+    return NextResponse.json({ companies, total: companies.length }, { headers: PUBLIC_CACHE });
+  } catch (err) {
+    console.error("❌ companies error:", err);
+    return NextResponse.json({ message: "Failed to load companies" }, { status: 500 });
+  }
+}
+
+async function computeCompanies(q: string, limit: number) {
+  {
     await connectToDatabase();
     const match: Record<string, unknown> = { company: { $nin: ["", null] } };
     if (q) match.company = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
@@ -58,11 +69,6 @@ export async function GET(req: NextRequest) {
         latest: r.latest,
       };
     });
-    const res = NextResponse.json({ companies, total: companies.length });
-    res.headers.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
-    return res;
-  } catch (err) {
-    console.error("❌ companies error:", err);
-    return NextResponse.json({ message: "Failed to load companies" }, { status: 500 });
+    return companies;
   }
 }

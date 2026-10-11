@@ -9,6 +9,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
 import User from "@/app/models/User";
+import mongoose from "mongoose";
 import { signJwt } from "@/app/lib/jwt";
 import { embedPendingJobs } from "@/app/lib/matcher/embedJobs";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
@@ -161,5 +162,19 @@ describe("GET /api/jobs/facets", () => {
     expect(body.countries).not.toContain("Unknown");
     expect(body.cities).toContain("Haifa");
     expect(body.seniority).toEqual(["Intern", "Junior", "Mid", "Senior"]);
+  });
+
+  it("list responses carry a description snippet and the right cache headers", async () => {
+    const O = "http://localhost";
+    const longDesc = "React ".repeat(400);
+    await ExternalJobs.create({ job: "Snippet Test Engineer", company: "Snip", city: "Tel Aviv", country: "Israel", url: "snip", finalUrl: "snip", description: longDesc, skills: [], seniority: [], source: "greenhouse", sourceJobId: "snip", postedAt: new Date("2026-10-08") } as any);
+    const anon = await searchGET(new NextRequest(`${O}/api/jobs/search?q=snippet`));
+    expect(anon.headers.get("cache-control")).toMatch(/public/);
+    const body = await anon.json();
+    const j = body.jobs.find((x: any) => x.job === "Snippet Test Engineer");
+    expect(j.description.length).toBeLessThan(500);
+    expect(j.description.endsWith("…")).toBe(true);
+    const mine = await searchGET(new NextRequest(`${O}/api/jobs/search?q=snippet&me=1`, { headers: { cookie: `token=${await signJwt({ id: String(new mongoose.Types.ObjectId()) })}` } }));
+    expect(mine.headers.get("cache-control")).toMatch(/private/);
   });
 });

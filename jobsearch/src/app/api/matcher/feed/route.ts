@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { rankForUser } from "@/app/lib/matcher/hybrid";
+import { PRIVATE_CACHE } from "@/app/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +41,7 @@ export async function GET(req: NextRequest) {
       source: "external" as const,
     }));
 
-    return NextResponse.json({
-      personalized: true,
-      jobs,
-      page,
-      pages: Math.max(1, Math.ceil(total / limit)),
-      total,
-    });
+    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total }, { headers: PRIVATE_CACHE });
   } catch (err: any) {
     console.error("❌ feed error:", err);
     return NextResponse.json(

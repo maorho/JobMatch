@@ -4,6 +4,7 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company"; // registers the model for populate()
 import ExternalJobs from "@/app/models/ExternalJobs";
 import { SENIORITY_LEVELS, WORK_MODES } from "@/app/lib/jobTaxonomy";
+import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,8 +27,20 @@ const clean = (values: unknown[], opts: { location?: boolean } = {}): string[] =
  * the dropdowns offer every company/city/country in the DB — not just the
  * ones on the page that happens to be loaded.
  */
+const TTL_MS = ttl(5 * 60_000); // the catalog changes hourly; the dropdown lists can lag a few minutes
+
 export async function GET() {
   try {
+    const facets = await memo("facets", TTL_MS, computeFacets);
+    return NextResponse.json(facets, { headers: PUBLIC_CACHE });
+  } catch (err) {
+    console.error("❌ facets error:", err);
+    return NextResponse.json({ message: "Failed to load facets" }, { status: 500 });
+  }
+}
+
+async function computeFacets() {
+  {
     await connectToDatabase();
 
     const [extCompanies, extCities, extCountries, internal] = await Promise.all([
@@ -44,18 +57,12 @@ export async function GET() {
     const internalCities = internal.map((j: any) => j.city);
     const internalCountries = internal.map((j: any) => j.country);
 
-    const res = NextResponse.json({
+    return {
       companies: clean([...extCompanies, ...internalCompanies]),
       cities: clean([...extCities, ...internalCities], { location: true }),
       countries: clean([...extCountries, ...internalCountries], { location: true }),
       jobTypes: [...WORK_MODES],
       seniority: [...SENIORITY_LEVELS],
-    });
-    // Facets change only when the Scout ingests; let the CDN/browser hold them briefly.
-    res.headers.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
-    return res;
-  } catch (err) {
-    console.error("❌ facets error:", err);
-    return NextResponse.json({ message: "Failed to load facets" }, { status: 500 });
+    };
   }
 }

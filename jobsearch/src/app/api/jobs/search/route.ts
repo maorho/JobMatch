@@ -9,6 +9,7 @@ import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
 import { levelFit } from "@/app/lib/matcher/level";
 import User from "@/app/models/User";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
+import { memo, snippet, ttl, PUBLIC_CACHE, PRIVATE_CACHE } from "@/app/lib/cache";
 import {
   INTERN_RE,
   JUNIOR_RE,
@@ -84,7 +85,23 @@ function externalWorkModeFilter(modes: string[]) {
   return parts.length ? { $or: parts } : {};
 }
 
+const ANON_TTL_MS = ttl(60_000);
+/** Atlas recall depth; a query with fewer hits than this has an exact total without a second count. */
+const RECALL = 600;
+
 export async function GET(req: NextRequest) {
+  // Anonymous pages are identical for everyone: serve them from the in-process cache (and let the CDN keep them a minute).
+  const userId = await getUserIdFromRequest(req).catch(() => null);
+  if (!userId) {
+    const key = `search:${req.nextUrl.search}`;
+    const body = await memo(key, ANON_TTL_MS, () => search(req, null));
+    return NextResponse.json(body.payload, { status: body.status, headers: PUBLIC_CACHE });
+  }
+  const body = await search(req, userId);
+  return NextResponse.json(body.payload, { status: body.status, headers: PRIVATE_CACHE });
+}
+
+async function search(req: NextRequest, userId: string | null): Promise<{ status: number; payload: unknown }> {
   const sp = req.nextUrl.searchParams;
   const q = (sp.get("q") || "").trim().slice(0, 100);
   const company = list(sp, "company");
@@ -118,11 +135,13 @@ export async function GET(req: NextRequest) {
     // falls back to the every-word regex when Atlas Search isn't available.
     let rankedIds: string[] | null = null;
     if (q) {
-      const hits = await textSearch(q, { limit: 600, filter: { company, city, country } }).catch(() => []);
+      const hits = await textSearch(q, { limit: RECALL, filter: { company, city, country } }).catch(() => []);
       // Only trust the ranking when it came from Atlas Search; the regex fallback is just a prefilter.
       if (hits.length && isAtlasSearchAvailable()) rankedIds = hits.map((h) => h._id);
     }
-    const extText = textMatch(["job", "description", "company", "city", "country"]);
+    // With a ranked id list the ids already express the text match — the every-word regex (which
+    // scans every description) is only needed as the fallback.
+    const extText = rankedIds ? null : textMatch(["job", "description", "company", "city", "country"]);
     if (extText) extAnd.push(extText);
     if (company.length) extAnd.push({ company: { $in: company } });
     if (city.length) extAnd.push({ city: { $in: city } });
@@ -167,7 +186,6 @@ export async function GET(req: NextRequest) {
     }
 
     // Personalisation: only pull embeddings when we can actually score.
-    const userId = await getUserIdFromRequest(req).catch(() => null);
     let vector: number[] | null = null;
     let level: "junior" | "mid" | "senior" = "mid";
     if (userId) {
@@ -183,17 +201,18 @@ export async function GET(req: NextRequest) {
     let externalDocs: any[] = [];
     // The total always counts the whole catalog (every-word match); relevance
     // order covers the first 600 hits, deeper pages continue newest-first.
-    externalTotal = await ExternalJobs.countDocuments(extFilter);
-    if (rankPos && skip < rankedIds!.length) {
+    if (rankPos) {
       // Relevance order: the page's ids first (cheap, ids only, honouring the other filters), then just those documents.
       const matchingIds: any[] = await ExternalJobs.find({ ...extFilter, _id: { $in: rankedIds } }).select("_id").lean();
       const ordered = matchingIds.map((d) => String(d._id)).sort((a, b) => (rankPos.get(a) ?? 1e9) - (rankPos.get(b) ?? 1e9));
+      // Fewer hits than the recall depth → the hit list IS the whole result set; otherwise count the long way.
+      externalTotal = rankedIds!.length < RECALL ? ordered.length : await ExternalJobs.countDocuments({ ...extFilter, $and: [...(extAnd.length ? extAnd : []), textMatch(["job", "description", "company", "city", "country"])!] });
       const pageIds = ordered.slice(skip, skip + limit);
       const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: pageIds } }).select("+embedding") : ExternalJobs.find({ _id: { $in: pageIds } })).lean();
       const pos = new Map(pageIds.map((id, i) => [id, i]));
       externalDocs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
     } else {
-      externalDocs = await pageQuery.sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean();
+      [externalTotal, externalDocs] = await Promise.all([ExternalJobs.countDocuments(extFilter), pageQuery.sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean()]);
     }
 
     let external = externalDocs.map((d: any) => {
@@ -202,7 +221,7 @@ export async function GET(req: NextRequest) {
         vector && Array.isArray(embedding) && embedding.length
           ? Math.round(toMatchScore(cosineSimilarity(vector, embedding)) * (0.55 + 0.45 * levelFit(level, d.job, d.seniority)))
           : undefined;
-      return { ...rest, ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
+      return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
     });
     if (vector && !rankPos) {
       external = external.sort(
@@ -210,20 +229,23 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const internal = internalJobs.map((j) => ({ ...j, source: "internal" }));
+    const internal = internalJobs.map((j) => ({ ...j, description: snippet(j.description), source: "internal" }));
     const internalTotal = page === 1 ? internal.length : 0;
 
-    return NextResponse.json({
-      jobs: [...internal, ...external],
-      total: externalTotal + internalTotal,
-      externalTotal,
-      internalTotal,
-      page,
-      pages: Math.max(1, Math.ceil(externalTotal / limit)),
-      personalized: !!vector,
-    });
+    return {
+      status: 200,
+      payload: {
+        jobs: [...internal, ...external],
+        total: externalTotal + internalTotal,
+        externalTotal,
+        internalTotal,
+        page,
+        pages: Math.max(1, Math.ceil(externalTotal / limit)),
+        personalized: !!vector,
+      },
+    };
   } catch (err) {
     console.error("❌ job search error:", err);
-    return NextResponse.json({ message: "Search failed" }, { status: 500 });
+    return { status: 500, payload: { message: "Search failed" } };
   }
 }
