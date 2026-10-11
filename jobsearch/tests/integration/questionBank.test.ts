@@ -84,7 +84,7 @@ describe("company question-bank pages", () => {
 
   it("real questions reach the interviewer brief, the plan prompt, the API and the MCP tool", async () => {
     const text = await reportedQuestionsText("Wix", { stage: "technical", limit: 5 });
-    expect(text).toMatch(/\[technical\] איך עובד event loop\? \(reported 2×\)/);
+    expect(text).toMatch(/\[technical\] איך עובד event loop\? \(reported by 2 of our candidates\)/);
     const brief = buildCompanyBrief({ company: { summary: "Wix builds websites.", whatTheyDo: "", techStack: [], cultureHints: [] }, roleSummary: "", stages: [], gaps: [], questionsToAsk: [], checklist: [] } as any, null, null, text);
     expect(brief).toMatch(/REAL QUESTIONS candidates report/);
     expect(brief).toMatch(/event loop/);

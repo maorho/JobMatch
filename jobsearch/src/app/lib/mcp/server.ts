@@ -12,6 +12,7 @@ import { ensureInterviewPlan } from "@/app/lib/interview/ensurePlan";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
 import { siteUrl } from "@/app/lib/seo/site";
 import { questionBank } from "@/app/lib/outcomes/questions";
+import { ensureWebQuestions } from "@/app/lib/interview/webQuestions";
 import { companyKey } from "@/app/lib/outcomes/companyKey";
 
 /**
@@ -135,11 +136,13 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "company_interview_questions",
-    description: "Questions candidates report being asked in real interviews at a company (HR / technical / final), from JobMatch's outcome loop. Anonymous callers get a sample; the API key unlocks the full bank.",
+    description: "Questions candidates report being asked in real interviews at a company (HR / technical / final): JobMatch candidates' own reports plus questions harvested from public sources (Glassdoor, Reddit, blogs), each labelled by provenance. Anonymous callers get a sample; the API key unlocks the full bank.",
     inputSchema: { type: "object", properties: { company: { type: "string" }, stage: { type: "string", enum: ["hr", "technical", "final", "other"] } }, required: ["company"] },
     async run(args, ctx) {
-      const bank = await questionBank(String(args.company || ""), { stage: args.stage, userId: ctx.userId || undefined, limit: ctx.userId ? 200 : 5 });
-      return json({ company: bank.company, total: bank.total, reporters: bank.reporters, sample: !ctx.userId, url: `${siteUrl()}/interview-questions/${encodeURIComponent(companyKey(bank.company))}`, questions: bank.questions.map((q) => ({ question: q.question, stage: q.stage, topic: q.topic, reportedBy: q.count })) });
+      const company = String(args.company || "");
+      if (ctx.userId) await ensureWebQuestions(company); // once a month per company (web search); anonymous callers only read what is on file
+      const bank = await questionBank(company, { stage: args.stage, userId: ctx.userId || undefined, limit: ctx.userId ? 200 : 5 });
+      return json({ company: bank.company, total: bank.total, reportedByCandidates: bank.reported, reporters: bank.reporters, fromWeb: bank.webCount, sample: !ctx.userId, url: `${siteUrl()}/interview-questions/${encodeURIComponent(companyKey(bank.company))}`, questions: bank.questions.map((q) => ({ question: q.question, stage: q.stage, topic: q.topic, reportedBy: q.count, webSources: q.sources.map((s) => s.url || s.name).filter(Boolean) })) });
     },
   },
   {

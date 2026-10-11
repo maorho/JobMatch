@@ -1,20 +1,27 @@
 import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
 import { researchCompany } from "@/app/lib/interview/companyResearch";
+import { ensureWebQuestions } from "@/app/lib/interview/webQuestions";
 import CompanySource from "@/app/models/CompanySource";
 
 export const researcherAgent = registerAgent({
   name: "researcher",
   title: "Researcher",
-  description: "Reads up on a company before an interview — products, recent news, size, culture, how their interviews run — with web search, cached for a week.",
+  description: "Reads up on a company before an interview — products, recent news, size, culture, how their interviews run, and the interview questions candidates report publicly — with web search, cached.",
   handles: ["research.request"],
   async handle(msg, ctx) {
     const p = msg.payload as Payloads["research.request"];
     const src: any = p.domain ? null : await CompanySource.findOne({ companyName: p.company }).select("domain").lean().catch(() => null);
-    const r = await researchCompany(p.company, { domain: p.domain || src?.domain || undefined }).catch((e) => {
-      ctx.log(`research failed: ${(e as Error)?.message}`);
-      return null;
-    });
+    const domain = p.domain || src?.domain || undefined;
+    // The brief and the public interview questions are independent searches → run together.
+    const [r, web] = await Promise.all([
+      researchCompany(p.company, { domain }).catch((e) => {
+        ctx.log(`research failed: ${(e as Error)?.message}`);
+        return null;
+      }),
+      ensureWebQuestions(p.company, { domain }),
+    ]);
+    if (web) ctx.log(web.cached ? `web interview questions: ${web.found} on file (harvested this month)` : `web interview questions: ${web.found} found${web.searched ? "" : " (no search tool)"}, ${web.created} new`);
     const headline = r ? [r.brief.sizeAndStage, r.brief.recentNews[0]?.title].filter(Boolean).join(" · ") : "";
     await ctx.reply(
       "research.reply",

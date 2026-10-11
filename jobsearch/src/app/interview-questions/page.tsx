@@ -26,7 +26,7 @@ export default async function InterviewQuestionsIndex() {
         <h1 className="jm-title">מה באמת שואלים בראיונות?</h1>
         <p className="jm-subtitle">
           {total > 0 ? `${total.toLocaleString()} שאלות אמיתיות מ-${companies.length} חברות, ` : ""}
-          דיווחים אנונימיים של מועמדי JobMatch אחרי ראיונות HR, טכניים וסופיים. חלק מהשאלות פתוחות לכולם; משתמשים רשומים רואים את המאגר המלא ומתאמנים עליו עם המראיין הקולי.
+          דיווחים אנונימיים של מועמדי JobMatch אחרי ראיונות HR, טכניים וסופיים, ולצידם שאלות שסוכן המחקר אוסף מדיווחים פומביים ברשת (עם קישור למקור). חלק מהשאלות פתוחות לכולם; משתמשים רשומים רואים את המאגר המלא ומתאמנים עליו עם המראיין הקולי.
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export default async function InterviewQuestionsIndex() {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-navy truncate">{c.company}</div>
                   <div className="jm-muted">
-                    {c.questions} שאלות · {c.reporters} {c.reporters === 1 ? "מדווח/ת" : "מדווחים"} · עודכן {new Date(c.lastAskedAt).toLocaleDateString("he-IL")}
+                    {c.questions} שאלות · {c.reporters > 0 ? `${c.reporters} ${c.reporters === 1 ? "מדווח/ת" : "מדווחים"}` : "מדיווחים ברשת"}{c.reporters > 0 && c.web > 0 ? ` + ${c.web} מהרשת` : ""} · עודכן {new Date(c.lastAskedAt).toLocaleDateString("he-IL")}
                   </div>
                 </div>
               </Link>

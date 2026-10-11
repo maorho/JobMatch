@@ -3,6 +3,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import InterviewQuestion, { QUESTION_STAGES, type QuestionStage } from "@/app/models/InterviewQuestion";
+import WebInterviewQuestion from "@/app/models/WebInterviewQuestion";
 import ApplicationOutcome from "@/app/models/ApplicationOutcome";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { companyKey } from "./outcomes";
@@ -104,19 +105,37 @@ export async function skipQuestions(userId: string, applicationId: string, stage
   await ApplicationOutcome.updateOne({ applicationId, userId }, { $addToSet: { questionsSkipped: stage } });
 }
 
-export type BankQuestion = { question: string; topic: string; stage: QuestionStage; count: number; roleTitles: string[]; lastAskedAt: Date };
+export type BankSource = { url: string; name: string };
+export type BankQuestion = {
+  question: string;
+  topic: string;
+  stage: QuestionStage;
+  /** How many of OUR candidates reported it (0 = only seen on the web). */
+  count: number;
+  /** How many public web sources report it. */
+  web: number;
+  sources: BankSource[];
+  roleTitles: string[];
+  lastAskedAt: Date;
+};
+
+export type Bank = { company: string; total: number; reported: number; reporters: number; webCount: number; questions: BankQuestion[] };
 
 /**
- * The question bank for a company: shareable questions grouped by key, with
- * how many candidates reported each. `includeOwn` also returns the user's
- * private (non-shareable) reports.
+ * The question bank for a company: what our candidates reported (shareable
+ * rows, grouped by key, with how many reported each) merged with questions
+ * harvested from public sources (WebInterviewQuestion), each labelled by
+ * provenance. `userId` also returns that user's private (non-shareable) reports.
  */
-export async function questionBank(company: string, opts: { stage?: QuestionStage; limit?: number; userId?: string } = {}): Promise<{ company: string; total: number; reporters: number; questions: BankQuestion[] }> {
+export async function questionBank(company: string, opts: { stage?: QuestionStage; limit?: number; userId?: string } = {}): Promise<Bank> {
   await connectToDatabase();
   const key = companyKey(company);
   const filter: Record<string, unknown> = { companyKey: key, ...(opts.stage ? { stage: opts.stage } : {}) };
   filter.$or = opts.userId ? [{ shareable: true }, { userId: opts.userId }] : [{ shareable: true }];
-  const rows: any[] = await InterviewQuestion.find(filter).sort({ askedAt: -1 }).limit(2000).lean();
+  const [rows, webRows]: [any[], any[]] = await Promise.all([
+    InterviewQuestion.find(filter).sort({ askedAt: -1 }).limit(2000).lean(),
+    WebInterviewQuestion.find({ companyKey: key, ...(opts.stage ? { stage: opts.stage } : {}) }).sort({ harvestedAt: -1 }).limit(500).lean(),
+  ]);
   const byKey = new Map<string, BankQuestion & { reporters: Set<string> }>();
   const reporters = new Set<string>();
   for (const r of rows) {
@@ -128,35 +147,71 @@ export async function questionBank(company: string, opts: { stage?: QuestionStag
       cur.reporters.add(String(r.userId));
       if (r.roleTitle && !cur.roleTitles.includes(r.roleTitle)) cur.roleTitles.push(r.roleTitle);
       if (!cur.topic && r.topic) cur.topic = r.topic;
-    } else byKey.set(k, { question: r.question, topic: r.topic || "", stage: r.stage, count: 1, roleTitles: r.roleTitle ? [r.roleTitle] : [], lastAskedAt: r.askedAt, reporters: new Set([String(r.userId)]) });
+    } else byKey.set(k, { question: r.question, topic: r.topic || "", stage: r.stage, count: 1, web: 0, sources: [], roleTitles: r.roleTitle ? [r.roleTitle] : [], lastAskedAt: r.askedAt, reporters: new Set([String(r.userId)]) });
   }
+  let webCount = 0;
+  for (const w of webRows) {
+    const k = `${w.stage}:${w.key}`;
+    const src: BankSource[] = w.sourceUrl || w.sourceName ? [{ url: w.sourceUrl || "", name: w.sourceName || "" }] : [];
+    const cur = byKey.get(k);
+    if (cur) {
+      cur.web++;
+      cur.sources.push(...src);
+      if (!cur.topic && w.topic) cur.topic = w.topic;
+    } else {
+      webCount++;
+      byKey.set(k, { question: w.question, topic: w.topic || "", stage: w.stage, count: 0, web: 1, sources: src, roleTitles: w.roleTitle ? [w.roleTitle] : [], lastAskedAt: w.harvestedAt, reporters: new Set() });
+    }
+  }
+  // Our candidates' reports first (that is the brand), then the web; within each, the most-corroborated.
   const questions = [...byKey.values()]
-    .sort((a, b) => b.reporters.size - a.reporters.size || b.count - a.count || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime())
+    .sort((a, b) => Number(b.count > 0) - Number(a.count > 0) || b.reporters.size - a.reporters.size || b.count - a.count || b.web - a.web || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime())
     .slice(0, opts.limit ?? 200)
     .map(({ reporters: _r, ...q }) => q);
-  // Display name: the spelling most reporters used (e.g. "Wix" over "WIX" / "Wix.com Ltd").
+  // Display name: the spelling most reporters used (e.g. "Wix" over "WIX" / "Wix.com Ltd"); the web rows' name when nobody reported yet.
   const spellings = new Map<string, number>();
   for (const r of rows) spellings.set(r.company, (spellings.get(r.company) || 0) + 1);
-  const display = [...spellings.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || company;
-  return { company: display, total: byKey.size, reporters: reporters.size, questions };
+  const display = [...spellings.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || webRows[0]?.company || company;
+  return { company: display, total: byKey.size, reported: byKey.size - webCount, reporters: reporters.size, webCount, questions };
 }
 
-/** Companies with shareable questions, most-reported first (for the bank index + sitemap). */
-export async function companiesWithQuestions(limit = 500): Promise<{ company: string; companyKey: string; questions: number; reporters: number; lastAskedAt: Date }[]> {
+export type BankCompany = { company: string; companyKey: string; questions: number; reported: number; web: number; reporters: number; lastAskedAt: Date };
+
+/** Companies with questions (ours or harvested), most-reported first (for the bank index + sitemap). */
+export async function companiesWithQuestions(limit = 500): Promise<BankCompany[]> {
   await connectToDatabase();
-  const rows: any[] = await InterviewQuestion.aggregate([
-    { $match: { shareable: true } },
-    { $group: { _id: "$companyKey", company: { $first: "$company" }, questions: { $addToSet: "$key" }, reporters: { $addToSet: "$userId" }, lastAskedAt: { $max: "$askedAt" } } },
-    { $project: { _id: 0, companyKey: "$_id", company: 1, questions: { $size: "$questions" }, reporters: { $size: "$reporters" }, lastAskedAt: 1 } },
-    { $sort: { questions: -1, lastAskedAt: -1 } },
-    { $limit: limit },
+  const [ours, web]: [any[], any[]] = await Promise.all([
+    InterviewQuestion.aggregate([
+      { $match: { shareable: true } },
+      { $group: { _id: "$companyKey", company: { $first: "$company" }, keys: { $addToSet: { $concat: ["$stage", ":", "$key"] } }, reporters: { $addToSet: "$userId" }, lastAskedAt: { $max: "$askedAt" } } },
+    ]),
+    WebInterviewQuestion.aggregate([{ $group: { _id: "$companyKey", company: { $first: "$company" }, keys: { $addToSet: { $concat: ["$stage", ":", "$key"] } }, lastAskedAt: { $max: "$harvestedAt" } } }]),
   ]);
-  return rows;
+  const out = new Map<string, BankCompany & { keys: Set<string> }>();
+  for (const r of ours) out.set(r._id, { company: r.company, companyKey: r._id, questions: 0, reported: r.keys.length, web: 0, reporters: r.reporters.length, lastAskedAt: r.lastAskedAt, keys: new Set(r.keys) });
+  for (const w of web) {
+    const cur = out.get(w._id);
+    if (cur) {
+      const before = cur.keys.size;
+      for (const k of w.keys) cur.keys.add(k);
+      cur.web = cur.keys.size - before;
+      if (new Date(w.lastAskedAt) > new Date(cur.lastAskedAt)) cur.lastAskedAt = w.lastAskedAt;
+    } else out.set(w._id, { company: w.company, companyKey: w._id, questions: 0, reported: 0, web: w.keys.length, reporters: 0, lastAskedAt: w.lastAskedAt, keys: new Set(w.keys) });
+  }
+  return [...out.values()]
+    .map(({ keys, ...c }) => ({ ...c, questions: keys.size }))
+    .sort((a, b) => b.reported - a.reported || b.questions - a.questions || new Date(b.lastAskedAt).getTime() - new Date(a.lastAskedAt).getTime())
+    .slice(0, limit);
 }
 
-/** Compact text of real questions for prompts (interviewer brief, prep plan). */
+/** Compact text of real questions for prompts (interviewer brief, prep plan), provenance included. */
 export async function reportedQuestionsText(company: string, opts: { stage?: QuestionStage; limit?: number } = {}): Promise<string> {
   const bank = await questionBank(company, { stage: opts.stage, limit: opts.limit ?? 15 });
   if (!bank.questions.length) return "";
-  return bank.questions.map((q) => `- [${q.stage}${q.topic ? ` · ${q.topic}` : ""}] ${q.question}${q.count > 1 ? ` (reported ${q.count}×)` : ""}`).join("\n");
+  return bank.questions
+    .map((q) => {
+      const prov = q.count > 0 ? (q.count > 1 ? ` (reported by ${q.count} of our candidates)` : "") : ` (seen on ${q.sources[0]?.name || "the web"})`;
+      return `- [${q.stage}${q.topic ? ` · ${q.topic}` : ""}] ${q.question}${prov}`;
+    })
+    .join("\n");
 }

@@ -4,7 +4,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { extractJson } from "@/app/lib/resume/tailor";
 
-const safeJson = (text: string): unknown => {
+export const safeJson = (text: string): unknown => {
   try {
     return extractJson(text);
   } catch {
@@ -66,23 +66,36 @@ Keep it compact: the whole JSON under 450 words; at most 6 news items, 5 product
 Return STRICT JSON only: {"summary","whatTheyDo","products":[],"sizeAndStage","recentNews":[{"title","date","source","why"}],"cultureSignals":[],"interviewProcess","techStack":[],"talkingPoints":[],"sources":[],"confidence":"high|medium|low"}`;
 }
 
-type Client = { responses: { create: (args: any) => Promise<any> } };
+export type ResearchClient = { responses: { create: (args: any) => Promise<any> } };
+type Client = ResearchClient;
+
+/** The OpenAI Responses client, or null when there is no key (and always null under test unless a fake is injected). */
+export function researchClient(): Client | null {
+  if (!process.env.OPENAI_API_KEY || process.env.NODE_ENV === "test") return null;
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) as unknown as Client;
+}
 
 /** Web search can't run in JSON mode; when the free-text answer isn't clean JSON, a cheap second pass converts it. */
-async function repairJson(client: Client, text: string): Promise<string> {
-  const res = await client.responses.create({ model: "gpt-4o-mini", input: `Convert the following company brief into STRICT JSON with exactly these keys: summary, whatTheyDo, products[], sizeAndStage, recentNews[{title,date,source,why}], cultureSignals[], interviewProcess, techStack[], talkingPoints[], sources[], confidence (high|medium|low). Drop citation markers. Text:\n\n${text.slice(0, 12000)}`, text: { format: { type: "json_object" } }, max_output_tokens: 2500 });
+export async function repairJsonAs(client: Client, text: string, shape: string): Promise<string> {
+  const res = await client.responses.create({ model: "gpt-4o-mini", input: `Convert the following text into STRICT JSON with exactly this shape: ${shape}. Drop citation markers. Text:\n\n${text.slice(0, 12000)}`, text: { format: { type: "json_object" } }, max_output_tokens: 2500 });
   return res.output_text || "";
 }
 
-async function callWithSearch(client: Client, prompt: string): Promise<{ text: string; searched: boolean }> {
+async function repairJson(client: Client, text: string): Promise<string> {
+  return repairJsonAs(client, text, "{summary, whatTheyDo, products[], sizeAndStage, recentNews[{title,date,source,why}], cultureSignals[], interviewProcess, techStack[], talkingPoints[], sources[], confidence (high|medium|low)}");
+}
+
+/** One Responses call with the web-search tool; falls back to plain generation (the caller treats that as low confidence). */
+export async function callWithSearch(client: Client, prompt: string, opts: { model?: string; maxTokens?: number } = {}): Promise<{ text: string; searched: boolean }> {
+  const model = opts.model || RESEARCH_MODEL;
   try {
-    const res = await client.responses.create({ model: RESEARCH_MODEL, tools: [{ type: "web_search_preview" }], input: prompt, max_output_tokens: 4500 });
+    const res = await client.responses.create({ model, tools: [{ type: "web_search_preview" }], input: prompt, max_output_tokens: opts.maxTokens ?? 4500 });
     const text = res.output_text || (res.output || []).flatMap((o: any) => o.content || []).map((c: any) => c.text || "").join("");
     const searched = (res.output || []).some((o: any) => o.type === "web_search_call");
     return { text, searched };
   } catch (e: any) {
     // Search tool unavailable on this account/model → plain generation, flagged low-confidence.
-    const res = await client.responses.create({ model: RESEARCH_MODEL, input: `${prompt}\n\n(Web search is unavailable: answer from what you know and set confidence to "low".)`, max_output_tokens: 2000 });
+    const res = await client.responses.create({ model, input: `${prompt}\n\n(Web search is unavailable: answer from what you know and set confidence to "low".)`, max_output_tokens: Math.min(opts.maxTokens ?? 2000, 2000) });
     return { text: res.output_text || "", searched: false };
   }
 }
@@ -96,7 +109,7 @@ export async function researchCompany(company: string, opts: { domain?: string; 
     const cached: any = await CompanyBrief.findOne({ key, createdAt: { $gt: new Date(Date.now() - BRIEF_TTL_DAYS * 864e5) } }).lean();
     if (cached) return { brief: cached.brief, cached: true, searched: !!cached.searched };
   }
-  const client = opts.client || (process.env.OPENAI_API_KEY ? (new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) as unknown as Client) : null);
+  const client = opts.client || (process.env.OPENAI_API_KEY ? (new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) as unknown as Client) : null); // (no test guard here: the research tests inject a fake)
   if (!client) return null;
   const { text, searched } = await callWithSearch(client, buildResearchPrompt(name, opts.domain, opts.hints));
   let parsed = briefSchema.safeParse(safeJson(text));
