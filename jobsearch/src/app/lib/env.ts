@@ -45,6 +45,14 @@ export const envSchema = z
     SMTP_PASS: z.string().min(1).optional(),
     EMAIL_FROM: z.string().min(3).optional(),
     CONTACT_TO_EMAIL: z.string().email().optional(),
+    // Messaging channels (optional): WhatsApp Cloud API and/or a Telegram bot.
+    WHATSAPP_TOKEN: z.string().min(1).optional(),
+    WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
+    WHATSAPP_DISPLAY_NUMBER: z.string().min(5).optional(),
+    WHATSAPP_VERIFY_TOKEN: z.string().min(8).optional(),
+    TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
+    TELEGRAM_BOT_USERNAME: z.string().min(1).optional(),
+    TELEGRAM_WEBHOOK_SECRET: z.string().min(8).optional(),
   })
   .refine((e) => !!e.GOOGLE_CLIENT_ID === !!e.GOOGLE_CLIENT_SECRET, {
     message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together",

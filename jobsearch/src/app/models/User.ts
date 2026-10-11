@@ -6,6 +6,10 @@ export interface IUser extends Document {
   password: string;
   resetTokenHash?: string;
   resetTokenExpires?: Date;
+  channels?: { whatsapp?: { id?: string; label?: string; linkedAt?: Date }; telegram?: { id?: string; label?: string; linkedAt?: Date } };
+  channelPrefs?: { matches?: boolean; updates?: boolean };
+  channelLinkCode?: string;
+  channelLinkCodeExpires?: Date;
   fullname: string;
   recruiter: boolean;
   admin: boolean;
@@ -71,6 +75,14 @@ const UserSchema = new Schema<IUser>(
     // Email password reset (lib/auth/passwordReset.ts): sha256 of a single-use token + its expiry.
     resetTokenHash: { type: String, select: false, index: true },
     resetTokenExpires: { type: Date },
+    // Messaging channels (lib/messaging/channels.ts): linked WhatsApp / Telegram identities + what to push there.
+    channels: {
+      whatsapp: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },
+      telegram: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },
+    },
+    channelPrefs: { matches: { type: Boolean, default: true }, updates: { type: Boolean, default: true } },
+    channelLinkCode: { type: String, index: true },
+    channelLinkCodeExpires: { type: Date },
     fullname: { type: String, required: true },
 
     recruiter: { type: Boolean, default: false },

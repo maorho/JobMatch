@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import Notification, { type NotificationType } from "@/app/models/Notification";
+import { deliverToChannels } from "@/app/lib/messaging/channels";
 
 export type NotifyPayload = {
   type: NotificationType;
@@ -8,6 +9,8 @@ export type NotifyPayload = {
   body?: string;
   link?: string;
   meta?: Record<string, unknown>;
+  /** Also push to the person's linked WhatsApp / Telegram (default true). */
+  push?: boolean;
 };
 
 /** Same-site paths only; anything else is dropped so a link can't leave the app. */
@@ -22,7 +25,7 @@ export async function notify(userId: string | mongoose.Types.ObjectId, payload: 
   try {
     if (!mongoose.isValidObjectId(userId)) return null;
     await connectToDatabase();
-    return await Notification.create({
+    const doc = await Notification.create({
       userId,
       type: payload.type,
       title: payload.title.slice(0, 200),
@@ -30,6 +33,9 @@ export async function notify(userId: string | mongoose.Types.ObjectId, payload: 
       link: safeLink(payload.link),
       meta: payload.meta,
     });
+    // The same notification, on WhatsApp / Telegram when linked (awaited so cron ticks don't lose it, but it never throws).
+    if (payload.push !== false) await deliverToChannels(userId, { title: payload.title, body: payload.body, link: safeLink(payload.link), kind: payload.type === "job_match" ? "matches" : "updates" });
+    return doc;
   } catch (err) {
     console.warn("[notify] failed:", (err as Error)?.message);
     return null;
