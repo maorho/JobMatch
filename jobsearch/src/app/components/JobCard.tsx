@@ -56,7 +56,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       role="link"
       tabIndex={0}
       aria-label={`${job.job} at ${companyName}`}
-      className="jm-card jm-card-hover p-5 flex flex-col h-full min-w-0 cursor-pointer"
+      className="jm-card jm-card-hover jm-reveal p-5 flex flex-col h-full min-w-0 cursor-pointer"
     >
       {/* Header: the title owns the row; two quiet actions on the end */}
       <div className="flex items-start gap-3">

@@ -60,7 +60,7 @@ export default function PracticePage() {
   };
 
   const Card = ({ t }: { t: TaskCard }) => (
-    <div className="jm-card jm-card-hover p-5 flex flex-col gap-3">
+    <div className="jm-card jm-card-hover jm-reveal p-5 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-semibold text-navy leading-snug" dir="auto">{t.title}</h3>
         <Difficulty n={t.difficulty} />

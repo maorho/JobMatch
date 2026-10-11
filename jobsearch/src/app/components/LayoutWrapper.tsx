@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import Header from "./Header";
 import Footer from "./Footer";
+import RevealObserver from "./RevealObserver";
+import BackgroundAurora from "./BackgroundAurora";
 
 export default function LayoutWrapper({
   children,
@@ -14,6 +16,8 @@ export default function LayoutWrapper({
 
   return (
     <>
+      <BackgroundAurora />
+      <RevealObserver />
       {!hideFooterAndHeader && <Header />}
       <main className="flex-1 w-full mx-auto">{children}</main>
       {!hideFooterAndHeader && <Footer />}

@@ -1,13 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit } from "next/font/google";
+import { Manrope, Lora } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "./components/LayoutWrapper";
 import { siteUrl } from "./lib/seo/site";
 
-const outfit = Outfit({
+// UI face (Manrope) + a calm, medium-contrast serif (Lora) for headings — both open-licensed via Google Fonts.
+const inter = Manrope({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-outfit-next",
+  variable: "--font-inter-next",
+  display: "swap",
+});
+const serif = Lora({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-serif-next",
   display: "swap",
 });
 
@@ -31,7 +39,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#102b39",
+  themeColor: "#2f4ad6",
 };
 
 export default function RootLayout({
@@ -43,11 +51,11 @@ export default function RootLayout({
     // The UI is Hebrew. Direction stays the default (ltr) on purpose: pages and
     // containers set dir="rtl"/"ltr" themselves (≈40 of each), and flipping it
     // here would mirror every ml-/mr-/text-left layout that assumes ltr.
-    <html lang="he" className={outfit.variable}>
+    <html lang="he" className={`${inter.variable} ${serif.variable}`}>
       <head>
         <link rel="icon" href="/favicon.png" sizes="32x32" />
       </head>
-      <body className="w-full min-h-screen flex flex-col font-outfit">
+      <body className="w-full min-h-screen flex flex-col font-sans">
         <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>

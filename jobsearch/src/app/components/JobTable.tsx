@@ -4,8 +4,9 @@ import JobCard from "./JobCard";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import JobsFilters from "./FilterJobs";
 import LocationSelect from "./LocationSelect";
-import Image from "next/image";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal, X, ArrowRight } from "lucide-react";
+import LogoMarquee from "./LogoMarquee";
+import CompanyLogo from "./CompanyLogo";
 import { EmptyState } from "./ui";
 import { useModalBehavior } from "./Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
@@ -385,19 +386,20 @@ function JobTable() {
   );
 
   return (
-    <div className="jm-container pt-4 sm:pt-6">
-      {/* Hero + search */}
-      <section className="jm-hero px-5 py-10 sm:px-10 sm:py-14 lg:py-20">
-        <Image src="/hero.jpg" alt="" fill priority className="object-cover opacity-20" sizes="100vw" />
-        <div className="relative max-w-3xl mx-auto text-center">
-          <span className="jm-chip bg-white/10 text-white border-white/20 mb-5">
-            {(catalogTotal || jobCount) > 0 ? `${(catalogTotal || jobCount).toLocaleString()} open positions` : "Fresh openings every day"}
+    <div className="jm-container pt-6 sm:pt-10">
+      {/* Hero: one soft band — centred editorial headline + search, and a live ticker of this person's top matches underneath */}
+      <section className="relative jm-band overflow-hidden px-5 pt-10 pb-8 sm:px-10 sm:pt-16 lg:pt-20">
+        <div className="pointer-events-none absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" aria-hidden="true" />
+        <div className="relative max-w-3xl mx-auto text-center animate-rise">
+          <span className="jm-eyebrow">
+            {(catalogTotal || jobCount) > 0 ? `${(catalogTotal || jobCount).toLocaleString()} open positions · updated daily` : "Fresh openings every day"}
           </span>
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
-            Find your dream job <span className="text-sky">in tech</span>
+          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]">
+            The tech job you&apos;re <span className="italic text-teal">actually</span> a fit for.
           </h1>
-          <p className="mt-4 text-sm sm:text-lg text-white/80 max-w-xl mx-auto">
-            Connect with top companies and discover opportunities that match your skills and ambitions.
+          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-xl mx-auto leading-relaxed">
+            Live postings from companies&apos; own careers pages, ranked against your résumé, with interview prep, real interview questions and auto-apply built in.
           </p>
 
           <form
@@ -405,12 +407,12 @@ function JobTable() {
               e.preventDefault();
               handleSearch();
             }}
-            className="mt-7 sm:mt-9 bg-surface rounded-card p-2 flex flex-col lg:flex-row gap-2 text-ink shadow-card-hover"
+            className="mt-7 sm:mt-9 bg-surface rounded-[22px] lg:rounded-full p-1.5 flex flex-col lg:flex-row gap-1.5 text-ink shadow-card-hover border border-line text-start"
           >
             <label className="relative flex-1">
               <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-400 pointer-events-none" />
               <input
-                className="w-full h-12 lg:h-14 ps-12 pe-4 rounded-control bg-transparent text-base placeholder:text-ink-400 focus:outline-none focus:bg-canvas"
+                className="w-full h-12 lg:h-14 ps-12 pe-4 rounded-full bg-transparent text-base placeholder:text-ink-400 focus:outline-none focus:bg-canvas"
                 type="search"
                 placeholder="Search jobs, companies, or keywords..."
                 value={searchTerm}
@@ -419,8 +421,8 @@ function JobTable() {
               />
             </label>
             <LocationSelect jobs={allJobs} cities={facets?.cities} selectedCities={city} setSelectedCities={setCity} />
-            <button type="submit" className="jm-btn jm-btn-accent h-12 lg:h-14 lg:px-8">
-              Search jobs
+            <button type="submit" className="jm-btn jm-btn-primary h-12 lg:h-14 lg:px-7">
+              Search jobs <ArrowRight className="h-4 w-4" />
             </button>
           </form>
 
@@ -431,18 +433,48 @@ function JobTable() {
                 type="button"
                 onClick={q.toggle}
                 aria-pressed={q.on}
-                className={`jm-chip transition-colors ${q.on ? "bg-sky text-white border-sky" : "bg-white/10 text-white border-white/20 hover:bg-white/20"}`}
+                className={`jm-chip transition-colors ${q.on ? "bg-navy text-white" : "bg-surface hover:bg-band-200"}`}
               >
                 {q.label}
               </button>
             ))}
           </div>
         </div>
+
+        {/* Ticker: the first postings on the page (your top matches when signed in), sliding slowly; pauses on hover */}
+        {jobs.length >= 4 && (
+          <div className="relative mt-10 sm:mt-14 jm-marquee -mx-5 sm:-mx-10" aria-hidden="true">
+            <div className="jm-marquee-track flex w-max gap-4 animate-marquee [animation-duration:60s]">
+              {[0, 1].map((copy) =>
+                jobs.slice(0, 8).map((job, i) => {
+                  const name = (job as any).company?.companyName || (job as any).company || "";
+                  return (
+                    <div key={`${copy}-${jobKey(job, i)}`} className="jm-card w-[280px] shrink-0 p-4 flex items-center gap-3">
+                      <CompanyLogo name={name} domain={(job as any).companyDomain} logoUrl={(job as any).logoUrl} className="h-10 w-10 rounded-xl border border-line p-1 shrink-0" />
+                      <div className="min-w-0 flex-1 text-start">
+                        <div className="font-semibold text-navy text-sm truncate">{job.job}</div>
+                        <div className="text-xs text-ink-600 truncate">{[name, (job as any).city].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      {typeof (job as any).matchScore === "number" ? (
+                        <span className="jm-chip jm-chip-teal shrink-0">{(job as any).matchScore}%</span>
+                      ) : getSeniorityLevel(job) ? (
+                        <span className="jm-chip jm-chip-sky shrink-0">{getSeniorityLevel(job)}</span>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </section>
+
+      <LogoMarquee />
 
       {/* Filters + results */}
       <section className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
-        <aside className="hidden lg:block lg:sticky lg:top-[88px]">{filtersPanel}</aside>
+        {/* Sticky, and scrollable on its own when the filter list is taller than the viewport. */}
+        <aside className="hidden lg:block lg:sticky lg:top-[88px] lg:max-h-[calc(100vh-104px)] lg:overflow-y-auto jm-scroll pe-1">{filtersPanel}</aside>
 
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-3">

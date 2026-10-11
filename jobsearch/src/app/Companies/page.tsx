@@ -64,10 +64,10 @@ export default function CompaniesPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {shown.map((c) => (
-          <div key={c.name} className="jm-card jm-card-hover p-5 flex flex-col gap-4">
-            <div className="flex items-center gap-3">
+          <div key={c.name} className="jm-card jm-card-hover jm-reveal p-5 flex flex-col gap-4 min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
               <CompanyLogo name={c.name} domain={c.domain} logoUrl={c.logoUrl} className="w-12 h-12 shrink-0 border border-line p-1" />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <h2 className="font-semibold text-navy truncate" dir="auto">{c.name}</h2>
                 <p className="jm-muted truncate">{[c.industry, ...(c.cities.length ? [c.cities.join(" · ")] : [])].filter(Boolean).join(" · ") || " "}</p>
               </div>

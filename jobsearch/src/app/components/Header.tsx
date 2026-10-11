@@ -41,21 +41,22 @@ function Header() {
   }, [menuOpen]);
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
-  const iconBtn = "relative flex items-center justify-center h-11 w-11 rounded-control bg-white/10 text-white hover:bg-white/20 transition-colors";
+  const iconBtn = "relative flex items-center justify-center h-11 w-11 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors";
 
   return (
-    <header className="sticky top-0 z-40 bg-navy text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
+    <header className="sticky top-0 z-40 bg-navy/95 backdrop-blur-md text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
       <div className="jm-container flex items-center gap-3 h-[72px]">
         <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="JobMatch home">
-          <Image src="/jobMatchIcon.png" alt="" width={44} height={44} priority className="rounded-xl" />
+          <Image src="/jobMatchIcon.png" alt="" width={40} height={40} priority className="rounded-xl" />
+          <span className="jm-display text-[22px] leading-none hidden sm:inline">JobMatch</span>
         </Link>
 
-        <nav className="hidden lg:flex items-center gap-1 ms-8">
+        <nav className="hidden lg:flex items-center gap-0.5 ms-6">
           {NAV_LINKS.map((l) => (
             <Link
               key={l.href}
               href={l.href}
-              className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+              className={`px-3.5 py-2 rounded-full text-sm font-medium transition-colors ${
                 isActive(l.href) ? "bg-white/15 text-white" : "text-white/75 hover:text-white hover:bg-white/10"
               }`}
             >
@@ -84,9 +85,9 @@ function Header() {
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
-                className="flex items-center gap-2 ps-1 pe-2 h-11 rounded-control bg-white/10 hover:bg-white/20 transition-colors"
+                className="flex items-center gap-2 ps-1 pe-3 h-11 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
               >
-                <span className="h-9 w-9 rounded-xl bg-sky text-white font-semibold flex items-center justify-center text-sm">
+                <span className="h-9 w-9 rounded-full bg-sky text-white font-semibold flex items-center justify-center text-sm">
                   {userInitial(user)}
                 </span>
                 <span className="max-w-[140px] truncate text-sm">{user.fullname || user.username}</span>

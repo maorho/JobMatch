@@ -1,33 +1,69 @@
 @import "tailwindcss";
 
 /*
- * JobMatch design tokens. The palette is the one the product already used
- * (navy / teal / blue + Outfit); everything else here makes it consistent.
+ * JobMatch design tokens — "editorial SaaS" variant.
+ * Inter for UI, a high-contrast serif (Instrument Serif, OFL) for display
+ * headings, a cobalt primary on warm off-white with periwinkle bands, pill
+ * buttons, large radii, generous whitespace and gentle motion (floating
+ * cards, logo marquee, reveal on scroll, a slow aurora in the background).
+ * Token NAMES are unchanged (navy/teal/sky/ink/line/canvas/surface) so every
+ * page keeps working; only their values and the primitives changed.
  */
 @theme {
-  --font-outfit: var(--font-outfit-next), "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-outfit);
+  --font-inter: var(--font-inter-next), "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-serif-next), "Lora", ui-serif, Georgia, serif;
+  --font-outfit: var(--font-inter);
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-display);
 
-  --color-navy: #102b39;
-  --color-navy-800: #0b1f2a;
-  --color-navy-700: #163a4c;
-  --color-teal: #24a8a2;
-  --color-teal-600: #1d8f8a;
-  --color-teal-50: #e9f6f5;
-  --color-sky: #11aeff;
-  --color-sky-600: #0d8ed6;
-  --color-sky-50: #e7f6ff;
-  --color-ink: #232323;
-  --color-ink-600: #4b5563;
-  --color-ink-400: #8a94a0;
-  --color-line: #e6ebf0;
-  --color-canvas: #f6f9fb;
+  /* "navy" is now the near-black ink used for strong text and dark surfaces. */
+  --color-navy: #15171f;
+  --color-navy-800: #0c0d12;
+  --color-navy-700: #2b2e3a;
+  /* "teal" is the primary action colour: a deep cobalt blue. */
+  --color-teal: #2f4ad6;
+  --color-teal-600: #2539b3;
+  --color-teal-50: #ebeefc;
+  /* "sky" is the secondary accent: periwinkle. */
+  --color-sky: #5f7cff;
+  --color-sky-600: #4461e8;
+  --color-sky-50: #eef2ff;
+  --color-ink: #15171f;
+  --color-ink-600: #545868;
+  --color-ink-400: #8b8fa3;
+  --color-line: #e6e8f1;
+  --color-canvas: #faf9f6;
   --color-surface: #ffffff;
+  /* Soft tinted band for alternating sections. */
+  --color-band: #eef1fb;
+  --color-band-200: #dbe2fa;
+  --color-lavender: #eef1fb;
+  --color-lavender-200: #dbe2fa;
+  --color-coral: #ff6a3d;
+  --color-mint: #e4f6f2;
 
-  --radius-card: 24px;
-  --radius-control: 14px;
-  --shadow-card: 0 1px 2px rgb(16 43 57 / 0.04), 0 8px 24px -12px rgb(16 43 57 / 0.14);
-  --shadow-card-hover: 0 2px 4px rgb(16 43 57 / 0.05), 0 18px 36px -14px rgb(16 43 57 / 0.22);
+  --radius-card: 28px;
+  --radius-control: 12px;
+  --shadow-card: 0 1px 2px rgb(21 23 31 / 0.04), 0 10px 30px -14px rgb(47 74 214 / 0.16);
+  --shadow-card-hover: 0 2px 6px rgb(21 23 31 / 0.05), 0 24px 48px -16px rgb(47 74 214 / 0.28);
+
+  --animate-float: jm-float 7s ease-in-out infinite;
+  --animate-float-slow: jm-float 11s ease-in-out infinite;
+  --animate-marquee: jm-marquee 42s linear infinite;
+  --animate-rise: jm-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes jm-float {
+    0%, 100% { transform: translateY(0) rotate(var(--jm-tilt, 0deg)); }
+    50% { transform: translateY(-14px) rotate(var(--jm-tilt, 0deg)); }
+  }
+  @keyframes jm-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes jm-rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 }
 
 @layer base {
@@ -38,19 +74,24 @@
   body {
     background: var(--color-canvas);
     color: var(--color-ink);
-    font-family: var(--font-outfit);
+    font-family: var(--font-inter);
     -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+    overflow-x: clip; /* a wide marquee/ticker must never give the page a horizontal scroll on phones */
   }
   ::selection {
-    background: color-mix(in srgb, var(--color-sky) 25%, transparent);
+    background: color-mix(in srgb, var(--color-teal) 18%, transparent);
   }
   input, select, textarea, button {
     font: inherit;
   }
   :focus-visible {
-    outline: 2px solid var(--color-sky);
+    outline: 2px solid var(--color-teal);
     outline-offset: 2px;
     border-radius: 6px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 }
 
@@ -63,42 +104,55 @@
   @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8;
 }
 @utility jm-page {
-  @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10;
+  @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 lg:py-14;
 }
 @utility jm-card {
-  @apply bg-surface rounded-card border border-line shadow-card;
+  @apply bg-surface/90 backdrop-blur-[2px] rounded-card border border-line shadow-card;
 }
 @utility jm-card-hover {
-  @apply transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-card-hover;
+  @apply transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:shadow-card-hover hover:border-lavender-200;
 }
 @utility jm-title {
-  @apply text-2xl sm:text-3xl lg:text-[34px] font-semibold text-navy tracking-tight leading-tight;
+  @apply text-3xl sm:text-4xl lg:text-[42px] font-medium text-navy leading-[1.1];
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
 }
 @utility jm-subtitle {
-  @apply text-sm sm:text-base text-ink-600 mt-2;
+  @apply text-base sm:text-lg text-ink-600 mt-3 leading-relaxed max-w-2xl;
 }
 @utility jm-h2 {
-  @apply text-lg sm:text-xl font-semibold text-navy;
+  @apply text-xl sm:text-2xl font-medium text-navy;
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 @utility jm-muted {
   @apply text-sm text-ink-400;
 }
+@utility jm-eyebrow {
+  @apply text-xs font-semibold uppercase tracking-[0.14em] text-teal;
+}
+@utility jm-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
 
 @utility jm-btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-control px-5 py-3 text-sm sm:text-base font-medium
-    transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer;
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm sm:text-base font-medium
+    transition-[background-color,color,border-color,transform,box-shadow] duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap select-none cursor-pointer
+    active:scale-[0.98];
 }
 @utility jm-btn-primary {
-  @apply bg-teal text-white hover:bg-teal-600;
+  @apply bg-teal text-white hover:bg-teal-600 shadow-[0_10px_24px_-12px_rgb(47_74_214/0.6)];
 }
 @utility jm-btn-accent {
-  @apply bg-sky text-white hover:bg-sky-600;
+  @apply bg-navy text-white hover:bg-navy-700;
 }
 @utility jm-btn-navy {
   @apply bg-navy text-white hover:bg-navy-700;
 }
 @utility jm-btn-secondary {
-  @apply bg-surface text-navy border border-line hover:border-navy/40 hover:bg-canvas;
+  @apply bg-surface text-navy border border-line hover:border-navy/40 hover:bg-lavender;
 }
 @utility jm-btn-ghost {
   @apply bg-transparent text-navy hover:bg-navy/5;
@@ -107,22 +161,22 @@
   @apply bg-red-600 text-white hover:bg-red-700;
 }
 @utility jm-btn-sm {
-  @apply px-3.5 py-2 text-sm rounded-xl;
+  @apply px-4 py-2 text-sm;
 }
 @utility jm-btn-icon {
-  @apply p-0 h-11 w-11 rounded-control;
+  @apply p-0 h-11 w-11 rounded-full;
 }
 
 @utility jm-input {
   @apply w-full bg-surface border border-line rounded-control px-4 py-3 text-sm sm:text-base text-ink
-    placeholder:text-ink-400 transition-colors focus:outline-none focus:border-teal focus:ring-2 focus:ring-teal/20;
+    placeholder:text-ink-400 transition-colors focus:outline-none focus:border-teal focus:ring-4 focus:ring-teal/10;
 }
 @utility jm-label {
   @apply block text-sm font-medium text-ink-600 mb-1.5;
 }
 @utility jm-select {
   @apply appearance-none pe-10 bg-no-repeat cursor-pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a94a0' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b8fa3' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
   background-position: right 0.9rem center;
   [dir="rtl"] & {
     background-position: left 0.9rem center;
@@ -130,23 +184,23 @@
 }
 
 @utility jm-chip {
-  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-canvas text-ink-600 border border-line max-w-full break-words;
+  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-lavender text-ink-600 border border-transparent max-w-full break-words;
 }
 @utility jm-chip-teal {
-  @apply bg-teal-50 text-teal-600 border-teal/20;
+  @apply bg-teal-50 text-teal-600;
 }
 @utility jm-chip-sky {
-  @apply bg-sky-50 text-sky-600 border-sky/20;
+  @apply bg-sky-50 text-sky-600;
 }
 @utility jm-chip-navy {
-  @apply bg-navy text-white border-navy;
+  @apply bg-navy text-white;
 }
 
 @utility jm-alert {
   @apply rounded-control px-4 py-3 text-sm border;
 }
 @utility jm-alert-ok {
-  @apply bg-teal-50 text-teal-600 border-teal/20;
+  @apply bg-mint text-emerald-800 border-emerald-200;
 }
 @utility jm-alert-err {
   @apply bg-red-50 text-red-700 border-red-200;
@@ -155,11 +209,25 @@
   @apply bg-sky-50 text-sky-600 border-sky/20;
 }
 
+/* Dark feature band (dashboards): cobalt gradient instead of a photo. */
 @utility jm-hero {
-  @apply relative overflow-hidden rounded-card bg-navy text-white;
+  @apply relative overflow-hidden rounded-card bg-teal text-white;
   background-image:
-    radial-gradient(60% 80% at 100% 0%, rgb(17 174 255 / 0.35) 0%, transparent 60%),
-    radial-gradient(50% 70% at 0% 100%, rgb(36 168 162 / 0.35) 0%, transparent 60%);
+    radial-gradient(70% 90% at 100% 0%, rgb(95 124 255 / 0.9) 0%, transparent 60%),
+    radial-gradient(60% 80% at 0% 100%, rgb(255 106 61 / 0.35) 0%, transparent 60%),
+    linear-gradient(135deg, #2f4ad6 0%, #2539b3 100%);
+}
+/* Light periwinkle band for alternating sections. */
+@utility jm-band {
+  @apply bg-lavender rounded-card;
+}
+
+/* Scroll reveal: elements start hidden and rise when RevealObserver marks them. */
+@utility jm-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  &.is-visible { opacity: 1; transform: none; }
 }
 
 @utility jm-skeleton {
@@ -171,7 +239,7 @@
   @apply w-full text-sm;
 }
 .jm-table thead th {
-  @apply bg-navy text-white font-medium text-start px-4 py-3 first:rounded-s-xl last:rounded-e-xl;
+  @apply bg-lavender text-navy font-semibold text-start px-4 py-3 first:rounded-s-xl last:rounded-e-xl;
 }
 .jm-table tbody td {
   @apply px-4 py-3 border-b border-line align-middle;
@@ -186,5 +254,62 @@
 /* Thin scrollbars inside cards/lists. */
 .jm-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgb(16 43 57 / 0.2) transparent;
+  scrollbar-color: rgb(21 23 31 / 0.2) transparent;
+}
+
+/* Logo marquee: duplicate the track once in markup; the keyframe moves it by half. */
+.jm-marquee {
+  mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+}
+.jm-marquee:hover .jm-marquee-track {
+  animation-play-state: paused;
+}
+
+/*
+ * Background aurora: three very soft colour fields (periwinkle, sky, peach)
+ * drifting slowly behind the whole site, plus a faint dot grid. Fixed and
+ * pointer-transparent; content sits on top. Respects reduced motion.
+ */
+.jm-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(rgb(21 23 31 / 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--color-canvas);
+}
+.jm-aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, rgb(250 249 246 / 0.55) 55%, var(--color-canvas) 100%);
+}
+.jm-aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.55;
+  will-change: transform;
+  mix-blend-mode: multiply;
+}
+.jm-aurora .a1 { width: 60vw; height: 60vw; left: -14vw; top: -22vw; background: #dbe2fa; animation: jm-drift-a 26s ease-in-out infinite; }
+.jm-aurora .a2 { width: 48vw; height: 48vw; right: -12vw; top: -6vw; background: #d3ecff; animation: jm-drift-b 32s ease-in-out infinite; }
+.jm-aurora .a3 { width: 42vw; height: 42vw; left: 30vw; top: 36vh; background: #ffe6d9; animation: jm-drift-c 38s ease-in-out infinite; }
+@keyframes jm-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(10vw, 8vh) scale(1.12); }
+}
+@keyframes jm-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-9vw, 12vh) scale(0.92); }
+}
+@keyframes jm-drift-c {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-12vw, -6vh) scale(1.08); }
+  66% { transform: translate(8vw, 6vh) scale(0.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jm-aurora span { animation: none; }
 }
