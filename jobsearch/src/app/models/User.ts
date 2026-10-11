@@ -36,6 +36,9 @@ export interface IUser extends Document {
   resumeUpdatedAt?: Date;
   level?: "junior" | "mid" | "senior";
   coachMemory?: unknown;
+  apiKeyHash?: string;
+  apiKeyPrefix?: string;
+  apiKeyCreatedAt?: Date;
   lastMatchDigestAt?: Date;
   gmail?: {
     address?: string;
@@ -94,6 +97,10 @@ const UserSchema = new Schema<IUser>(
     resumeScore: { type: Number, default: undefined },
     resumeIssues: { type: [String], default: undefined },
     resumeUpdatedAt: { type: Date, default: undefined },
+    /** Personal API key for MCP clients (lib/auth/apiKey.ts): hash + display prefix. */
+    apiKeyHash: { type: String, default: undefined, index: true, select: false },
+    apiKeyPrefix: { type: String, default: undefined },
+    apiKeyCreatedAt: { type: Date, default: undefined },
     /** The coach's memory across mock interviews (lib/interview/coachMemory.ts). */
     coachMemory: { type: mongoose.Schema.Types.Mixed, default: undefined },
     /** Inferred seniority (junior | mid | senior) — drives level-aware matching. */

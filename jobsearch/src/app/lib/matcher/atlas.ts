@@ -112,6 +112,6 @@ export async function textSearch(query: string, opts: { limit?: number; filter?:
   // Fallback: every word must appear somewhere (same rule the search route used).
   const words = q.split(/\s+/).filter(Boolean).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const re = words.map((w) => ({ $or: ["job", "description", "company", "skills"].map((f) => ({ [f]: new RegExp(w, "i") })) }));
-  const docs: any[] = await ExternalJobs.find({ $and: re, ...mongoFilter(opts.filter), embedding: undefined }).select("_id job").limit(limit).lean();
+  const docs: any[] = await ExternalJobs.find({ $and: re, ...mongoFilter(opts.filter) }).select("_id job").limit(limit).lean();
   return docs.map((d, i) => ({ _id: String(d._id), score: (/junior/i.test(q) && /junior/i.test(d.job) ? 2 : 1) * (1 / (1 + i)) }));
 }

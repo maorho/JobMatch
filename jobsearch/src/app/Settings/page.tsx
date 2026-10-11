@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import ContactsCard from "../components/ContactsCard";
 import AutoApplyCard from "../components/AutoApplyCard";
+import McpCard from "../components/McpCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string };
@@ -143,6 +144,11 @@ export default function SettingsPage() {
         <div id="auto-apply" className={card}>
           <h2 className="jm-h2">⚡ הגשה אוטומטית</h2>
           <AutoApplyCard />
+        </div>
+
+        <div id="mcp" className={card}>
+          <h2 className="jm-h2">🔌 סוכני AI חיצוניים (MCP)</h2>
+          <McpCard />
         </div>
 
         {(!p?.authProvider || p.authProvider === "local") && (

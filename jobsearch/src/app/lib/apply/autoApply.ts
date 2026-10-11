@@ -30,6 +30,8 @@ export type AutoApplyDeps = {
   submit?: typeof submitExternalApplication;
   tailor?: typeof tailorResumeToJob;
   answer?: typeof answerFormFields;
+  /** The user explicitly asked to apply to these postings (MCP/UI): ignore the opt-in switch and the score bar; keep dedupe + cap. */
+  explicit?: boolean;
 };
 
 const startOfToday = () => {
@@ -49,10 +51,11 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
   await connectToDatabase();
   const out: ApplyOutcome = { submitted: [], needsUser: [], failed: 0, skipped: 0, capped: 0 };
   const user: any = await User.findById(userId).select("+resumeText +resumeStructured fullname email phone currentJob autoApply").lean();
-  if (!user?.autoApply?.enabled) return { ...out, skipped: candidates.length, disabled: true };
+  if (!user) return { ...out, skipped: candidates.length, disabled: true };
+  if (!deps.explicit && !user.autoApply?.enabled) return { ...out, skipped: candidates.length, disabled: true };
 
-  const minScore = user.autoApply.minScore ?? 75;
-  const dailyCap = user.autoApply.dailyCap ?? 5;
+  const minScore = deps.explicit ? 0 : user.autoApply?.minScore ?? 75;
+  const dailyCap = user.autoApply?.dailyCap ?? 5;
   let usedToday = await AutoApplication.countDocuments({ userId, status: "submitted", createdAt: { $gte: startOfToday() } });
 
   const { firstName, lastName } = splitName(user.fullname || "");
