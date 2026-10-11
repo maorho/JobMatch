@@ -88,3 +88,4 @@ cypress/screenshots/
 *.key
 .cache/
 .cache-loader/
+demo/
