@@ -19,8 +19,9 @@ export async function GET(req: NextRequest) {
     const payload = await memo(`external-jobs:${page}:${limit}`, ttl(60_000), async () => {
       const [jobs, total] = await Promise.all([
         // Sort by real posting date (interleaves companies); fall back to
-        // ingestion time for older docs that have no postedAt.
-        ExternalJobs.find().sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
+        // ingestion time for older docs that have no postedAt. `_id` breaks the
+        // (frequent) ties so skip/limit paging never repeats a job.
+        ExternalJobs.find().sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
         ExternalJobs.countDocuments(),
       ]);
       return { jobs: jobs.map((job: any) => ({ ...job, description: snippet(job.description), source: "external" })), total, page, pages: Math.ceil(total / limit) };

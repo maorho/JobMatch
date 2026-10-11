@@ -9,6 +9,7 @@ import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { getCandidateVector } from "./candidateProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { memo, ttl } from "@/app/lib/cache";
 
 /**
  * The matching pipeline:
@@ -36,6 +37,7 @@ export type RankedJob = {
   why?: string;
   gaps?: string[];
   reranked: boolean;
+  seniority?: string;
   /** JobMatch's own "interview likelihood" (lib/matcher/likelihood.ts), 0–100. */
   likelihood?: Likelihood;
 };
@@ -76,17 +78,50 @@ export async function loadCandidateProfile(userId: string, opts: { light?: boole
   return { userId, vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0 };
 }
 
+const MAX_POOL = 600;
+/** A signed-in user's ranked list lives this long; every page is a slice of the same list, so paging never repeats or skips a job. */
+const RANK_TTL_MS = 2 * 60_000;
+
 /** Rank the catalog for a profile (vector + optional query), with level/freshness signals and optional LLM rerank. */
 export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number }> {
   await connectToDatabase();
   const limit = opts.limit ?? 48;
   const skip = opts.skip ?? 0;
-  const pool = Math.min(Math.max((skip + limit) * 3, 150), 600);
+  const minScore = opts.minScore ?? 0;
+  const wantRerank = opts.rerank ?? (!!profile.userId && !!profile.resumeSummary);
+  // Signed-in users get one full-depth list, cached briefly and sliced per page (the key is personal: user + résumé version).
+  // Anonymous/one-off callers (digest, auto-apply, candidate matching) rank just as deep as the page they asked for.
+  const cacheable = !!profile.userId;
+  const pool = cacheable ? MAX_POOL : Math.min(Math.max((skip + limit) * 3, 150), MAX_POOL);
+  const compute = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
+  const final = cacheable
+    ? await memo(`rank:${profile.userId}:${profile.resumeVersion}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`, ttl(RANK_TTL_MS), compute)
+    : await compute();
+  const page = final.slice(skip, skip + limit);
+  // The shown number: interview likelihood from the same features the outcome loop stores.
+  const model = await loadModel().catch(() => null);
+  for (const j of page) {
+    j.likelihood = likelihoodFrom(model, {
+      matchScore: j.matchScore,
+      cosine: j.cosine,
+      levelFit: j.levelFit,
+      rerankFit: j.reranked ? j.matchScore : null,
+      level: profile.level,
+      jobSeniority: String(seniorityOf(j.job, j.seniority) || "").toLowerCase(),
+      remote: !!j.remote,
+      postedAgeDays: j.firstSeenAt || j.postedAt ? Math.max(0, Math.round((Date.now() - new Date((j.firstSeenAt || j.postedAt) as Date).getTime()) / 86_400_000)) : null,
+    });
+  }
+  return { jobs: page, total: final.length };
+}
+
+/** The whole ranked list (recall → signals → rerank → minScore), independent of paging. */
+async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore: number; rerank: boolean }, pool: number): Promise<RankedJob[]> {
   const [vec, txt] = await Promise.all([
     profile.vector ? vectorSearch(profile.vector, { limit: pool, filter: opts.filter }) : Promise.resolve([]),
     opts.query ? textSearch(opts.query, { limit: pool, filter: opts.filter }) : Promise.resolve([]),
   ]);
-  if (!vec.length && !txt.length) return { jobs: [], total: 0 };
+  if (!vec.length && !txt.length) return [];
   // Recall pool = union of both lists; relevance = blend of normalized scores
   // (RRF ranks are too flat to combine with the level/freshness signals).
   const cosineOf = new Map(vec.map((v) => [v._id, v.score]));
@@ -111,14 +146,14 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
       const base = semantic !== undefined && lexical !== undefined ? 0.6 * semantic + 0.4 * lexical : semantic ?? lexical ?? 0;
       // Level is decisive: a senior role for a junior loses up to ~45 points; freshness adds a few.
       const matchScore = Math.max(0, Math.min(100, Math.round(base * (0.55 + 0.45 * lf) + freshnessBoost(d.firstSeenAt) * 100)));
-      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, _seniority: d.seniority } as RankedJob & { _seniority: any };
+      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority } as RankedJob;
     })
-    .filter(Boolean) as (RankedJob & { _seniority: any })[];
-  ranked.sort((a, b) => b.matchScore - a.matchScore || b.cosine - a.cosine);
+    .filter(Boolean) as RankedJob[];
+  // Deterministic order (id as the last tiebreak) so page boundaries never move between requests.
+  ranked.sort((a, b) => b.matchScore - a.matchScore || b.cosine - a.cosine || a._id.localeCompare(b._id));
 
   // Rerank the head of the list with the LLM (cached per résumé version).
-  const wantRerank = opts.rerank ?? (!!profile.userId && !!profile.resumeSummary && skip === 0);
-  if (wantRerank && profile.userId && profile.resumeSummary) {
+  if (opts.rerank && profile.userId && profile.resumeSummary) {
     const top = ranked.slice(0, opts.rerankTop ?? 24) as any[];
     const descs: any[] = await ExternalJobs.find({ _id: { $in: top.map((t) => t._id) } }).select("description").lean();
     const descOf = new Map(descs.map((d) => [String(d._id), d.description || ""]));
@@ -129,7 +164,7 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
       resumeSummary: profile.resumeSummary,
       level: profile.level,
       language: opts.language,
-      jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t._seniority })),
+      jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t.seniority })),
     });
     for (const t of top) {
       const v = verdicts.get(t._id);
@@ -140,35 +175,16 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
       t.reranked = true;
     }
     // Reranked items sort by fit among themselves and stay ahead of the unreranked tail.
-    const head = top.sort((a, b) => b.matchScore - a.matchScore);
+    const head = top.sort((a, b) => b.matchScore - a.matchScore || a._id.localeCompare(b._id));
     ranked = [...head, ...ranked.slice(head.length)];
   }
 
-  const minScore = opts.minScore ?? 0;
-  const final = ranked.filter((r) => r.matchScore >= minScore).map(({ _description: _d, _seniority: _s, ...r }: any) => r as RankedJob);
-  const page = final.slice(skip, skip + limit);
-  // The shown number: interview likelihood from the same features the outcome loop stores.
-  const model = await loadModel().catch(() => null);
-  const seniorityOfJob = new Map((ranked as any[]).map((r) => [r._id, r._seniority]));
-  for (const j of page) {
-    j.likelihood = likelihoodFrom(model, {
-      matchScore: j.matchScore,
-      cosine: j.cosine,
-      levelFit: j.levelFit,
-      rerankFit: j.reranked ? j.matchScore : null,
-      level: profile.level,
-      jobSeniority: String(seniorityOf(j.job, seniorityOfJob.get(j._id)) || "").toLowerCase(),
-      remote: !!j.remote,
-      postedAgeDays: j.firstSeenAt || j.postedAt ? Math.max(0, Math.round((Date.now() - new Date((j.firstSeenAt || j.postedAt) as Date).getTime()) / 86_400_000)) : null,
-    });
-  }
-  return { jobs: page, total: final.length };
+  return ranked.filter((r) => r.matchScore >= opts.minScore).map(({ _description: _d, ...r }: any) => r as RankedJob);
 }
 
-/** Convenience: rank for a signed-in user. */
+/** Convenience: rank for a signed-in user. Every page comes from the same cached list (see rankJobs). */
 export async function rankForUser(userId: string, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number; profile: CandidateProfile | null }> {
-  const wantRerank = opts.rerank ?? (opts.skip ?? 0) === 0;
-  const profile = await loadCandidateProfile(userId, { light: !wantRerank });
+  const profile = await loadCandidateProfile(userId, { light: opts.rerank === false });
   if (!profile || (!profile.vector && !opts.query)) return { jobs: [], total: 0, profile };
   const r = await rankJobs(profile, opts);
   return { ...r, profile };

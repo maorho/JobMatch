@@ -212,7 +212,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       const pos = new Map(pageIds.map((id, i) => [id, i]));
       externalDocs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
     } else {
-      [externalTotal, externalDocs] = await Promise.all([ExternalJobs.countDocuments(extFilter), pageQuery.sort({ postedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean()]);
+      [externalTotal, externalDocs] = await Promise.all([ExternalJobs.countDocuments(extFilter), pageQuery.sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean()]);
     }
 
     let external = externalDocs.map((d: any) => {

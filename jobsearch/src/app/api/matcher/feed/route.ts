@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
   const skip = (page - 1) * limit;
 
   try {
-    // Page 1 gets the LLM rerank (cached per résumé version); later pages are vector + level only.
-    const { jobs: matches, total } = await rankForUser(userId, { limit, skip, rerank: page === 1 });
+    // One ranked list per user (cached briefly, LLM-reranked head cached per résumé version); each page is a slice of it.
+    const { jobs: matches, total } = await rankForUser(userId, { limit, skip });
 
     if (matches.length === 0 && page === 1) {
       // No profile vector (or no embedded jobs) → let the client use the normal feed.

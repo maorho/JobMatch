@@ -71,6 +71,15 @@ export function getSeniorityLevel(job: Job): string {
   return seniorityOf(job.job, job.seniority as string[] | string | undefined);
 }
 
+const jobKey = (job: Job, i: number) => String(job._id || job.id || `${job.source}-${i}`);
+
+/** Append a page without repeating a job already on screen (the catalog changes between page loads; React keys must stay unique). */
+function appendUnique(prev: Job[], next: Job[]): Job[] {
+  const seen = new Set(prev.map(jobKey));
+  const fresh = next.filter((job, i) => !seen.has(jobKey(job, i)));
+  return fresh.length ? [...prev, ...fresh] : prev;
+}
+
 function JobTable() {
   const { user } = useCurrentUser();
   const [allJobs, setAllJobs] = useState<Job[]>([]); 
@@ -143,8 +152,8 @@ function JobTable() {
         setAllJobs(results);
         setJobs(results);
       } else {
-        setAllJobs((prev) => [...prev, ...results]);
-        setJobs((prev) => [...prev, ...results]);
+        setAllJobs((prev) => appendUnique(prev, results));
+        setJobs((prev) => appendUnique(prev, results));
       }
       setJobCount(data.total ?? results.length);
       setTotalPages(data.pages || 1);
@@ -183,8 +192,8 @@ function JobTable() {
                 setAllJobs(feedJobs);
                 setJobs(feedJobs);
               } else {
-                setAllJobs((prev) => [...prev, ...feedJobs]);
-                setJobs((prev) => [...prev, ...feedJobs]);
+                setAllJobs((prev) => appendUnique(prev, feedJobs));
+                setJobs((prev) => appendUnique(prev, feedJobs));
               }
               // Catalog-wide count, not the page size.
               setJobCount(feedData.total ?? feedJobs.length);
@@ -224,8 +233,8 @@ function JobTable() {
         setAllJobs(merged);
         setJobs(merged);
       } else {
-        setAllJobs((prev) => [...prev, ...merged]);
-        setJobs((prev) => [...prev, ...merged]);
+        setAllJobs((prev) => appendUnique(prev, merged));
+        setJobs((prev) => appendUnique(prev, merged));
       }
       // Catalog-wide count (what the DB holds), not the size of this page.
       setJobCount(
@@ -478,7 +487,7 @@ function JobTable() {
             <>
               <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
                 {jobs.map((job, i) => (
-                  <JobCard key={job._id || job.id || `${job.source}-${i}`} job={job} jobIndex={i} />
+                  <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}
               </div>
 

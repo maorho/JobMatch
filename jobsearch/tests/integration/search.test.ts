@@ -178,3 +178,16 @@ describe("GET /api/jobs/facets", () => {
     expect(mine.headers.get("cache-control")).toMatch(/private/);
   });
 });
+
+describe("GET /api/external-jobs/fetch-all-external-jobs", () => {
+  it("pages without repeating a job when many share the same sort keys", async () => {
+    const { GET } = await import("@/app/api/external-jobs/fetch-all-external-jobs/route");
+    const createdAt = new Date("2026-10-06T12:23:38.984Z");
+    await ExternalJobs.insertMany(Array.from({ length: 30 }, (_, i) => ({ ...ext({ job: `Tied Engineer ${i}`, sourceJobId: `tie-${i}`, postedAt: undefined }), createdAt })));
+    const page = async (p: number) => (await (await GET(new NextRequest(`http://localhost/api/external-jobs/fetch-all-external-jobs?page=${p}&limit=7`))).json()).jobs as any[];
+    const ids: string[] = [];
+    for (let p = 1; p <= 6; p++) ids.push(...(await page(p)).map((j) => String(j._id)));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.length).toBe(await ExternalJobs.countDocuments());
+  });
+});

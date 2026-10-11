@@ -133,3 +133,17 @@ describe("edge cases", () => {
     expect(after[0].job).toBe("Mobile Developer");
   });
 });
+
+describe("paging is a slice of one deterministic list", () => {
+  it("never repeats or skips a job across pages, even when scores tie", async () => {
+    // 14 near-identical postings → identical cosine/matchScore; only the id tiebreak orders them.
+    await ExternalJobs.insertMany(Array.from({ length: 14 }, (_, i) => job(`Android Developer ${i}`, "Kotlin Android mobile developer Jetpack Compose", { sourceJobId: `and-${i}` })));
+    await embedPendingJobs();
+    const id = await mkUser("Kotlin Android mobile developer, Jetpack Compose");
+    const all = await matchForUser(id, { limit: 50 });
+    const pages = await Promise.all([1, 2, 3, 4].map((p) => matchForUser(id, { limit: 5, skip: (p - 1) * 5 })));
+    const seen = pages.flat().map((m) => m._id);
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(seen).toEqual(all.map((m) => m._id));
+  });
+});
