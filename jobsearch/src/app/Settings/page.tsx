@@ -8,6 +8,7 @@ import AutoApplyCard from "../components/AutoApplyCard";
 import McpCard from "../components/McpCard";
 import PartnerCard from "../components/PartnerCard";
 import ChannelsCard from "../components/ChannelsCard";
+import SearchProfileCard from "../components/SearchProfileCard";
 import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 
@@ -139,6 +140,11 @@ export default function SettingsPage() {
           )}
         </div>
 
+        <div id="search-profile" className={card}>
+          <h2 className="jm-h2">🎯 מה אני מחפש</h2>
+          <SearchProfileCard />
+        </div>
+
         <div id="messaging" className={card}>
           <h2 className="jm-h2">💬 התאמות ועדכונים בוואטסאפ / טלגרם</h2>
           <ChannelsCard />
@@ -155,7 +161,7 @@ export default function SettingsPage() {
         </div>
 
         <div id="auto-apply" className={card}>
-          <h2 className="jm-h2">⚡ הגשה אוטומטית</h2>
+          <h2 className="jm-h2">⚡ הגשה אוטומטית <span className="jm-chip jm-chip-sky align-middle">בטא</span></h2>
           <AutoApplyCard />
         </div>
 

@@ -7,9 +7,10 @@ import { inferCandidateLevel, levelFit, freshnessBoost, type CandidateLevel } fr
 import { rerankForUser } from "./rerank";
 import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
-import { getCandidateVector } from "./candidateProfile";
+import { candidateSearchVector, profileReject, hasSearchProfile, type SearchProfile } from "./searchProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { memo, ttl } from "@/app/lib/cache";
+import { dismissedIds } from "@/app/lib/jobs/signals";
 
 /**
  * The matching pipeline:
@@ -66,20 +67,22 @@ export function rrf(lists: { _id: string }[][], weights?: number[]): Map<string,
   return out;
 }
 
-export type CandidateProfile = { userId?: string; vector: number[] | null; level: CandidateLevel; resumeSummary: string; resumeVersion: number };
+export type CandidateProfile = { userId?: string; vector: number[] | null; level: CandidateLevel; resumeSummary: string; resumeVersion: number; searchProfile?: SearchProfile | null; searchVersion?: number };
 
 export async function loadCandidateProfile(userId: string, opts: { light?: boolean } = {}): Promise<CandidateProfile | null> {
   await connectToDatabase();
   // `light` skips the résumé text (only needed for the reranker) — the vector + level are enough to rank.
-  const [vector, user]: [number[] | null, any] = await Promise.all([getCandidateVector(userId), User.findById(userId).select(opts.light ? "currentJob resumeUpdatedAt level" : "+resumeText +resumeStructured currentJob resumeUpdatedAt level").lean()]);
+  const [sv, user]: [Awaited<ReturnType<typeof candidateSearchVector>>, any] = await Promise.all([candidateSearchVector(userId), User.findById(userId).select(opts.light ? "currentJob resumeUpdatedAt level" : "+resumeText +resumeStructured currentJob resumeUpdatedAt level").lean()]);
   if (!user) return null;
   const resumeText = opts.light ? (user.level ? "x" : "") : (user.resumeText || "").trim() || (isStructuredResume(user.resumeStructured) ? structuredToText(user.resumeStructured) : "");
-  const level: CandidateLevel = user.level || inferCandidateLevel(resumeText, user.currentJob || "");
-  return { userId, vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0 };
+  // The stated level wins over the inferred one.
+  const level: CandidateLevel = sv.profile?.level || user.level || inferCandidateLevel(resumeText, user.currentJob || "");
+  return { userId, vector: sv.vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0, searchProfile: sv.profile, searchVersion: sv.version };
 }
 
 const MAX_POOL = 600;
-const RERANK_TOP = 48;
+/** Two pages get an LLM verdict (cached per résumé version), so what people actually scroll is verified. */
+const RERANK_TOP = 96;
 /** A signed-in user's ranked list lives this long; every page is a slice of the same list, so paging never repeats or skips a job. */
 const RANK_TTL_MS = 2 * 60_000;
 
@@ -96,9 +99,12 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
   const pool = cacheable ? MAX_POOL : Math.min(Math.max((skip + limit) * 3, 150), MAX_POOL);
   const compute = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
   const final = cacheable
-    ? await memo(`rank:${profile.userId}:${profile.resumeVersion}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`, ttl(RANK_TTL_MS), compute)
+    ? await memo(`rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`, ttl(RANK_TTL_MS), compute)
     : await compute();
-  const page = final.slice(skip, skip + limit);
+  // "Not relevant" is final for that person: dismissed postings never come back, in any page or total.
+  const dismissed = profile.userId ? await dismissedIds(profile.userId) : null;
+  const visible = dismissed?.size ? final.filter((r) => !dismissed.has(r._id)) : final;
+  const page = visible.slice(skip, skip + limit);
   // The shown number: interview likelihood from the same features the outcome loop stores.
   const model = await loadModel().catch(() => null);
   for (const j of page) {
@@ -113,7 +119,7 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
       postedAgeDays: j.firstSeenAt || j.postedAt ? Math.max(0, Math.round((Date.now() - new Date((j.firstSeenAt || j.postedAt) as Date).getTime()) / 86_400_000)) : null,
     });
   }
-  return { jobs: page, total: final.length };
+  return { jobs: page, total: visible.length };
 }
 
 /** The whole ranked list (recall → signals → rerank → minScore), independent of paging. */
@@ -150,6 +156,13 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority } as RankedJob;
     })
     .filter(Boolean) as RankedJob[];
+  // "What I'm looking for" is a contract, not a hint: wrong role family, wrong seniority band or wrong place → out.
+  const sp = profile.searchProfile;
+  if (hasSearchProfile(sp)) {
+    const kept = ranked.filter((r) => !profileReject(sp, { job: r.job, city: r.city, country: r.country, remote: r.remote, levelFit: r.levelFit }));
+    ranked.length = 0;
+    ranked.push(...kept);
+  }
   // Deterministic order (id as the last tiebreak) so page boundaries never move between requests.
   ranked.sort((a, b) => b.matchScore - a.matchScore || b.cosine - a.cosine || a._id.localeCompare(b._id));
 

@@ -1,8 +1,9 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { MapPin, Clock } from "lucide-react";
+import { MapPin, Clock, Bookmark, X } from "lucide-react";
+import { useJobSignals } from "../lib/hooks/useJobSignals";
 import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import CompanyLogo from "./CompanyLogo";
 import dayjs from "dayjs";
@@ -19,6 +20,18 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const router = useRouter();
   const href = isInternalJob(job) ? `/job/internal/${job._id}` : `/job/external/${job._id}`;
   const open = () => router.push(href);
+  const signals = useJobSignals();
+  const id = String(job._id || job.id || "");
+  const isSaved = signals.saved.has(id);
+  const [hidden, setHidden] = useState(false);
+  const act = async (e: React.MouseEvent, kind: "saved" | "dismissed") => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!signals.signedIn) return router.push(`/Login?next=${encodeURIComponent(href)}`);
+    const on = await signals.toggle(id, kind, isInternalJob(job) ? "Job" : "ExternalJobs", typeof job.matchScore === "number" ? job.matchScore : null);
+    if (kind === "dismissed" && on) setHidden(true); // "not relevant" leaves the feed right away
+  };
+  if (hidden) return null;
 
   const companyName = isInternalJob(job) ? job.company.companyName : job.company;
   const location =
@@ -54,6 +67,14 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           </h3>
           <p className="text-sm text-ink-600 truncate">{companyName}</p>
         </div>
+        <span className="flex items-start gap-1 shrink-0">
+          <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
+            <Bookmark className="h-4 w-4" fill={isSaved ? "currentColor" : "none"} />
+          </button>
+          <button type="button" onClick={(e) => act(e, "dismissed")} aria-label="Not relevant" title="לא רלוונטי" className="h-8 w-8 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </span>
         {typeof job.matchScore === "number" && (
           <span className="jm-chip jm-chip-teal shrink-0 flex-col leading-tight" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
             <span>{job.matchScore}%</span>

@@ -55,6 +55,9 @@ export interface IUser extends Document {
   };
   autoApply?: { enabled?: boolean; minScore?: number; dailyCap?: number; enabledAt?: Date };
   onboarding?: { completedAt?: Date; contactsStep?: "" | "done" | "skipped" };
+  searchProfile?: { roles?: string[]; level?: "junior" | "mid" | "senior"; cities?: string[]; workModes?: string[]; keywords?: string[]; updatedAt?: Date };
+  searchVector?: number[];
+  searchVectorKey?: string;
   partner?: { slug?: string; code?: string; cohort?: string; joinedAt?: Date };
 
   createdAt?: Date;
@@ -151,6 +154,18 @@ const UserSchema = new Schema<IUser>(
       cohort: { type: String, default: "" },
       joinedAt: { type: Date, default: undefined },
     },
+    /** "What I'm looking for" (lib/matcher/searchProfile.ts): roles, level, cities, work modes, keywords. */
+    searchProfile: {
+      roles: { type: [String], default: undefined },
+      level: { type: String, enum: ["junior", "mid", "senior"], default: undefined },
+      cities: { type: [String], default: undefined },
+      workModes: { type: [String], default: undefined },
+      keywords: { type: [String], default: undefined },
+      updatedAt: { type: Date, default: undefined },
+    },
+    /** Recall vector = résumé embedding blended with the target embedding; cached by profile text + résumé version. */
+    searchVector: { type: [Number], default: undefined, select: false },
+    searchVectorKey: { type: String, default: undefined },
     /** Onboarding steps the user completed or skipped. */
     onboarding: {
       completedAt: { type: Date, default: undefined },

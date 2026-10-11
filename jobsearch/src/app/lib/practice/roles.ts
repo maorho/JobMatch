@@ -44,11 +44,36 @@ const ROLE_RE: Record<PracticeRole, RegExp> = {
   frontend: /\b(front[- ]?end|react|vue|angular|css|html|next\.?js|ui developer)\b/gi,
   backend: /\b(back[- ]?end|node\.?js|express|nest\.?js|django|flask|fastapi|spring|\.net|golang|\bgo\b|microservices|rest api|graphql|postgres|mongodb)\b/gi,
   fullstack: /\b(full[- ]?stack|mern|mean)\b/gi,
-  data: /\b(data scien|data analy|machine learning|\bml\b|pandas|numpy|scikit|pytorch|tensorflow|sql analyst|bi developer|statistics)\b/gi,
+  data: /\b(data scien\w*|data analy\w*|data engineer\w*|machine learning|ml engineer|ml\b|pandas|numpy|scikit|pytorch|tensorflow|sql analyst|bi developer|statistic\w*|analytics)\b/gi,
   devops: /\b(devops|sre|site reliability|kubernetes|k8s|docker|terraform|ci\/cd|jenkins|ansible|cloud engineer|platform engineer)\b/gi,
   qa: /\b(qa|quality assurance|automation engineer|test engineer|selenium|playwright|cypress|manual test)\b/gi,
   mobile: /\b(mobile|android|ios|kotlin|swift|react native|flutter)\b/gi,
 };
+
+/** Does a job title belong to one of these role families? (fullstack titles count for frontend and backend too.) */
+export function roleTitleMatches(title: string, roles: PracticeRole[]): boolean {
+  const t = title || "";
+  const wanted = new Set<PracticeRole>(roles);
+  // A full-stack title suits a frontend or backend seeker; a full-stack seeker suits both sides.
+  if (roles.includes("frontend") || roles.includes("backend")) wanted.add("fullstack");
+  if (roles.includes("fullstack")) {
+    wanted.add("frontend");
+    wanted.add("backend");
+  }
+  for (const r of wanted) {
+    ROLE_RE[r].lastIndex = 0;
+    if (ROLE_RE[r].test(t)) return true;
+  }
+  // Generic software titles ("Software Engineer", "Developer", "R&D Engineer") fit every engineering family;
+  // a title that names ANOTHER family (Backend for a frontend seeker, QA for a data seeker…) does not.
+  const named = PRACTICE_ROLES.filter((r) => !wanted.has(r)).some((r) => {
+    ROLE_RE[r].lastIndex = 0;
+    return ROLE_RE[r].test(t);
+  });
+  if (named) return false;
+  // Bare "engineer" is not enough (NOC / network / security / IT engineers are other professions).
+  return /\b(software (engineer|developer)|full[- ]?stack|web developer|developer|programmer|r&d engineer|application engineer)\b/i.test(t) && !/\b(noc|network|security|system|systems|it|support|maintenance|field|sales|account|marketing|hr|recruit|finance|legal|customer|success|operations?|hardware|electrical|mechanical|civil|technician)\b/i.test(t);
+}
 
 /** Best-guess role from a résumé / current title (frontend when nothing matches — the most common junior profile here). */
 export function inferRole(text: string): PracticeRole {

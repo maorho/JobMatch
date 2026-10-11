@@ -8,6 +8,7 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
 import EmailTrackingCard from "./components/EmailTrackingCard";
 import OutcomesCard from "./components/OutcomesCard";
+import SavedJobsCard from "./components/SavedJobsCard";
 import AutoApplyCard from "../components/AutoApplyCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
@@ -198,6 +199,7 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      <SavedJobsCard />
       <OutcomesCard />
       <EmailTrackingCard />
       <section id="auto-apply" className="jm-card p-5 sm:p-6" dir="rtl">

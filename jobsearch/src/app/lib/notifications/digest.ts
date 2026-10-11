@@ -2,7 +2,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import { notify } from "./notify";
-import { rankJobs } from "@/app/lib/matcher/hybrid";
+import { rankJobs, loadCandidateProfile } from "@/app/lib/matcher/hybrid";
 import { inferCandidateLevel } from "@/app/lib/matcher/level";
 
 const MIN_SCORE = 60;
@@ -33,10 +33,8 @@ export async function runJobMatchDigest(opts: { dry?: boolean } = {}): Promise<D
   for (const u of users) {
     const since = u.lastMatchDigestAt ? new Date(Math.max(new Date(u.lastMatchDigestAt).getTime(), horizon.getTime())) : horizon;
     // Vector search scoped to the postings that are new for this user; level-aware score.
-    const { jobs } = await rankJobs(
-      { vector: u.embedding, level: u.level || inferCandidateLevel(u.resumeText || "", u.currentJob || ""), resumeSummary: "", resumeVersion: 0 },
-      { filter: { firstSeenAfter: since }, limit: TOP_N, minScore: MIN_SCORE, rerank: false }
-    );
+    const profile = (await loadCandidateProfile(String(u._id), { light: true }).catch(() => null)) || { vector: u.embedding, level: u.level || inferCandidateLevel(u.resumeText || "", u.currentJob || ""), resumeSummary: "", resumeVersion: 0 };
+    const { jobs } = await rankJobs({ ...profile, userId: undefined, resumeSummary: "" }, { filter: { firstSeenAfter: since }, limit: TOP_N, minScore: MIN_SCORE, rerank: false });
     const scored = jobs.map((j) => ({ j, score: j.matchScore }));
 
     if (!dry) {

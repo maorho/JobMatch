@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
+import { saveSearchProfile, hasSearchProfile, normalizeSearchProfile } from "@/app/lib/matcher/searchProfile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,8 +12,8 @@ export async function GET(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   await connectToDatabase();
-  const u: any = await User.findById(userId).select("onboarding resumeUpdatedAt autoApply fullname").lean();
-  return NextResponse.json({ ok: true, onboarding: u?.onboarding || {}, hasResume: !!u?.resumeUpdatedAt, autoApply: !!u?.autoApply?.enabled, fullname: u?.fullname || "" });
+  const u: any = await User.findById(userId).select("onboarding resumeUpdatedAt autoApply fullname searchProfile").lean();
+  return NextResponse.json({ ok: true, onboarding: u?.onboarding || {}, hasResume: !!u?.resumeUpdatedAt, autoApply: !!u?.autoApply?.enabled, fullname: u?.fullname || "", hasSearchProfile: hasSearchProfile(u?.searchProfile ? normalizeSearchProfile(u.searchProfile) : null) });
 }
 
 export async function POST(req: NextRequest) {
@@ -20,6 +21,10 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const body = await req.json().catch(() => ({}));
   const set: Record<string, unknown> = {};
+  if (body?.searchProfile && typeof body.searchProfile === "object") {
+    await saveSearchProfile(userId, body.searchProfile);
+    if (!body.contactsStep && body.complete !== true) return NextResponse.json({ ok: true });
+  }
   if (body?.contactsStep === "skipped" || body?.contactsStep === "done") set["onboarding.contactsStep"] = body.contactsStep;
   if (body?.complete === true) set["onboarding.completedAt"] = new Date();
   if (!Object.keys(set).length) return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
