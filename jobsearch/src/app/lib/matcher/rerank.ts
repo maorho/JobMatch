@@ -24,8 +24,15 @@ const verdictSchema = z.object({
 export function buildRerankPrompt(resumeSummary: string, level: string, jobs: RerankCandidate[], language: "he" | "en"): { system: string; user: string } {
   const lang = language === "he" ? "Hebrew (technical terms in English)" : "English";
   const system = `You are a senior technical recruiter in Israel. For each posting, judge how realistic it is that THIS candidate gets an interview, given their résumé and level (${level}).
-Scoring guide (0–100): 85+ = strong fit, apply now; 70–84 = good fit with a small gap; 50–69 = stretch (level or core skill missing); <50 = not realistic (wrong level/domain/location).
-Weigh: required level vs the candidate's, the 2–3 core skills the posting actually needs, domain, language/location constraints stated in the posting. Ignore nice-to-haves.
+Scoring guide (0–100): 85+ = strong fit, apply now; 70–84 = good fit with a small gap; 50–69 = stretch (level or one core skill missing); 30–49 = unlikely (wrong level or adjacent domain); 10–29 = not realistic; use 0–9 only for a different profession entirely.
+Calibration anchors — follow them:
+- Levels by hands-on experience: 0–2 years (incl. internships, bootcamp, fresh graduates) = junior; 2–5 = mid; 5+ or lead/architect = senior. A posting asking "2–4 years" is mid; "0–2 years" or "junior" is junior; "5+ years"/"senior" is senior.
+- Same domain, same level, core stack matches → 85–95.
+- Same domain, candidate one level BELOW the posting (junior → mid, mid → senior) → 55–70; two levels below (junior → senior/lead) → 15–30.
+- Candidate ABOVE the posting's level (senior → mid/junior): they would likely get the interview but be overqualified → 45–65, never below 30.
+- Different domain/stack (frontend ↔ data science, QA ↔ backend) → cap at 40 even when the level word matches ("junior" on both sides does not make it a fit).
+- Hard eligibility constraints stated in the posting are binding: "student position" / "must be a current student" (a graduate is NOT eligible), a specific degree, citizenship/clearance, on-site in a city the candidate doesn't live in, a language they don't have → cap at 40 no matter how good the skills are.
+Weigh: required level vs the candidate's, the 2–3 core skills the posting actually needs, domain, constraints. Ignore nice-to-haves.
 "why": ONE short sentence in ${lang} addressed to the candidate (what makes it a fit). "gaps": up to 3 short items in ${lang} (what's missing), empty if none.
 Return STRICT JSON: {"results":[{"id","fit","why","gaps":[...]}]} with every id exactly once. Nothing else.`;
   const user = `CANDIDATE (${level}):\n${resumeSummary.slice(0, 3500)}\n\nPOSTINGS:\n${jobs

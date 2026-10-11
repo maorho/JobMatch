@@ -5,6 +5,7 @@ import Company from "@/app/models/Company";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import { gatherCompanyContext } from "./companyContext";
+import { researchCompany, researchToText } from "./companyResearch";
 import { generateInterviewPlan, PREP_MODEL, type InterviewPlan } from "./prepare";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
@@ -47,7 +48,12 @@ export async function ensureInterviewPlan(opts: { userId: string; jobId: string;
   const user: any = await User.findById(userId).select("+resumeText +resumeStructured").lean();
   const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
   const companyContext = await gatherCompanyContext(job.company, { fetchWebsite: process.env.NODE_ENV !== "test" });
-  const plan = await generateInterviewPlan({ job, companyContext, resumeText, language: opts.language || "he" });
+  // The research brief is worth ~15s on a cold company; cached a week afterwards. Never blocks the plan on failure.
+  const research = process.env.NODE_ENV === "test" ? null : await Promise.race([
+    researchCompany(job.company, { domain: companyContext.domain, hints: { openRoles: companyContext.openRoles, sampleTitles: companyContext.sampleTitles, techSignals: companyContext.techSignals.slice(0, 10).map((t) => t.term) } }).catch(() => null),
+    new Promise<null>((r) => setTimeout(() => r(null), 40_000)),
+  ]);
+  const plan = await generateInterviewPlan({ job, companyContext, research: research ? researchToText(research.brief) : undefined, resumeText, language: opts.language || "he" });
 
   const doc: any = await InterviewPrep.findOneAndUpdate(
     { userId, jobId, source },

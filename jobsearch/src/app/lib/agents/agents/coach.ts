@@ -13,7 +13,7 @@ export const coachAgent = registerAgent({
   name: "coach",
   title: "Coach",
   description: "When an application reaches an interview stage, asks the Matcher how well the candidate fits, then prepares a plan for that stage.",
-  handles: ["application.changed", "fit.reply"],
+  handles: ["application.changed", "fit.reply", "research.reply"],
   async handle(msg, ctx) {
     switch (msg.type) {
       case "application.changed": {
@@ -32,6 +32,18 @@ export const coachAgent = registerAgent({
         const p = msg.payload as Payloads["fit.reply"];
         const c = p.context;
         const stage = STAGE_BY_STATUS[c.status] || "hr";
+        await ctx.send(
+          "research.request",
+          { company: c.company, context: { ...c, score: p.score, stage } },
+          `Researcher — ${c.company}: what should this candidate know before the ${stage} interview? Recent news, products, how they interview.`
+        );
+        return `Fit ${p.score ?? "n/a"}%. Asked the Researcher to brief me on ${c.company} before I write the ${stage} plan.`;
+      }
+
+      case "research.reply": {
+        const p = msg.payload as Payloads["research.reply"];
+        const c = p.context;
+        const stage = c.stage;
         const source = c.jobModel === "Job" ? "internal" : c.jobModel === "ExternalJobs" ? "external" : null;
         let generated = false;
         if (source && (process.env.OPENAI_API_KEY || process.env.NODE_ENV === "test")) {
@@ -43,10 +55,10 @@ export const coachAgent = registerAgent({
         }
         await ctx.send(
           "prep.ready",
-          { userId: c.userId, jobId: c.jobId, source: source ?? "external", stage, status: c.status, title: c.title, company: c.company, score: p.score, generated },
-          `${generated ? "Plan ready" : "Prep page ready"} for the ${stage} stage at ${c.company}${p.score !== null ? ` (fit ${p.score}%)` : ""}. Notifier — invite the candidate.`
+          { userId: c.userId, jobId: c.jobId, source: source ?? "external", stage, status: c.status, title: c.title, company: c.company, score: c.score, generated },
+          `${generated ? "Plan ready" : "Prep page ready"} for the ${stage} stage at ${c.company}${c.score !== null ? ` (fit ${c.score}%)` : ""}${p.headline ? ` — briefed: ${p.headline}` : ""}. Notifier — invite the candidate.`
         );
-        return generated ? `Generated a ${stage}-stage plan for ${c.title} @ ${c.company}.` : `Pointed the candidate to the ${stage} prep for ${c.title} @ ${c.company}.`;
+        return generated ? `Generated a ${stage}-stage plan for ${c.title} @ ${c.company} with the research brief (${p.confidence}).` : `Pointed the candidate to the ${stage} prep for ${c.title} @ ${c.company}.`;
       }
     }
   },

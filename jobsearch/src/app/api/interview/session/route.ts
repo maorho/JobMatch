@@ -7,6 +7,8 @@ import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
+import CompanyBrief from "@/app/models/CompanyBrief";
+import { researchToText } from "@/app/lib/interview/companyResearch";
 import { buildCompanyBrief, interviewerTurn, type SessionTurn } from "@/app/lib/interview/simulator";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 
@@ -77,7 +79,8 @@ export async function POST(req: NextRequest) {
     if (!prep) return NextResponse.json({ error: "Not found" }, { status: 404 });
     // The interviewer's knowledge: the plan's company section + live catalog signals (no website fetch here — keep the start snappy).
     const ctx = await gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null);
-    const companyBrief = buildCompanyBrief(prep.plan, ctx);
+    const cachedResearch: any = await CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null);
+    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null);
     const resumeText = await resumeTextFor(userId);
     const job = { title: prep.jobTitle, company: prep.company };
     const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [] });

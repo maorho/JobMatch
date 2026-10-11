@@ -45,6 +45,8 @@ export type InterviewPlan = z.infer<typeof planSchema>;
 export type PrepInput = {
   job: { title: string; company: string; description: string; seniority?: string[] };
   companyContext: CompanyContext;
+  /** Output of the research agent (companyResearch.ts → researchToText), when available. */
+  research?: string;
   resumeText?: string;
   language?: "he" | "en";
 };
@@ -80,7 +82,7 @@ COMPANY CONTEXT (from our catalog and the company website)
 - Tech signals across their postings: ${cc.techSignals.map((t) => `${t.term}(${t.count})`).join(", ") || "-"}
 - Website: ${cc.domain || "-"}
 - Website excerpt: ${cc.websiteExcerpt ? cc.websiteExcerpt.slice(0, 2500) : "(not available)"}
-
+${input.research ? `\nRESEARCH BRIEF (web research, use it for company.summary/cultureHints and for stage-specific questions about recent news/products)\n${input.research}\n` : ""}
 CANDIDATE RÉSUMÉ
 """
 ${(input.resumeText || "(no résumé on file — keep sample answers generic and say what to prepare)").slice(0, MAX)}

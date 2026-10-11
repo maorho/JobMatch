@@ -40,8 +40,9 @@ export type SimInput = {
 };
 
 /** A compact, factual brief the interviewer can quote from. */
-export function buildCompanyBrief(plan: InterviewPlan, ctx?: CompanyContext | null): string {
+export function buildCompanyBrief(plan: InterviewPlan, ctx?: CompanyContext | null, research?: string | null): string {
   const lines = [
+    research && `RESEARCH (web):\n${research}`,
     plan.company.summary && `About: ${plan.company.summary}`,
     plan.company.whatTheyDo && `What they do: ${plan.company.whatTheyDo}`,
     plan.company.techStack.length && `Tech stack: ${plan.company.techStack.join(", ")}`,
@@ -140,7 +141,8 @@ export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & {
     ? `\nThis was a SPOKEN interview (transcribed). Also score "delivery" 0–10 with notes on VOICE and TONE: pace, filler words, pauses, answer length, pitch variation (monotone vs expressive), volume, trailing off, and the confidence/energy/clarity the interviewer heard — based on these measurements and impressions: ${input.deliveryNote}. Give 2–3 concrete, practical voice tips (e.g. "end sentences with a downward tone", "slow down on numbers"). Transcription may contain small errors; don't penalise typos.`
     : "";
   const system = `You are the interviewer who just finished a "${stage.title}" interview for ${input.job.title} at ${input.job.company}, now writing the hiring-committee debrief AND an honest, useful debrief for the candidate. Write in ${lang}.
-Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance), each dimension 0–10, each answer 0–10.
+Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance; 50–69 = borderline; below 50 = would not advance), each dimension 0–10, each answer 0–10.
+Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
 ${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); copy them into "answerReviews" UNCHANGED and base the rest on them.` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${voice}
 Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}}. Nothing else.`;

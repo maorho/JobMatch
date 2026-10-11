@@ -3,7 +3,7 @@
  * types and the payload shape listed next to it. Keep this file the single
  * source of truth when adding an agent or a new kind of message.
  */
-export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer"] as const;
+export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer", "researcher"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
 
 /** Non-agent senders. */
@@ -33,6 +33,10 @@ export type Payloads = {
   "fit.request": { userId: string; jobId: string; jobModel: string; context: ApplicationChange };
   /** Matcher → Coach: the answer, with the coach's context echoed back. */
   "fit.reply": { userId: string; jobId: string; jobModel: string; score: number | null; context: ApplicationChange };
+  /** Coach → Researcher: what should the candidate know about this company before the interview? */
+  "research.request": { company: string; domain?: string; context: ApplicationChange & { score: number | null; stage: string } };
+  /** Researcher → Coach: the brief (echoes the context so the coach stays stateless). */
+  "research.reply": { company: string; confidence: "high" | "medium" | "low"; searched: boolean; headline: string; context: ApplicationChange & { score: number | null; stage: string } };
   /** Coach → Notifier: a plan for the next stage is ready. */
   "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
   /** Janitor: delete postings no source has reported for a while. */
@@ -62,6 +66,8 @@ export const ROUTES: Record<MessageType, AgentName> = {
   "application.changed": "coach",
   "fit.request": "matcher",
   "fit.reply": "coach",
+  "research.request": "researcher",
+  "research.reply": "coach",
   "prep.ready": "notifier",
   "catalog.sweep": "janitor",
   "apply.request": "applier",

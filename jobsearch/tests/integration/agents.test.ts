@@ -28,6 +28,7 @@ vi.mock("@langchain/openai", () => ({
     }
   },
 }));
+vi.mock("openai", () => ({ default: class { responses = { create: async () => ({ output_text: JSON.stringify({ summary: "Acme builds things.", confidence: "medium" }), output: [{ type: "message" }] }) }; } }));
 const scoutCalls: any[] = [];
 vi.mock("@/app/lib/scout/runScout", () => ({
   runScout: vi.fn(async (opts: any) => {
@@ -157,6 +158,8 @@ describe("application conversation: tracker → coach ⇄ matcher → notifier",
       "tracker→coach:application.changed:done",
       "coach→matcher:fit.request:done",
       "matcher→coach:fit.reply:done",
+      "coach→researcher:research.request:done",
+      "researcher→coach:research.reply:done",
       "coach→notifier:prep.ready:done",
     ]);
     const msgs = (await readRun(String(run._id)))!.messages as any[];
