@@ -8,6 +8,7 @@ type Item = { _id: string; title: string; company: string; score: number; status
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   submitted: { label: "הוגש", cls: "jm-chip jm-chip-teal" },
+  submitting: { label: "בהגשה…", cls: "jm-chip jm-chip-sky" },
   needs_user: { label: "דורש אותך", cls: "jm-chip jm-chip-sky" },
   failed: { label: "נכשל", cls: "jm-chip bg-red-50 text-red-700 border-red-200" },
   skipped: { label: "דולג", cls: "jm-chip" },

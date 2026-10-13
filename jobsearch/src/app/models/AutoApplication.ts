@@ -5,7 +5,14 @@ import mongoose from "mongoose";
  * user, whatever the outcome. The dashboard shows these; the daily cap
  * counts the "submitted" ones.
  */
-export const AUTO_APPLY_STATUSES = ["submitted", "needs_user", "failed", "skipped"] as const;
+/**
+ * "submitting" is the claim written BEFORE the form's submit button is pressed
+ * (the unique (userId, jobId) index makes it the lock). A row still in that
+ * state on a later attempt means the outcome of the earlier attempt is
+ * unknown — a crash or timeout between the click and the confirmation — and
+ * the form must not be sent again.
+ */
+export const AUTO_APPLY_STATUSES = ["submitting", "submitted", "needs_user", "failed", "skipped"] as const;
 export type AutoApplyStatus = (typeof AUTO_APPLY_STATUSES)[number];
 
 const AutoApplicationSchema = new mongoose.Schema(
@@ -22,6 +29,10 @@ const AutoApplicationSchema = new mongoose.Schema(
     ats: { type: String, default: "" },
     /** Why it needs the user / failed, in plain words. */
     note: { type: String, default: "", maxlength: 1000 },
+    /** How many times the applier attempted this posting (a "submitting" row seen again counts as an attempt). */
+    attempts: { type: Number, default: 1 },
+    /** When the claim was written (just before pressing submit). */
+    claimedAt: { type: Date, default: undefined },
     /** The tailored résumé that was (or would be) attached. */
     resumeStructured: { type: mongoose.Schema.Types.Mixed, default: undefined, select: false },
   },

@@ -59,7 +59,7 @@ import AgentRun from "@/app/models/AgentRun";
 import { signJwt } from "@/app/lib/jwt";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import { embedPendingJobs } from "@/app/lib/matcher/embedJobs";
-import { autoApplyForUser } from "@/app/lib/apply/autoApply";
+import { autoApplyForUser, UNKNOWN_OUTCOME_REASON } from "@/app/lib/apply/autoApply";
 import { splitName } from "@/app/lib/apply/submit";
 import { startFlow, processQueue, readRun } from "@/app/lib/agents";
 import { GET as settingsGET, PUT as settingsPUT } from "@/app/api/settings/auto-apply/route";
@@ -202,5 +202,77 @@ describe("routes", () => {
     const run = await j(await logPOST(new NextRequest(`${O}/api/auto-apply`, { method: "POST", headers: await cookie(dana), body: JSON.stringify({ action: "run" }) })));
     expect(run.body.runId).toBeTruthy();
     expect((await settingsGET(new NextRequest(`${O}/api/settings/auto-apply`))).status).toBe(401);
+  });
+});
+
+describe("exactly-once submission (intent-then-confirm)", () => {
+  let eli = "", j1 = "", j2 = "", j3 = "", j4 = "";
+  const cand = (id: string, title: string) => ({ jobId: id, jobModel: "ExternalJobs" as const, score: 90, title, company: "Acme" });
+  beforeAll(async () => {
+    eli = String((await User.create({ username: "eli", email: "eli@test.dev", password: "x", fullname: "Eli Levi", phone: "050-1111111", resumeStructured: RESUME, resumeUpdatedAt: new Date(), autoApply: { enabled: true, minScore: 60, dailyCap: 10 } } as any))._id);
+    const jobs = await ExternalJobs.create([
+      mkJob("c1", "React Dev A", "React", "https://boards.greenhouse.io/acme/jobs/101"),
+      mkJob("c2", "React Dev B", "React", "https://boards.greenhouse.io/acme/jobs/102"),
+      mkJob("c3", "React Dev C", "React", "https://boards.greenhouse.io/acme/jobs/103"),
+      mkJob("c4", "React Dev D", "React", "https://boards.greenhouse.io/acme/jobs/104"),
+    ] as any);
+    [j1, j2, j3, j4] = jobs.map((x: any) => String(x._id));
+  });
+
+  it("writes the claim BEFORE the submit button is pressed, then confirms it", async () => {
+    let claimSeenAtClick: boolean | null = null;
+    const submit = vi.fn(async (input: any) => {
+      if (input.dryRun) return { status: "ready", ats: "greenhouse" };
+      claimSeenAtClick = !!(await AutoApplication.exists({ userId: eli, jobId: j1, status: "submitting" }));
+      return { status: "submitted", ats: "greenhouse", confirmation: "Thanks" };
+    });
+    const r = await autoApplyForUser(eli, [cand(j1, "React Dev A")], { submit: submit as any });
+    expect(r.submitted.map((x) => x.jobId)).toEqual([j1]);
+    expect(claimSeenAtClick).toBe(true);
+    const row: any = await AutoApplication.findOne({ userId: eli, jobId: j1 }).lean();
+    expect(row).toMatchObject({ status: "submitted", note: "Thanks" });
+    expect(row.claimedAt).toBeTruthy();
+    expect(await AutoApplication.countDocuments({ userId: eli, jobId: j1 })).toBe(1);
+  });
+
+  it("a claim left behind by a crash (click → no verdict) is never pressed again; the person is told to check the inbox", async () => {
+    await AutoApplication.create({ userId: eli, jobId: j2, jobModel: "ExternalJobs", jobTitle: "React Dev B", company: "Acme", score: 90, status: "submitting", claimedAt: new Date(Date.now() - 60_000), url: "https://boards.greenhouse.io/acme/jobs/102" });
+    const submit = vi.fn(async () => ({ status: "submitted", ats: "greenhouse" }));
+    const r = await autoApplyForUser(eli, [cand(j2, "React Dev B")], { submit: submit as any });
+    expect(submit).not.toHaveBeenCalled();
+    expect(r.submitted).toEqual([]);
+    expect(r.needsUser).toEqual([{ jobId: j2, title: "React Dev B", company: "Acme", reason: UNKNOWN_OUTCOME_REASON }]);
+    const row: any = await AutoApplication.findOne({ userId: eli, jobId: j2 }).lean();
+    expect(row.status).toBe("needs_user");
+    expect(row.attempts).toBe(2);
+    expect(row.note).toMatch(/Outcome unknown.*Not resent/);
+    expect(await Candidates.countDocuments({ candidateId: eli, jobId: j2 })).toBe(0);
+    // The retry after that is a plain skip: the person decides, we don't nag.
+    const again = await autoApplyForUser(eli, [cand(j2, "React Dev B")], { submit: submit as any });
+    expect(again).toMatchObject({ skipped: 1, needsUser: [] });
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("a timeout AFTER the click is 'unknown', not 'failed', and is not retried", async () => {
+    const submit = vi.fn(async (input: any) => (input.dryRun ? { status: "ready", ats: "greenhouse" } : { status: "failed", ats: "greenhouse", reason: "apply server timed out" }));
+    const r = await autoApplyForUser(eli, [cand(j3, "React Dev C")], { submit: submit as any });
+    expect(r.failed).toBe(0);
+    expect(r.needsUser).toEqual([{ jobId: j3, title: "React Dev C", company: "Acme", reason: UNKNOWN_OUTCOME_REASON }]);
+    const row: any = await AutoApplication.findOne({ userId: eli, jobId: j3 }).lean();
+    expect(row.status).toBe("needs_user");
+    expect(row.note).toMatch(/timed out after the submit step/);
+    const calls = submit.mock.calls.length;
+    const again = await autoApplyForUser(eli, [cand(j3, "React Dev C")], { submit: submit as any });
+    expect(again.skipped).toBe(1);
+    expect(submit.mock.calls.length).toBe(calls);
+  });
+
+  it("a failure BEFORE any click (server unreachable on the dry run) stays a plain failure", async () => {
+    const submit = vi.fn(async () => ({ status: "failed", ats: "", reason: "apply server unreachable" }));
+    const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
+    expect(r.failed).toBe(1);
+    expect(r.needsUser).toEqual([]);
+    expect(((await AutoApplication.findOne({ userId: eli, jobId: j4 }).lean()) as any).status).toBe("failed");
+    expect(await AutoApplication.countDocuments({ userId: eli, status: "submitting" })).toBe(0); // no claim without a click
   });
 });

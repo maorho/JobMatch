@@ -48,6 +48,9 @@ const startOfToday = () => {
  * ones, tailor the résumé, render it, and let the form-filler try. Every
  * attempt is recorded in AutoApplication so the dashboard can show it.
  */
+/** What the candidate sees when we pressed submit but never learned the result. */
+export const UNKNOWN_OUTCOME_REASON = "ייתכן שההגשה נשלחה; בדוק/י מייל אישור לפני הגשה ידנית";
+
 export async function autoApplyForUser(userId: string, candidates: ApplyCandidate[], deps: AutoApplyDeps = {}): Promise<ApplyOutcome> {
   await connectToDatabase();
   const out: ApplyOutcome = { submitted: [], needsUser: [], failed: 0, skipped: 0, capped: 0 };
@@ -73,8 +76,17 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       out.skipped++;
       continue;
     }
-    if (await AutoApplication.exists({ userId, jobId: c.jobId })) {
-      out.skipped++; // already tried (needs_user / failed) — the user decides, we don't loop
+    const prior: any = await AutoApplication.findOne({ userId, jobId: c.jobId }).select("status attempts claimedAt").lean();
+    if (prior) {
+      if (prior.status === "submitting") {
+        // A claim with no verdict: the earlier attempt pressed (or was about to press) submit and then died.
+        // We cannot know whether the form went through, so we never press again — the user checks the inbox.
+        const reason = UNKNOWN_OUTCOME_REASON;
+        await AutoApplication.updateOne({ _id: prior._id }, { $set: { status: "needs_user", note: `Outcome unknown: the previous attempt was interrupted after the submit step (${prior.claimedAt ? new Date(prior.claimedAt).toISOString() : "time unknown"}). Not resent. Check the inbox for a confirmation before applying by hand.` }, $inc: { attempts: 1 } });
+        out.needsUser.push({ jobId: c.jobId, title: c.title, company: c.company, reason });
+      } else {
+        out.skipped++; // already tried (submitted / needs_user / failed) — the user decides, we don't loop
+      }
       continue;
     }
     if (usedToday >= dailyCap) {
@@ -82,8 +94,22 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       continue;
     }
 
+    // The audit row. Upsert, so a verdict written after a claim updates the same row.
     const record = async (status: "submitted" | "needs_user" | "failed", extra: Record<string, unknown> = {}) =>
-      AutoApplication.create({ userId, jobId: c.jobId, jobModel: c.jobModel, jobTitle: c.title, company: c.company, score: c.score, status, ...extra }).catch(() => null);
+      AutoApplication.findOneAndUpdate({ userId, jobId: c.jobId }, { $set: { jobModel: c.jobModel, jobTitle: c.title, company: c.company, score: c.score, status, ...extra } }, { upsert: true, new: true }).catch(() => null);
+    /**
+     * Intent-then-confirm: write the claim BEFORE pressing submit. If another worker holds the claim
+     * (duplicate key), this attempt must not press. Returns false when we don't own the claim.
+     */
+    const claim = async (extra: Record<string, unknown> = {}): Promise<boolean> => {
+      try {
+        await AutoApplication.create({ userId, jobId: c.jobId, jobModel: c.jobModel, jobTitle: c.title, company: c.company, score: c.score, status: "submitting", claimedAt: new Date(), ...extra });
+        return true;
+      } catch (e: any) {
+        if (e?.code === 11000) return false;
+        throw e;
+      }
+    };
 
     if (c.jobModel === "Job") {
       const created = await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "Job", status: "Submitted Resume" });
@@ -145,10 +171,23 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
     }
     // Phase 2: submit for real when every required field has an honest answer
     // (the form agent reports "ready" itself after a dry run it could complete).
+    let pressed = false;
     if (r.status === "ready" || (r.status === "needs_user" && r.fields?.length && unanswered.length === 0)) {
+      // Claim first: from here on, a crash means "unknown", never "try again".
+      if (!(await claim({ url, ats: r.ats }))) {
+        out.skipped++; // another attempt holds the claim right now
+        continue;
+      }
+      pressed = true;
       r = await submit({ ...base, answers });
     } else if (r.status === "needs_user" && unanswered.length) {
       r = { ...r, reason: `The form asks for: ${unanswered.join(", ")}.` };
+    }
+    // The click may have landed even though the answer never came back: that is "unknown", not "failed".
+    if (pressed && r.status === "failed" && /timed out/i.test(r.reason || "")) {
+      await record("needs_user", { url, ats: r.ats, note: `Outcome unknown: the apply server timed out after the submit step. Not resent. Check the inbox for a confirmation before applying by hand.`, resumeStructured: resume });
+      out.needsUser.push({ jobId: c.jobId, title: c.title, company: c.company, reason: UNKNOWN_OUTCOME_REASON });
+      continue;
     }
     if (r.status === "submitted") {
       const created = await Candidates.create({ candidateId: userId, jobId: c.jobId, jobModel: "ExternalJobs", status: "Submitted Resume" });
