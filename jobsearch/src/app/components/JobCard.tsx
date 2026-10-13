@@ -61,29 +61,30 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           logoUrl={job.logoUrl}
           className="h-11 w-11 shrink-0 rounded-xl border border-line p-1"
         />
+        {/* The title owns the row: only two compact actions sit beside it; the score moves down to lead the chips. */}
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-navy leading-snug line-clamp-2" title={job.job}>
             {job.job}
           </h3>
           <p className="text-sm text-ink-600 truncate">{companyName}</p>
         </div>
-        {typeof job.matchScore === "number" && (
-          <span className="jm-chip jm-chip-teal shrink-0 flex-col leading-tight" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
-            <span>{job.matchScore}%</span>
-            {job.likelihood && <span className="text-[10px] font-normal opacity-80">ראיון ~{job.likelihood.pct}%</span>}
-          </span>
-        )}
-        <span className="flex items-start gap-1 shrink-0">
-          <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
-            <Bookmark className="h-4 w-4" fill={isSaved ? "currentColor" : "none"} />
+        <span className="flex items-start gap-0.5 shrink-0 -me-1.5 -mt-1">
+          <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-7 w-7 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
+            <Bookmark className="h-3.5 w-3.5" fill={isSaved ? "currentColor" : "none"} />
           </button>
-          <button type="button" onClick={(e) => act(e, "dismissed")} aria-label="Not relevant" title="לא רלוונטי" className="h-8 w-8 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-            <X className="h-4 w-4" />
+          <button type="button" onClick={(e) => act(e, "dismissed")} aria-label="Not relevant" title="לא רלוונטי" className="h-7 w-7 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <X className="h-3.5 w-3.5" />
           </button>
         </span>
       </div>
 
       <div className="flex flex-wrap gap-1.5">
+        {typeof job.matchScore === "number" && (
+          <span className="jm-chip jm-chip-teal font-semibold" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
+            {job.matchScore}%
+            {job.likelihood && <span className="font-normal opacity-80">· ראיון ~{job.likelihood.pct}%</span>}
+          </span>
+        )}
         {location && (
           <span className="jm-chip">
             <MapPin className="h-3 w-3" />
