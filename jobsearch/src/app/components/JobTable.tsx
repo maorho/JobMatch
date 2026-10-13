@@ -485,7 +485,7 @@ function JobTable() {
             </div>
           ) : (
             <>
-              <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+              <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 auto-rows-fr">
                 {jobs.map((job, i) => (
                   <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}
