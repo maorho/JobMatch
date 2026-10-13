@@ -9,6 +9,7 @@ import OutsideJobAdding from "./components/OutsideJobAdding";
 import EmailTrackingCard from "./components/EmailTrackingCard";
 import OutcomesCard from "./components/OutcomesCard";
 import SavedJobsCard from "./components/SavedJobsCard";
+import ReferralOpportunitiesCard from "./components/ReferralOpportunitiesCard";
 import AutoApplyCard from "../components/AutoApplyCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
@@ -199,6 +200,7 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      <ReferralOpportunitiesCard />
       <SavedJobsCard />
       <OutcomesCard />
       <EmailTrackingCard />

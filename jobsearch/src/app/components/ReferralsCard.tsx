@@ -68,7 +68,7 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
   }
 
   return (
-    <section className="jm-card p-5 space-y-3" dir="rtl">
+    <section id="referrals" className="jm-card p-5 space-y-3 scroll-mt-24" dir="rtl">
       <h3 className="jm-h2 inline-flex items-center gap-2"><Users className="h-5 w-5 text-teal" /> {data.contacts.length ? `${data.contacts.length} אנשי קשר ב-${company}` : `אין לך אנשי קשר ב-${company}`}</h3>
       {data.contacts.length === 0 && <p className="jm-muted">מתוך {data.total.toLocaleString()} אנשי הקשר שייבאת, אף אחד לא רשום בחברה הזו.</p>}
       <ul className="space-y-2">
