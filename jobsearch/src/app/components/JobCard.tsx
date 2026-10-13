@@ -67,6 +67,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           </h3>
           <p className="text-sm text-ink-600 truncate">{companyName}</p>
         </div>
+        {typeof job.matchScore === "number" && (
+          <span className="jm-chip jm-chip-teal shrink-0 flex-col leading-tight" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
+            <span>{job.matchScore}%</span>
+            {job.likelihood && <span className="text-[10px] font-normal opacity-80">ראיון ~{job.likelihood.pct}%</span>}
+          </span>
+        )}
         <span className="flex items-start gap-1 shrink-0">
           <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
             <Bookmark className="h-4 w-4" fill={isSaved ? "currentColor" : "none"} />
@@ -75,12 +81,6 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             <X className="h-4 w-4" />
           </button>
         </span>
-        {typeof job.matchScore === "number" && (
-          <span className="jm-chip jm-chip-teal shrink-0 flex-col leading-tight" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
-            <span>{job.matchScore}%</span>
-            {job.likelihood && <span className="text-[10px] font-normal opacity-80">ראיון ~{job.likelihood.pct}%</span>}
-          </span>
-        )}
       </div>
 
       <div className="flex flex-wrap gap-1.5">
