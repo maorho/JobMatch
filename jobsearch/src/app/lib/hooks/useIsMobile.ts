@@ -1,26 +1,25 @@
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
 const query = (breakpoint: number) => `(max-width: ${breakpoint - 1}px)`;
 
 /**
- * `true` below `breakpoint` px. The initial value comes from `matchMedia` on
- * the client, so a phone never paints the desktop variant first; on the
- * server (no window) it is `false`, which is also what the first client
- * render uses when hydrating server HTML. Pages that are client-only (most
- * dashboards) get the right value straight away.
+ * `true` below `breakpoint` px. `window` exists in the browser from the very
+ * first client render (the one that hydrates server HTML), so reading
+ * `matchMedia` in a `useState` initializer — the previous approach — returns
+ * the real viewport on that render while the server always rendered `false`,
+ * which is a hydration mismatch on any phone. `useSyncExternalStore` is built
+ * for exactly this: its `getServerSnapshot` renders `false` during hydration
+ * (matching the server), and the live `matchMedia` value is swapped in right
+ * after, with no mismatch warning and no desktop-first flash.
  */
 export function useIsMobile(breakpoint: number = 770) {
-  const [isMobile, setIsMobile] = useState<boolean>(() =>
-    typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(query(breakpoint)).matches : false
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(query(breakpoint));
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia(query(breakpoint)).matches,
+    () => false
   );
-
-  useEffect(() => {
-    const mq = window.matchMedia(query(breakpoint));
-    const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, [breakpoint]);
-
-  return isMobile;
 }
