@@ -26,6 +26,7 @@ export type AtsType =
   | "workday"
   | "google"
   | "apple"
+  | "eightfold"
   | "html"
   | "generic";
 

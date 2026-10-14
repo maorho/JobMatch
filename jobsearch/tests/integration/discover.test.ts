@@ -56,7 +56,7 @@ describe("company discovery", () => {
     expect(await probeSlug("moonactive", fakeFetch as any, tried)).toMatchObject({ atsType: "greenhouse", identifier: "moonactive", jobs: 3, careersUrl: "https://boards.greenhouse.io/moonactive" });
     expect(tried).toHaveLength(1); // stops at the first hit
     expect(await probeSlug("nothing", fakeFetch as any)).toBeNull();
-    expect(hits.filter((h) => h.includes("nothing"))).toHaveLength(5); // every ATS tried once
+    expect(hits.filter((h) => h.includes("nothing"))).toHaveLength(6); // every ATS tried once
   });
 
   it("collects names from contacts and search, skipping companies already covered", async () => {
@@ -79,7 +79,7 @@ describe("company discovery", () => {
     expect(sources.find((s) => s.companyName === "Globex").domain).toBe("globex.com");
     const nobody: any = await DiscoveryCandidate.findOne({ key: "nobody-industries" }).lean();
     expect(nobody).toMatchObject({ status: "pending", attempts: 1 });
-    expect(nobody.tried.length).toBeGreaterThanOrEqual(5);
+    expect(nobody.tried.length).toBeGreaterThanOrEqual(6);
     // Found ones are done; a second pass probes only the miss again, and gives up after three tries.
     const r2 = await discoverCompanies({ limit: 10, search: false, fetchImpl: fakeFetch as any, detect: noDetect });
     expect(r2).toMatchObject({ probed: 1, notFound: 1 });

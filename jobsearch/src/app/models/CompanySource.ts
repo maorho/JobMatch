@@ -27,6 +27,7 @@ const CompanySourceSchema = new Schema(
         "workday",
         "google",
         "apple",
+        "eightfold",
         "html",
         "generic",
       ],

@@ -41,6 +41,7 @@ const COMPLETE_FEED_ATS = new Set([
   "amazon",
   "google", // paginates to exhaustion, so the list is complete
   "apple", // same: pages until totalRecords is reached
+  "eightfold", // pages until the reported count is reached
 ]);
 
 export type ScoutSourceResult = {

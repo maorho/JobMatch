@@ -62,13 +62,14 @@ export function slugGuesses(name: string): string[] {
   return [...out].filter((s) => s.length >= 3 && s.length <= 40).slice(0, 4);
 }
 
-type Probe = { atsType: "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "recruitee"; url: (slug: string) => string; board: (slug: string) => string; count: (json: any) => number };
+type Probe = { atsType: "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "recruitee" | "workable"; url: (slug: string) => string; board: (slug: string) => string; count: (json: any) => number };
 const PROBES: Probe[] = [
   { atsType: "greenhouse", url: (s) => `https://boards-api.greenhouse.io/v1/boards/${s}/jobs`, board: (s) => `https://boards.greenhouse.io/${s}`, count: (j) => (Array.isArray(j?.jobs) ? j.jobs.length : 0) },
   { atsType: "lever", url: (s) => `https://api.lever.co/v0/postings/${s}?mode=json`, board: (s) => `https://jobs.lever.co/${s}`, count: (j) => (Array.isArray(j) ? j.length : 0) },
   { atsType: "ashby", url: (s) => `https://api.ashbyhq.com/posting-api/job-board/${s}`, board: (s) => `https://jobs.ashbyhq.com/${s}`, count: (j) => (Array.isArray(j?.jobs) ? j.jobs.length : 0) },
   { atsType: "smartrecruiters", url: (s) => `https://api.smartrecruiters.com/v1/companies/${s}/postings`, board: (s) => `https://jobs.smartrecruiters.com/${s}`, count: (j) => (Array.isArray(j?.content) ? j.content.length : 0) },
   { atsType: "recruitee", url: (s) => `https://${s}.recruitee.com/api/offers/`, board: (s) => `https://${s}.recruitee.com`, count: (j) => (Array.isArray(j?.offers) ? j.offers.length : 0) },
+  { atsType: "workable", url: (s) => `https://apply.workable.com/api/v1/widget/accounts/${s}`, board: (s) => `https://apply.workable.com/${s}`, count: (j) => (Array.isArray(j?.jobs) ? j.jobs.length : 0) },
 ];
 
 async function getJson(fetchImpl: Fetch, url: string): Promise<any | null> {
@@ -178,7 +179,7 @@ export async function probeCandidate(c: any, rawDeps: DiscoverDeps = {}): Promis
     const fast = detectFromUrl(url);
     if (fast) {
       // Confirm the board actually has postings when we can (Comeet/Workday need their own adapters; trust the URL).
-      const hit = ["greenhouse", "lever", "ashby", "smartrecruiters", "recruitee"].includes(fast.atsType) ? await probeSlug(fast.identifier, fetchImpl, tried) : null;
+      const hit = ["greenhouse", "lever", "ashby", "smartrecruiters", "recruitee", "workable"].includes(fast.atsType) ? await probeSlug(fast.identifier, fetchImpl, tried) : null;
       if (hit) return { ...hit, careersUrl: url };
       if (["comeet", "workday"].includes(fast.atsType) && fast.secondaryIdentifier) return { ...fast, jobs: 0 };
     }

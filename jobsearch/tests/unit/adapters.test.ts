@@ -189,3 +189,52 @@ describe("greenhouse adapter", () => {
     await expect(greenhouse("gone")).rejects.toThrow(/HTTP 404/);
   });
 });
+
+describe("workable adapter", () => {
+  it("lists the account's jobs and fills descriptions from the detail endpoint", async () => {
+    const { workable } = await import("@/app/lib/scout/adapters/workable");
+    const fn = vi.fn(async (url: string) => {
+      if (url === "https://apply.workable.com/api/v1/widget/accounts/tomax") return new Response(JSON.stringify({ name: "Tomax Think Academy", jobs: [{ title: "Frontend Developer", shortcode: "ABC123", url: "https://apply.workable.com/j/ABC123", application_url: "https://apply.workable.com/j/ABC123/apply", published_on: "2026-03-29", country: "Israel", city: "Kfar Monash", experience: "Entry level" }, { title: "Sales Lead", shortcode: "DEF456", url: "https://apply.workable.com/j/DEF456", country: "Israel", city: "Tel Aviv" }] }), { status: 200 });
+      if (url === "https://apply.workable.com/api/v1/widget/accounts/tomax/jobs/ABC123") return new Response(JSON.stringify({ description: "<p>Build the <b>React</b> front.</p>", requirements: "<ul><li>2 years React</li></ul>" }), { status: 200 });
+      return new Response("{}", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fn);
+    const jobs = await workable("tomax");
+    expect(jobs).toHaveLength(2);
+    expect(jobs[0]).toMatchObject({ sourceJobId: "ABC123", title: "Frontend Developer", company: "Tomax Think Academy", city: "Kfar Monash", country: "Israel", applyUrl: "https://apply.workable.com/j/ABC123/apply", seniority: ["Entry level"] });
+    expect(jobs[0].description).toMatch(/Build the React front/);
+    expect(jobs[0].description).toMatch(/Requirements[\s\S]*2 years React/);
+    expect(jobs[0].postedAt?.toISOString().slice(0, 10)).toBe("2026-03-29");
+    expect(jobs[1].description).toBe(""); // detail 404 → listing data kept
+    await expect(workable("nope")).rejects.toThrow(/HTTP 404/);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("eightfold adapter", () => {
+  it("pages the Israel search until the count is reached and fills descriptions from the detail endpoint", async () => {
+    const { eightfold, eightfoldCity } = await import("@/app/lib/scout/adapters/eightfold");
+    expect(eightfoldCity(["Israel, Multiple Locations, Multiple Locations", "Israel, Tel Aviv, Herzliya"])).toBe("Herzliya");
+    expect(eightfoldCity("Israel, Tel Aviv, Tel Aviv")).toBe("Tel Aviv");
+    expect(eightfoldCity([])).toBe("");
+    const pos = (id: number, name: string) => ({ id, displayJobId: String(id), name, locations: ["Israel, Tel Aviv, Herzliya"], postedTs: 1789732215, department: "Software Engineering", positionUrl: `/careers/job/${id}` });
+    const { calls } = stubFetch({
+      "api/pcsx/search": (url) => {
+        const start = Number(new URL(url).searchParams.get("start"));
+        if (start === 0) return { body: { data: { count: 12, positions: Array.from({ length: 10 }, (_, i) => pos(100 + i, `Engineer ${i}`)) } } };
+        if (start === 10) return { body: { data: { count: 12, positions: [pos(200, "AI Engineer"), pos(201, "Data Scientist")] } } };
+        return { body: "<!DOCTYPE html>", status: 200 }; // past the end the site answers with HTML
+      },
+      "api/apply/v2/jobs/200": { body: { id: 200, job_description: "<b>Overview</b><p>Build <i>AI</i> systems.</p>" } },
+    });
+    const out = await eightfold("apply.careers.microsoft.com", "microsoft.com");
+    expect(out).toHaveLength(12);
+    expect(calls.filter((c) => c.includes("api/pcsx/search"))).toHaveLength(2); // stopped at the count, no third page
+    expect(calls[0]).toContain("https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=Israel&start=0&num=10");
+    const ai = out.find((p) => p.sourceJobId === "200")!;
+    expect(ai).toMatchObject({ title: "AI Engineer", company: "Microsoft", city: "Herzliya", country: "Israel", applyUrl: "https://apply.careers.microsoft.com/careers/job/200" });
+    expect(ai.description).toMatch(/Overview[\s\S]*Build AI systems/);
+    expect(ai.postedAt?.toISOString().slice(0, 10)).toBe("2026-09-18");
+    expect(out.find((p) => p.sourceJobId === "201")!.description).toBe(""); // detail 404 → listing data kept
+  });
+});
