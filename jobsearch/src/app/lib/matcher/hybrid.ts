@@ -80,7 +80,8 @@ export async function loadCandidateProfile(userId: string, opts: { light?: boole
   return { userId, vector: sv.vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0, searchProfile: sv.profile, searchVersion: sv.version };
 }
 
-const MAX_POOL = 600;
+/** Recall depth for a signed-in list: the best 1,000 of the catalogue get ranked (and filtered by the search profile). */
+const MAX_POOL = 1000;
 /** Two pages get an LLM verdict (cached per résumé version), so what people actually scroll is verified. */
 const RERANK_TOP = 96;
 /** A signed-in user's ranked list lives this long; every page is a slice of the same list, so paging never repeats or skips a job. */

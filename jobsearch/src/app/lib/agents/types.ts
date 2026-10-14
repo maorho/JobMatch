@@ -17,6 +17,8 @@ export type ApplicationChange = { userId: string; applicationId: string; jobId: 
 export type Payloads = {
   /** Scout: poll the catalog sources (chunked; `offset`/`acc` continue a run). */
   "catalog.refresh": { offset?: number; since: string; company?: string; acc?: { created: number; removed: number; sources: number } };
+  /** Scout (cron): find companies that are not in the catalog yet and probe their ATS boards. */
+  "catalog.discover": { limit?: number; search?: boolean };
   /** Tracker: read one user's inbox and report application status changes. */
   "inbox.sync": { userId: string };
   /** Scout → Locator: new postings landed since `since`. */
@@ -75,6 +77,7 @@ export type MessageType = keyof Payloads;
 /** Who handles what. The bus routes by this table, so a message type has exactly one owner. */
 export const ROUTES: Record<MessageType, AgentName> = {
   "catalog.refresh": "scout",
+  "catalog.discover": "scout",
   "inbox.sync": "tracker",
   "jobs.ingested": "locator",
   "jobs.normalized": "matcher",

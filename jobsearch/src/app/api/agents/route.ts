@@ -29,6 +29,7 @@ const STARTABLE: Record<string, { type: MessageType; payload: () => any; title: 
   "content.plan": { type: "content.plan", payload: () => ({ count: 1 }), title: "Write an article", says: "Writer — one new article, your pick of topic." },
   "digest": { type: "jobs.embedded", payload: () => ({ since: new Date().toISOString(), embedded: 0, remaining: 0 }), title: "Match digest", says: "Notifier — run the match digest now." },
   "companies.describe": { type: "companies.describe", payload: () => ({ limit: 15 }), title: "Company profiles", says: "Researcher — 15 companies without a profile: what do they do?" },
+  "catalog.discover": { type: "catalog.discover", payload: () => ({ limit: 20, search: true }), title: "Company discovery", says: "Scout — find companies we don't cover yet and probe up to 20 of them." },
 };
 
 /**

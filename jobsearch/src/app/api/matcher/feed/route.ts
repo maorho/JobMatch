@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { rankForUser } from "@/app/lib/matcher/hybrid";
-import { PRIVATE_CACHE } from "@/app/lib/cache";
+import { PRIVATE_CACHE, memo, ttl } from "@/app/lib/cache";
+import { connectToDatabase } from "@/app/lib/db";
+import ExternalJobs from "@/app/models/ExternalJobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +43,12 @@ export async function GET(req: NextRequest) {
       source: "external" as const,
     }));
 
-    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total }, { headers: PRIVATE_CACHE });
+    // The whole catalogue, for the headline: the personalised list is the best `total` of these.
+    const catalogTotal = await memo("catalog-total", ttl(5 * 60_000), async () => {
+      await connectToDatabase();
+      return ExternalJobs.estimatedDocumentCount();
+    });
+    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal }, { headers: PRIVATE_CACHE });
   } catch (err: any) {
     console.error("❌ feed error:", err);
     return NextResponse.json(

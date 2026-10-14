@@ -10,6 +10,7 @@ on:
     - cron: "45 * * * *"      # agents tick: drain the bus hourly (outcome loop, company profiles, authoring)
     - cron: "30 5 * * *"      # outcome loop: ask "did you get a reply?" daily 05:30 UTC
     - cron: "0 3 * * *"       # company profiles: 15 more per night
+    - cron: "30 2 * * *"      # company discovery: probe 20 new companies per night
   workflow_dispatch:
 
 env:
@@ -160,3 +161,15 @@ jobs:
           curl -fsS -G "${{ env.PROD_BASE_URL }}/api/admin/health" \
             --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" | tee health.json
           node -e 'const h=require("./health.json"); if(!h.ok){console.error("UNHEALTHY", JSON.stringify(h.checks)); process.exit(1)}'
+
+  company_discovery:
+    if: github.event.schedule == '30 2 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find and probe companies not in the catalog yet
+        run: |
+          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/agents/tick" \
+            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}" \
+            --data-urlencode "flow=catalog.discover" \
+            --data-urlencode "limit=20" \
+            --data-urlencode "budget=240"

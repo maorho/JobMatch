@@ -1,6 +1,7 @@
 import { registerAgent } from "../registry";
 import type { Payloads } from "../types";
 import { runScout } from "@/app/lib/scout/runScout";
+import { discoverCompanies } from "@/app/lib/scout/discover";
 
 /** How long one chunk may poll before handing the rest back to the queue. */
 const CHUNK_BUDGET_MS = 60_000;
@@ -8,9 +9,18 @@ const CHUNK_BUDGET_MS = 60_000;
 export const scoutAgent = registerAgent({
   name: "scout",
   title: "Scout",
-  description: "Polls every company source (ATS feeds, career pages), adds new postings and retires the ones that disappeared.",
-  handles: ["catalog.refresh"],
+  description: "Polls every company source (ATS feeds, career pages), adds new postings and retires the ones that disappeared — and keeps finding companies the catalogue doesn't cover yet.",
+  handles: ["catalog.refresh", "catalog.discover"],
   async handle(msg, ctx) {
+    if (msg.type === "catalog.discover") {
+      const p = msg.payload as Payloads["catalog.discover"];
+      const r = await discoverCompanies({ limit: p.limit ?? 20, search: p.search !== false, log: ctx.log });
+      // A found company is polled right away so its postings show up today, not on the next full refresh.
+      for (const f of r.found) await ctx.send("catalog.refresh", { since: new Date().toISOString(), company: f.name }, `New source: ${f.name} (${f.atsType}). Polling it now.`);
+      const c = r.collected;
+      return `Discovery: ${c.contacts + c.insiders + c.search} new names (${c.contacts} from contacts, ${c.insiders} from insiders, ${c.search} from search${c.topic ? ` on "${c.topic}"` : ""}); probed ${r.probed}: ${r.found.length} new source${r.found.length === 1 ? "" : "s"}${r.found.length ? ` — ${r.found.map((f) => f.name).join(", ")}` : ""}, ${r.notFound} without a known ATS; ${r.pending} still to try.`;
+    }
+
     const p = msg.payload as Payloads["catalog.refresh"];
     const res = await runScout({ offset: p.offset ?? 0, company: p.company, timeBudgetMs: CHUNK_BUDGET_MS });
     const acc = {

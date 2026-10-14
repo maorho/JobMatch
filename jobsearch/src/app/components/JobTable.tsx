@@ -94,6 +94,7 @@ function JobTable() {
   const [jobType, setJobType] = useState<string[]>([]);
   const [seniority, setSeniority] = useState<string[]>([]);
   const [jobCount, setJobCount] = useState(0);
+  const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
   const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
@@ -197,6 +198,7 @@ function JobTable() {
               }
               // Catalog-wide count, not the page size.
               setJobCount(feedData.total ?? feedJobs.length);
+              if (feedData.catalogTotal) setCatalogTotal(feedData.catalogTotal);
               setTotalPages(feedData.pages || 1);
               setLoading(false);
               return;
@@ -363,7 +365,7 @@ function JobTable() {
         <Image src="/hero.jpg" alt="" fill priority className="object-cover opacity-20" sizes="100vw" />
         <div className="relative max-w-3xl mx-auto text-center">
           <span className="jm-chip bg-white/10 text-white border-white/20 mb-5">
-            {jobCount > 0 ? `${jobCount.toLocaleString()} open positions` : "Fresh openings every day"}
+            {(catalogTotal || jobCount) > 0 ? `${(catalogTotal || jobCount).toLocaleString()} open positions` : "Fresh openings every day"}
           </span>
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-semibold tracking-tight leading-[1.05]">
             Find your dream job <span className="text-sky">in tech</span>
@@ -421,8 +423,7 @@ function JobTable() {
             <div>
               <h2 className="jm-title">Available positions</h2>
               <p className="jm-subtitle">
-                {loading && page === 1 ? "Searching the catalog…" : `Showing ${jobCount.toLocaleString()} jobs`}
-                {user && !isSearching && " · ranked by your resume"}
+                {loading && page === 1 ? "Searching the catalog…" : user && !isSearching && catalogTotal > jobCount ? `Your best ${jobCount.toLocaleString()} matches of ${catalogTotal.toLocaleString()} open jobs · ranked by your resume` : `Showing ${jobCount.toLocaleString()} jobs${user && !isSearching ? " · ranked by your resume" : ""}`}
               </p>
             </div>
             <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary jm-btn-sm lg:hidden">
