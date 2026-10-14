@@ -18,12 +18,26 @@ if (!SECRET) {
 }
 const secretKey = SECRET ? new TextEncoder().encode(SECRET) : null;
 
+/** Session length. /api/auth/me re-signs the token once less than half of it is left. */
+export const JWT_TTL_SEC = 7 * 24 * 3600;
+export const JWT_REFRESH_BELOW_SEC = JWT_TTL_SEC / 2;
+
+/** The `token` cookie, the same everywhere a session is issued (login, signup, OAuth, refresh). */
+export const SESSION_COOKIE = {
+  name: "token",
+  httpOnly: true,
+  path: "/",
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  maxAge: JWT_TTL_SEC,
+};
+
 export async function signJwt(
   payload: JWTPayload,
   options?: { expiresIn?: string }
 ): Promise<string> {
   if (!secretKey) throw new Error("JWT_SECRET is not configured");
-  const expiresIn = options?.expiresIn || "1h";
+  const expiresIn = options?.expiresIn || `${JWT_TTL_SEC}s`;
 
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })

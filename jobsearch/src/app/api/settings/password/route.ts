@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
 
   await connectToDatabase();
-  const user: any = await User.findById(userId).select("password authProvider");
+  const user: any = await User.findById(userId).select("+password authProvider");
   if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (user.authProvider && user.authProvider !== "local") {
     return NextResponse.json({ error: "This account signs in with " + user.authProvider }, { status: 400 });

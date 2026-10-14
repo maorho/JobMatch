@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeCatalogLocations } from "@/app/lib/locations/normalizeCatalog";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +15,8 @@ export const maxDuration = 300;
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const secret = (sp.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
   const useLLM = sp.get("llm") !== "0";
   const dry = sp.get("dry") === "1";
   const recompute = sp.get("recompute") === "1";

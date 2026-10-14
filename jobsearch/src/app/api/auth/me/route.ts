@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyJwt } from "@/app/lib/jwt";
+import { verifyJwt, signJwt, JWT_REFRESH_BELOW_SEC, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const decoded = await verifyJwt<{ id: string }>(token);
+    const decoded = await verifyJwt<{ id: string; exp?: number }>(token);
 
     if (!decoded || !decoded.id) {
       return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
@@ -42,7 +42,16 @@ export async function GET(req: NextRequest) {
       company:user.company,
     };
 
-    return NextResponse.json(userData);
+    const res = NextResponse.json(userData);
+    // Sliding session: once less than half the token's life is left, issue a
+    // fresh one (same payload shape as login) so active people never get
+    // logged out mid-session.
+    const remaining = (decoded.exp || 0) - Math.floor(Date.now() / 1000);
+    if (remaining < JWT_REFRESH_BELOW_SEC) {
+      const fresh = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
+      res.cookies.set({ ...SESSION_COOKIE, value: fresh });
+    }
+    return res;
   } catch (err) {
     console.error("❌ Error verifying token:", err);
     return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });

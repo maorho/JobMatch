@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { setupTestDb, resetDb } from "../setup/mongo";
 
@@ -25,10 +26,21 @@ beforeAll(async () => {
     return { id: `m${sent.length}` };
   });
   process.env.WHATSAPP_VERIFY_TOKEN = "verify-me-please";
+  process.env.WHATSAPP_APP_SECRET = WA_SECRET;
+  process.env.TELEGRAM_WEBHOOK_SECRET = TG_SECRET;
 });
 afterAll(() => setChannelSender(null));
+const WA_SECRET = "wa-app-secret-for-tests";
+const TG_SECRET = "s3cret-token";
 const authed = (url: string, init: RequestInit = {}) => new NextRequest(`http://localhost${url}`, { ...init, headers: { cookie: `token=${token}`, "Content-Type": "application/json", ...(init.headers || {}) } } as any);
 const json = (url: string, body: unknown, headers: Record<string, string> = {}) => new NextRequest(`http://localhost${url}`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) } as any);
+// Meta signs the raw body: X-Hub-Signature-256 = sha256=HMAC(body, app secret).
+const waSigned = (body: unknown, secret = WA_SECRET) => {
+  const raw = JSON.stringify(body);
+  const sig = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  return new NextRequest("http://localhost/api/messaging/whatsapp/webhook", { method: "POST", headers: { "Content-Type": "application/json", "x-hub-signature-256": sig }, body: raw } as any);
+};
+const tg = (body: unknown) => json("/api/messaging/telegram/webhook", body, { "x-telegram-bot-api-secret-token": TG_SECRET });
 
 describe("messaging channels", () => {
   it("links WhatsApp from an inbound JOIN <code>, and confirms", async () => {
@@ -37,7 +49,14 @@ describe("messaging channels", () => {
     expect((await linkCodeFor(dana)).code).toBe(code); // stable while valid
     const hint = await handleInbound("whatsapp", { id: "972501234567" }, "hello?");
     expect(hint).toMatch(/JOIN/);
-    const res = await waPOST(json("/api/messaging/whatsapp/webhook", { entry: [{ changes: [{ value: { contacts: [{ wa_id: "972501234567", profile: { name: "Dana" } }], messages: [{ from: "972501234567", type: "text", text: { body: `join ${code.toLowerCase()}` } }] } }] }] }));
+    const payload = { entry: [{ changes: [{ value: { contacts: [{ wa_id: "972501234567", profile: { name: "Dana" } }], messages: [{ from: "972501234567", type: "text", text: { body: `join ${code.toLowerCase()}` } }] } }] }] };
+    // Unsigned / wrongly signed deliveries never reach the handler; without an app secret nothing is processed.
+    expect((await waPOST(json("/api/messaging/whatsapp/webhook", payload))).status).toBe(401);
+    expect((await waPOST(waSigned(payload, "someone-elses-secret"))).status).toBe(401);
+    delete process.env.WHATSAPP_APP_SECRET;
+    expect((await waPOST(waSigned(payload))).status).toBe(503);
+    process.env.WHATSAPP_APP_SECRET = WA_SECRET;
+    const res = await waPOST(waSigned(payload));
     expect((await res.json()).handled).toBe(1);
     expect(sent.at(-1)).toMatchObject({ channel: "whatsapp", to: "972501234567" });
     expect(sent.at(-1)!.text).toMatch(/Linked to Dana/);
@@ -56,7 +75,7 @@ describe("messaging channels", () => {
 
   it("links Telegram from /start <code> and moves an identity between accounts", async () => {
     const { code } = await linkCodeFor(dana);
-    const res = await tgPOST(json("/api/messaging/telegram/webhook", { message: { chat: { id: 777 }, from: { first_name: "Dana", username: "dana_l" }, text: `/start ${code}` } }));
+    const res = await tgPOST(tg({ message: { chat: { id: 777 }, from: { first_name: "Dana", username: "dana_l" }, text: `/start ${code}` } }));
     expect((await res.json()).handled).toBe(1);
     const u: any = await User.findById(dana).select("channels").lean();
     expect(u.channels.telegram).toMatchObject({ id: "777", label: "Dana" });
@@ -66,10 +85,13 @@ describe("messaging channels", () => {
     await handleInbound("telegram", { id: "777", label: "Bob" }, `/start ${bobCode}`);
     expect(((await User.findById(dana).select("channels").lean()) as any).channels.telegram?.id).toBeUndefined();
     expect(((await User.findById(bob).select("channels").lean()) as any).channels.telegram.id).toBe("777");
-    process.env.TELEGRAM_WEBHOOK_SECRET = "s3cret-token";
+    // The secret header is mandatory, and an unconfigured secret refuses everything (503) rather than letting updates through.
     expect((await tgPOST(json("/api/messaging/telegram/webhook", { message: { chat: { id: 1 }, text: "/start x" } }))).status).toBe(403);
-    expect((await tgPOST(json("/api/messaging/telegram/webhook", { message: { chat: { id: 1 }, text: "hi" } }, { "x-telegram-bot-api-secret-token": "s3cret-token" }))).status).toBe(200);
+    expect((await tgPOST(json("/api/messaging/telegram/webhook", { message: { chat: { id: 1 }, text: "/start x" } }, { "x-telegram-bot-api-secret-token": "wrong" }))).status).toBe(403);
+    expect((await tgPOST(tg({ message: { chat: { id: 1 }, text: "hi" } }))).status).toBe(200);
     delete process.env.TELEGRAM_WEBHOOK_SECRET;
+    expect((await tgPOST(tg({ message: { chat: { id: 1 }, text: "hi" } }))).status).toBe(503);
+    process.env.TELEGRAM_WEBHOOK_SECRET = TG_SECRET;
   });
 
   it("every notification is pushed to the linked channels, honouring prefs, with an absolute link", async () => {

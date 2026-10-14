@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
     $or: [{ admin: false }, { admin: { $exists: false } }],
     company_id: companyId,
   })
+    // Only what the admin dashboard shows — never the whole user document.
+    .select("fullname email company company_id approved createdAt")
     .populate({
       path: "company_id",
       model: "Company",

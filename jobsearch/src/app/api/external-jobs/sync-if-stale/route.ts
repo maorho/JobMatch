@@ -4,17 +4,14 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import fetchSheetAsJson, { normalizeExternalJobs } from "@/app/components/OutsideJobs";
 import { getFinalUrl } from "@/app/lib/crawler/finalUrl"; // מחזיר OpenJobResponse
 import { agentSplitJobText } from "@/app/lib/agentJobSplitter";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 
 
 
 export async function GET(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
   const debug = req.nextUrl.searchParams.get("debug") === "1";
   const dry = req.nextUrl.searchParams.get("dry") === "1";
   const limit = Number(req.nextUrl.searchParams.get("limit") ?? "0") || 0;

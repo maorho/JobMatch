@@ -3,6 +3,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import CompanySource from "@/app/models/CompanySource";
 import { detectFromCareersPage } from "@/app/lib/scout/detect";
 import { normalizeDomain } from "@/app/lib/scout/logo";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,11 +49,8 @@ function companyNameFromUrl(url: string, identifier: string): string {
  * Body: { url? , urls?: string[], add?: boolean, companyName? }
  */
 export async function POST(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
 
   const body = await req.json().catch(() => ({}));
   const urls: string[] = body.urls || (body.url ? [body.url] : []);

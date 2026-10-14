@@ -38,7 +38,7 @@ beforeAll(async () => {
 });
 afterAll(() => setMailTransport(null));
 const authed = (token: string, url: string, init: RequestInit = {}) => new NextRequest(`http://localhost${url}`, { ...init, headers: { cookie: `token=${token}`, "Content-Type": "application/json", ...(init.headers || {}) } } as any);
-const code = () => /\b(\d{6})\b/.exec(outbox.at(-1)!.subject)![1];
+const code = () => /^([A-Z2-9]{8}) is your/.exec(outbox.at(-1)!.subject)![1];
 
 describe("insiders: registration and verification", () => {
   it("only a work address on the company's domain qualifies", () => {
@@ -50,7 +50,7 @@ describe("insiders: registration and verification", () => {
     expect(emailMatchesCompany("nope", "Wix", "wix.com")).toBe(false);
   });
 
-  it("registers with a mailed 6-digit code (hash stored), verifies once, and appears for candidates", async () => {
+  it("registers with a mailed 8-character code (hash stored), verifies once, and appears for candidates", async () => {
     expect(await registerInsider(yossi, { company: "Wix", workEmail: "yossi@gmail.com" })).toEqual({ ok: false, error: "domain_mismatch" });
     const r = await registerInsider(yossi, { company: "Wix", title: "Backend Developer", workEmail: "Yossi@Wix.com", note: "Backend/fullstack only" });
     expect(r).toMatchObject({ ok: true, verified: false, sent: true });

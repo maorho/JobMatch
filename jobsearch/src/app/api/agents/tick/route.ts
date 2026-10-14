@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { startFlow, processQueue } from "@/app/lib/agents";
 import { alertAdmins } from "@/app/lib/ops/alerts";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,9 +17,8 @@ const FLOWS = ["catalog.refresh", "catalog.sweep", "content.plan", "outcomes.ask
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const secret = (sp.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = requireCron(req);
+  if (denied) return denied;
 
   const flow = sp.get("flow") as (typeof FLOWS)[number] | null;
   const budgetMs = Math.min((parseInt(sp.get("budget") ?? "", 10) || 240) * 1000, 240_000);

@@ -9,6 +9,7 @@ import os from "os";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import http from "http";
+import crypto from "crypto";
 import { runFormAgent, type AgentContext } from "./formAgent";
 import { attachPhoneBridge } from "./phone";
 
@@ -16,15 +17,32 @@ import { attachPhoneBridge } from "./phone";
 dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
 
 const app = express();
-const PORT = 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
 // Only allow the configured app origin to call this server from a browser;
 // the real caller is the Next server (server-to-server, no CORS needed).
 const ALLOWED_ORIGIN = process.env.SCRAPER_ALLOWED_ORIGIN || "";
 app.use(cors(ALLOWED_ORIGIN ? { origin: ALLOWED_ORIGIN } : { origin: false }));
 
-// Shared secret so only our own backend can drive the scraper.
+// Shared secret so only our own backend can drive the scraper. Always
+// required: a production process without one refuses to start, and a dev
+// process without one answers 401 to everything (never an open server).
 const SCRAPER_TOKEN = process.env.SCRAPER_TOKEN || process.env.CRON_SECRET || "";
+if (!SCRAPER_TOKEN) {
+  const msg = "SCRAPER_TOKEN (or CRON_SECRET) is not set — the scraper server would be open to anyone.";
+  if (process.env.NODE_ENV === "production") {
+    console.error(`❌ ${msg}`);
+    process.exit(1);
+  }
+  console.error(`❌ ${msg} Every request will be rejected until it is configured.`);
+}
+/** Constant-time check of the token a request carries (query ?token= or x-scraper-token header). */
+function tokenOk(presented: string): boolean {
+  if (!SCRAPER_TOKEN || !presented) return false;
+  const a = Buffer.from(presented);
+  const b = Buffer.from(SCRAPER_TOKEN);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 // ---- SSRF guard: only public http(s) hosts, never internal/metadata/file ----
 function isPrivateIp(ip: string): boolean {
@@ -182,13 +200,10 @@ async function findOpenRef(page: Page) {
 // ------------------------------------------------------------
 
 app.get("/api/open-job", async (req: Request, res: Response): Promise<void> => {
-  // Auth: require the shared token (unless none is configured locally).
-  if (SCRAPER_TOKEN) {
-    const token = (req.query.token as string) || req.get("x-scraper-token") || "";
-    if (token !== SCRAPER_TOKEN) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+  // Auth: the shared token is always required.
+  if (!tokenOk((req.query.token as string) || req.get("x-scraper-token") || "")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
 
   const jobUrl = req.query.url as string;
@@ -243,12 +258,9 @@ const ATS_HOST_RE =
   /greenhouse\.io|lever\.co|ashbyhq\.com|comeet\.co|myworkdayjobs\.com|smartrecruiters\.com|recruitee\.com|workable\.com|teamtailor\.com|bamboohr\.com|personio/i;
 
 app.get("/api/detect-ats", async (req: Request, res: Response): Promise<void> => {
-  if (SCRAPER_TOKEN) {
-    const token = (req.query.token as string) || req.get("x-scraper-token") || "";
-    if (token !== SCRAPER_TOKEN) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+  if (!tokenOk((req.query.token as string) || req.get("x-scraper-token") || "")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
   const pageUrl = req.query.url as string;
   if (!pageUrl) {
@@ -303,12 +315,9 @@ app.get("/api/detect-ats", async (req: Request, res: Response): Promise<void> =>
 // Lets us read APIs that block direct server calls but work inside a browser
 // (e.g. Microsoft/Google careers). Optionally scroll to trigger lazy loading.
 app.get("/api/capture", async (req: Request, res: Response): Promise<void> => {
-  if (SCRAPER_TOKEN) {
-    const token = (req.query.token as string) || req.get("x-scraper-token") || "";
-    if (token !== SCRAPER_TOKEN) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+  if (!tokenOk((req.query.token as string) || req.get("x-scraper-token") || "")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
   const pageUrl = req.query.url as string;
   const match = (req.query.match as string) || "";
@@ -393,7 +402,7 @@ type ApplyBody = { url: string; profile: ApplyProfile; resumePdfBase64?: string;
 
 // ---- The form agent's model (gpt-4o with the screenshot); disabled without a key ----
 const AGENT_MODEL = process.env.APPLY_AGENT_MODEL || "gpt-4o";
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 45_000, maxRetries: 1 }) : null;
 const agentLlm = async (system: string, user: string, screenshotB64?: string): Promise<string> => {
   if (!openai) throw new Error("OPENAI_API_KEY missing on the apply server");
   const content: any[] = [{ type: "text", text: user }];
@@ -653,12 +662,9 @@ async function formErrors(page: Page): Promise<string[]> {
 }
 
 app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
-  if (SCRAPER_TOKEN) {
-    const token = (req.query.token as string) || req.get("x-scraper-token") || "";
-    if (token !== SCRAPER_TOKEN) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
+  if (!tokenOk((req.query.token as string) || req.get("x-scraper-token") || "")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
   }
   const body = (req.body || {}) as ApplyBody;
   const { url, profile } = body;
@@ -800,6 +806,12 @@ app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
     if (tmpResume) fs.unlink(tmpResume, () => {});
     await page?.close().catch(() => {});
   }
+});
+
+// Liveness for the Next app (lib/apply/server.ts probes it once per auto-apply pass
+// before paying for any résumé tailoring). No token: it reveals nothing but "up".
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ ok: true, inFlight, maxConcurrency: MAX_CONCURRENCY, agent: !!openai });
 });
 
 const httpServer = http.createServer(app);

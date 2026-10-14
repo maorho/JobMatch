@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUserIdFromRequest } from "./getUserIdFromRequest";
 import { connectToDatabase } from "./db";
 import User from "@/app/models/User";
@@ -24,7 +24,10 @@ export async function requireAdmin(
 }
 
 /**
- * Resolve the authenticated user and assert they are a recruiter or admin.
+ * Resolve the authenticated user and assert they are an admin, or a recruiter
+ * an admin has approved. A recruiter who is still pending gets null like any
+ * other outsider — the dashboard already shows them the "waiting for
+ * approval" notice instead of the tools.
  */
 export async function requireRecruiterOrAdmin(
   req: NextRequest
@@ -32,7 +35,28 @@ export async function requireRecruiterOrAdmin(
   const id = await getUserIdFromRequest(req);
   if (!id) return null;
   await connectToDatabase();
-  const user = await User.findById(id).select("admin recruiter company");
-  if (!user || (!user.admin && !user.recruiter)) return null;
+  const user = await User.findById(id).select("admin recruiter approved company");
+  if (!user) return null;
+  const approvedRecruiter = !!user.recruiter && user.approved === true;
+  if (!user.admin && !approvedRecruiter) return null;
   return { id, admin: !!user.admin, company: user.company || "" };
+}
+
+/** Message for a signed-in recruiter whose account an admin has not approved yet. */
+export const RECRUITER_PENDING_MESSAGE = "החשבון ממתין לאישור מנהל";
+
+/**
+ * The response to send when requireRecruiterOrAdmin returned null: 403 with a
+ * clear message for a recruiter still waiting for approval, 401 otherwise.
+ */
+export async function recruiterDenied(req: NextRequest): Promise<NextResponse> {
+  const id = await getUserIdFromRequest(req);
+  if (id) {
+    await connectToDatabase();
+    const user = await User.findById(id).select("recruiter approved").lean();
+    if (user?.recruiter && user.approved !== true) {
+      return NextResponse.json({ error: "Forbidden", message: RECRUITER_PENDING_MESSAGE }, { status: 403 });
+    }
+  }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }

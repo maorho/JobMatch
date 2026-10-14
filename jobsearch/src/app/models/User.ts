@@ -74,7 +74,8 @@ const UserSchema = new Schema<IUser>(
       trim: true,
       lowercase: true,
     },
-    password: { type: String, required: true },
+    // Never leaves the DB unless asked for: readers use .select("+password").
+    password: { type: String, required: true, select: false },
     // Email password reset (lib/auth/passwordReset.ts): sha256 of a single-use token + its expiry.
     resetTokenHash: { type: String, select: false, index: true },
     resetTokenExpires: { type: Date },
@@ -84,7 +85,7 @@ const UserSchema = new Schema<IUser>(
       telegram: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },
     },
     channelPrefs: { matches: { type: Boolean, default: true }, updates: { type: Boolean, default: true } },
-    channelLinkCode: { type: String, index: true },
+    channelLinkCode: { type: String, index: true, select: false },
     channelLinkCodeExpires: { type: Date },
     fullname: { type: String, required: true },
 

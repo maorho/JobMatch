@@ -12,6 +12,7 @@ import { sendEmail } from "@/app/lib/email/send";
 import { notify } from "@/app/lib/notifications/notify";
 import { loadJob } from "@/app/lib/jobs/loadJob";
 import { ensureOutcome } from "@/app/lib/outcomes/outcomes";
+import { rateLimit } from "@/app/lib/ops/rateLimit";
 
 /**
  * The insiders network ("חבר מביא חבר" as a product):
@@ -23,10 +24,16 @@ import { ensureOutcome } from "@/app/lib/outcomes/outcomes";
  *     application for the candidate and marks the outcome as referred (the likelihood model learns from it).
  */
 export const VERIFY_TTL_MIN = 30;
+/** Wrong guesses a single code survives before it is thrown away (the insider asks for a new one). */
+export const VERIFY_MAX_ATTEMPTS = 5;
 export const MAX_OPEN_REQUESTS_PER_CANDIDATE = 5;
 export const REQUEST_EXPIRY_DAYS = 14;
 
 const hash = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
+// 8 characters, uppercase letters + digits without the look-alikes (0/O, 1/I): ~1.1e12 possibilities, 5 tries each.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const makeCode = () => Array.from(crypto.randomBytes(8), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+const normalizeCode = (s: string) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 const PUBLIC_MAIL = /^(gmail|googlemail|yahoo|hotmail|outlook|live|icloud|walla|proton|protonmail|me|aol|msn)\./i;
 
 /** The company's web domain as the catalog knows it (CompanySource first, then postings). */
@@ -70,7 +77,7 @@ export async function registerInsider(userId: string, input: { company: string; 
   const domain = await companyDomainFor(company);
   if (!emailMatchesCompany(workEmail, company, domain)) return { ok: false, error: "domain_mismatch" };
   const key = companyKey(company);
-  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+  const code = makeCode();
   const doc: any = await Referrer.findOneAndUpdate(
     { userId, companyKey: key },
     { $set: { company, companyKey: key, domain, title: (input.title || "").slice(0, 80), workEmail, verifyCodeHash: hash(code), verifyCodeExpires: new Date(Date.now() + VERIFY_TTL_MIN * 60_000), active: true, ...(input.capacity ? { capacity: Math.min(50, Math.max(1, input.capacity)) } : {}), ...(input.note !== undefined ? { note: input.note.slice(0, 300) } : {}) } },
@@ -88,7 +95,15 @@ export async function registerInsider(userId: string, input: { company: string; 
 export async function verifyInsider(userId: string, company: string, code: string): Promise<{ ok: true } | { ok: false; error: "invalid" | "expired" }> {
   await connectToDatabase();
   const doc: any = await Referrer.findOne({ userId, companyKey: companyKey(company) }).select("+verifyCodeHash verifyCodeExpires");
-  if (!doc || !doc.verifyCodeHash || hash(String(code || "").trim()) !== doc.verifyCodeHash) return { ok: false, error: "invalid" };
+  if (!doc || !doc.verifyCodeHash) return { ok: false, error: "invalid" };
+  // Each code survives VERIFY_MAX_ATTEMPTS guesses (counted per code, so a fresh code starts clean); one more and it is gone.
+  const issuedAt = doc.verifyCodeExpires ? new Date(new Date(doc.verifyCodeExpires).getTime() - VERIFY_TTL_MIN * 60_000) : undefined;
+  const attempts = await rateLimit(`insider-verify:${doc._id}:${doc.verifyCodeHash.slice(0, 16)}`, VERIFY_MAX_ATTEMPTS, VERIFY_TTL_MIN * 60_000, { windowStart: issuedAt });
+  if (!attempts.ok) {
+    await Referrer.updateOne({ _id: doc._id }, { $unset: { verifyCodeHash: 1, verifyCodeExpires: 1 } });
+    return { ok: false, error: "expired" };
+  }
+  if (hash(normalizeCode(code)) !== doc.verifyCodeHash) return { ok: false, error: "invalid" };
   if (!doc.verifyCodeExpires || new Date(doc.verifyCodeExpires).getTime() < Date.now()) return { ok: false, error: "expired" };
   doc.verifiedAt = new Date();
   doc.verifyCodeHash = undefined;

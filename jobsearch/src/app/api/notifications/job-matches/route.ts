@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runJobMatchDigest } from "@/app/lib/notifications/digest";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,11 +12,8 @@ export const maxDuration = 300;
  * standalone entry. `?dry=1` reports without notifying.
  */
 export async function GET(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
   const dry = req.nextUrl.searchParams.get("dry") === "1";
 
   try {

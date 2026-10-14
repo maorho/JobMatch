@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
-import { signJwt } from "@/app/lib/jwt";
+import { signJwt, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
+import { clientIp, enforceRateLimits, HOUR_MS } from "@/app/lib/ops/rateLimit";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import User from "@/app/models/User";
 import Company from "@/app/models/Company";
@@ -18,19 +19,26 @@ const s3 = new S3Client({
   },
 });
 
-async function uploadToS3(buffer: Buffer, fileName: string, mimeType: string): Promise<string> {
-  const key = `resumes/${uuidv4()}-${fileName}`;
+const MAX_RESUME_BYTES = 8 * 1024 * 1024; // 8 MB, same as chat/upload-resume
+
+// The object key never carries the client's filename: a random id + ".pdf".
+async function uploadToS3(buffer: Buffer): Promise<string> {
+  const key = `resumes/${uuidv4()}.pdf`;
   const uploadParams = {
     Bucket: process.env.S3_BUCKET_NAME!,
     Key: key,
     Body: buffer,
-    ContentType: mimeType,
+    ContentType: "application/pdf",
   };
   await s3.send(new PutObjectCommand(uploadParams));
   return key;
 }
 
 export async function POST(req: NextRequest) {
+  // 5 new accounts per hour per address.
+  const limited = await enforceRateLimits([{ key: `signup:ip:${clientIp(req)}`, max: 5, windowMs: HOUR_MS }]);
+  if (limited) return limited;
+
   await connectToDatabase();
 
   const form = await req.formData();
@@ -71,8 +79,15 @@ export async function POST(req: NextRequest) {
     if (!resumeFile) {
       return NextResponse.json({ message: "Missing resume file" }, { status: 400 });
     }
+    if (resumeFile.size > MAX_RESUME_BYTES) {
+      return NextResponse.json({ message: "File too large (max 8MB)" }, { status: 400 });
+    }
+    const isPdf = resumeFile.type === "application/pdf" || resumeFile.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      return NextResponse.json({ message: "Only PDF files are supported" }, { status: 400 });
+    }
     resumeBuffer = Buffer.from(await resumeFile.arrayBuffer());
-    resumeKey = await uploadToS3(resumeBuffer, resumeFile.name, resumeFile.type);
+    resumeKey = await uploadToS3(resumeBuffer);
   }
 
   // ✅ טיפול בחברה
@@ -96,6 +111,8 @@ export async function POST(req: NextRequest) {
     username,
     recruiter,
     admin,
+    // A recruiter starts unapproved no matter what the form sent; an admin flips it.
+    approved: false,
     company_id,
     company: recruiter || admin ? company : "",
     phone,
@@ -125,15 +142,7 @@ export async function POST(req: NextRequest) {
   const token = await signJwt({ id: String(newUser._id), email, admin: false });
 
   const response = NextResponse.json({ message: "Signup successful", recruiter });
-  response.cookies.set({
-    name: "token",
-    value: token,
-    httpOnly: true,
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24,
-  });
+  response.cookies.set({ ...SESSION_COOKIE, value: token });
 
   return response;
 }

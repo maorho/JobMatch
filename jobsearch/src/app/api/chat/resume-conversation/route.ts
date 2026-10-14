@@ -210,7 +210,6 @@ export async function POST(req: NextRequest) {
       extractedMemory.preferredLanguage;
     const lang =
       langFromMemory || detectLanguage(lastUserMessage || messages[0]?.content);
-    console.log(`user`,user);
     const memorySummary = `
             Known user info:
             - Name: ${user?.fullname || "Unknown"}

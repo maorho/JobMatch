@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode, fetchProfile, isProvider, redirectUri, safeNext } from "@/app/lib/oauth/providers";
 import { findOrCreateOAuthUser } from "@/app/lib/oauth/users";
 import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
-import { signJwt } from "@/app/lib/jwt";
+import { signJwt, SESSION_COOKIE } from "@/app/lib/jwt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,14 +49,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     // New social accounts start with onboarding (résumé → contacts → auto-apply).
     const dest = created && next === "/" ? "/onboarding" : next;
     const res = NextResponse.redirect(new URL(dest, req.nextUrl.origin));
-    res.cookies.set({
-      name: "token",
-      value: token,
-      httpOnly: true,
-      path: "/",
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+    res.cookies.set({ ...SESSION_COOKIE, value: token });
     res.cookies.delete(STATE_COOKIE);
     if (ref) res.cookies.delete(REF_COOKIE);
     return res;

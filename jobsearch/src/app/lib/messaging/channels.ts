@@ -77,7 +77,7 @@ const makeCode = () => Array.from(crypto.randomBytes(8), (b) => CODE_ALPHABET[b 
 /** The person's current link code (a fresh one when missing or expired). */
 export async function linkCodeFor(userId: string): Promise<{ code: string; expiresAt: Date }> {
   await connectToDatabase();
-  const u: any = await User.findById(userId).select("channelLinkCode channelLinkCodeExpires").lean();
+  const u: any = await User.findById(userId).select("+channelLinkCode channelLinkCodeExpires").lean();
   if (u?.channelLinkCode && u.channelLinkCodeExpires && new Date(u.channelLinkCodeExpires).getTime() > Date.now() + 60_000) return { code: u.channelLinkCode, expiresAt: new Date(u.channelLinkCodeExpires) };
   const code = makeCode();
   const expiresAt = new Date(Date.now() + LINK_CODE_TTL_MS);
