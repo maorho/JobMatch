@@ -10,7 +10,7 @@ import JobSignal from "@/app/models/JobSignal";
 import { embedPendingJobs } from "@/app/lib/matcher/embedJobs";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import { signJwt } from "@/app/lib/jwt";
-import { setSignal, signalsFor, savedJobs } from "@/app/lib/jobs/signals";
+import { setSignal, signalsFor, savedJobs, appliedIds } from "@/app/lib/jobs/signals";
 import { rankForUser } from "@/app/lib/matcher/hybrid";
 import { GET as sigGET, POST as sigPOST } from "@/app/api/jobs/signals/route";
 
@@ -65,5 +65,24 @@ describe("saved / dismissed signals", () => {
     const list = await (await sigGET(authed("/api/jobs/signals?list=saved"))).json();
     expect(list.jobs).toHaveLength(1);
     expect((await sigGET(new NextRequest("http://localhost/api/jobs/signals"))).status).toBe(401);
+  });
+});
+
+describe("applied postings", () => {
+  it("leave the feed once the person applied, by hand or through the Applier", async () => {
+    const Candidates = (await import("@/app/models/Candidates")).default;
+    const AutoApplication = (await import("@/app/models/AutoApplication")).default;
+    const angular = String((await ExternalJobs.create(job("Junior Angular Developer", "Angular TypeScript frontend")))._id);
+    const svelte = String((await ExternalJobs.create(job("Junior Svelte Developer", "Svelte TypeScript frontend")))._id);
+    await embedPendingJobs();
+    const before = await rankForUser(dana, { limit: 10, rerank: false });
+    expect(before.jobs.map((j) => j._id)).toEqual(expect.arrayContaining([angular, svelte]));
+    await Candidates.create({ candidateId: dana, jobId: angular, jobModel: "ExternalJobs", status: "Submitted Resume" }); // "Did you apply? → Yes"
+    await AutoApplication.create({ userId: dana, jobId: svelte, jobModel: "ExternalJobs", status: "submitted" }); // the Applier
+    const after = await rankForUser(dana, { limit: 10, rerank: false });
+    expect(after.jobs.map((j) => j._id)).not.toContain(angular);
+    expect(after.jobs.map((j) => j._id)).not.toContain(svelte);
+    expect(after.total).toBe(before.total - 2);
+    expect([...(await appliedIds(dana))].sort()).toEqual([angular, svelte].sort());
   });
 });

@@ -3,6 +3,8 @@ import { connectToDatabase } from "@/app/lib/db";
 import JobSignal, { type SignalKind } from "@/app/models/JobSignal";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import Job from "@/app/models/Job";
+import Candidates from "@/app/models/Candidates";
+import AutoApplication from "@/app/models/AutoApplication";
 import { invalidate } from "@/app/lib/cache";
 
 /** Save / dismiss a posting, or undo. Dismissing clears a save and vice versa. */
@@ -38,6 +40,22 @@ export async function dismissedIds(userId: string): Promise<Set<string>> {
   await connectToDatabase();
   const rows: any[] = await JobSignal.find({ userId, kind: "dismissed" }).select("jobId").lean();
   return new Set(rows.map((r) => String(r.jobId)));
+}
+
+/** Postings the person already applied to — by hand (a Candidates row) or through the Applier (a submitted auto-application). */
+export async function appliedIds(userId: string): Promise<Set<string>> {
+  await connectToDatabase();
+  const [manual, auto]: [any[], any[]] = await Promise.all([
+    Candidates.find({ candidateId: userId }).select("jobId").lean(),
+    AutoApplication.find({ userId, status: { $in: ["submitted", "submitting", "needs_user"] } }).select("jobId").lean(),
+  ]);
+  return new Set([...manual, ...auto].map((r) => String(r.jobId)));
+}
+
+/** Everything the feed must not show this person again: dismissed and already applied. */
+export async function hiddenIds(userId: string): Promise<Set<string>> {
+  const [d, a] = await Promise.all([dismissedIds(userId), appliedIds(userId)]);
+  return new Set([...d, ...a]);
 }
 
 /** The saved list with the posting's current details (gone postings still show their title). */

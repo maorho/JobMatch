@@ -237,4 +237,20 @@ describe("eightfold adapter", () => {
     expect(ai.postedAt?.toISOString().slice(0, 10)).toBe("2026-09-18");
     expect(out.find((p) => p.sourceJobId === "201")!.description).toBe(""); // detail 404 → listing data kept
   });
+
+  it("backs off and retries when the site rate-limits a burst", async () => {
+    vi.useFakeTimers();
+    const { eightfold } = await import("@/app/lib/scout/adapters/eightfold");
+    let listCalls = 0;
+    const { calls } = stubFetch({
+      "api/pcsx/search": () => (++listCalls === 1 ? { status: 429, body: { message: "slow down" } } : { body: { data: { count: 1, positions: [{ id: 7, name: "Engineer", locations: ["Israel, Tel Aviv, Tel Aviv"] }] } } }),
+      "api/apply/v2/jobs/7": { body: { job_description: "<p>Hi</p>" } },
+    });
+    const pending = eightfold("apply.careers.microsoft.com", "microsoft.com");
+    await vi.runAllTimersAsync();
+    const out = await pending;
+    expect(out).toHaveLength(1);
+    expect(calls.filter((c) => c.includes("api/pcsx/search"))).toHaveLength(2); // 429, then the retry
+    vi.useRealTimers();
+  });
 });

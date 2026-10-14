@@ -22,6 +22,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const { user } = useCurrentUser();
   const [showModal, setShowModal] = useState(false);
   const [didYouApply, setDidYouApply] = useState(false);
+  const [applied, setApplied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>("");
 
@@ -109,7 +110,9 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       if (!res.ok) {
         setError(data?.message || "Application failed");
       } else {
-        alert(data?.message || "Application sent!");
+        // Recorded: the prompt closes and the posting leaves the feed (it is tracked under Applications now).
+        setDidYouApply(false);
+        setApplied(true);
       }
     } catch {
       setError("Something went wrong");
@@ -198,8 +201,14 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
           </div>
         )}
 
+        {applied && (
+          <div className="mt-5 jm-alert jm-alert-info" dir="auto">
+            ✓ נרשם שהגשת מועמדות למשרה. היא תעקוב איתך תחת Applications ולא תופיע יותר בפיד.
+          </div>
+        )}
+
         {/* אישור הגשה למשרה חיצונית */}
-        {didYouApply && (
+        {didYouApply && !applied && (
           <div className="mt-5 jm-alert jm-alert-info">
             <h2 className="font-semibold mb-3">Did you apply?</h2>
             <div className="flex flex-wrap items-center gap-2">
@@ -284,7 +293,9 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
           the "Did you apply?" prompt right where the user tapped. */}
       {user && (
         <div className="sticky bottom-0 z-40 lg:hidden mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur border-t border-line">
-          {didYouApply ? (
+          {applied ? (
+            <div className="text-sm font-semibold text-center" dir="auto">✓ נרשם שהגשת מועמדות</div>
+          ) : didYouApply ? (
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-sm">Did you apply?</span>
               <div className="flex gap-2">

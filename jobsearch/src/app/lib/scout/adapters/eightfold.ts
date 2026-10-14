@@ -14,6 +14,21 @@ const PAGE = 10;
 const MAX_POSITIONS = 500;
 const MAX_DETAIL = 80;
 const HEADERS = { "User-Agent": "Mozilla/5.0 JobMatchScout", Accept: "application/json" };
+/** Eightfold rate-limits bursts (HTTP 429): pause between detail calls and back off before retrying. */
+const DETAIL_DELAY_MS = 300;
+const RETRY_DELAYS_MS = [3_000, 10_000];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchPolite(url: string): Promise<Response> {
+  let res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  for (const delay of RETRY_DELAYS_MS) {
+    if (res.status !== 429 && res.status !== 503) break;
+    await sleep(delay);
+    res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  }
+  return res;
+}
 
 /** "Israel, Tel Aviv, Herzliya" → "Herzliya"; skips the "Multiple Locations" placeholder. */
 export function eightfoldCity(locations: unknown): string {
@@ -36,7 +51,7 @@ export const eightfold: Adapter = async (identifier, secondaryIdentifier) => {
   let count = Infinity;
   for (let start = 0; start < Math.min(count, MAX_POSITIONS); start += PAGE) {
     const url = `${base}/api/pcsx/search?domain=${encodeURIComponent(domain)}&query=&location=Israel&start=${start}&num=${PAGE}`;
-    const res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+    const res = await fetchPolite(url);
     if (!res.ok) {
       if (start === 0) throw new Error(`Eightfold ${host}: HTTP ${res.status}`);
       break;
@@ -69,11 +84,11 @@ export const eightfold: Adapter = async (identifier, secondaryIdentifier) => {
 
   for (const p of out.slice(0, MAX_DETAIL)) {
     try {
-      const d = await fetch(`${base}/api/apply/v2/jobs/${encodeURIComponent(p.sourceJobId)}?domain=${encodeURIComponent(domain)}`, { headers: HEADERS, cache: "no-store" });
+      const d = await fetchPolite(`${base}/api/apply/v2/jobs/${encodeURIComponent(p.sourceJobId)}?domain=${encodeURIComponent(domain)}`);
       if (!d.ok) continue;
       const job = await d.json();
       if (job?.job_description) p.description = htmlToText(String(job.job_description));
-      await new Promise((r) => setTimeout(r, 150));
+      await sleep(DETAIL_DELAY_MS);
     } catch {
       /* keep the listing-level data */
     }

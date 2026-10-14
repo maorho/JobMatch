@@ -43,7 +43,7 @@ export async function referralOpportunities(userId: string, opts: { depth?: numb
     byKey.set(c.companyKey, [...(byKey.get(c.companyKey) || []), c]);
   }
   const keys = [...byKey.keys()];
-  const { jobs } = await rankForUser(userId, { limit: opts.depth ?? 300, rerank: false });
+  const { jobs } = await rankForUser(userId, { limit: opts.depth ?? 300, rerank: false, includeApplied: true });
   const hits = jobs
     .map((j) => {
       const k = companyKey(j.company);

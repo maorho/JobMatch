@@ -75,6 +75,10 @@ export function htmlToText(html: string): string {
     .split("\n")
     .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
     .join("\n")
+    // `<li><p>text</p></li>` (Eightfold, some Workday feeds) puts the marker and its text on consecutive lines: rejoin them.
+    .replace(/•[ \t]*\n[ \t]*(?=[^\s•])/g, "• ")
+    // Empty `<li></li>` items leave a bare marker: drop it.
+    .replace(/(^|\n)•[ \t]*(?=\n|$)/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

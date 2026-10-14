@@ -10,7 +10,7 @@ import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { candidateSearchVector, profileReject, hasSearchProfile, type SearchProfile } from "./searchProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { memo, ttl } from "@/app/lib/cache";
-import { dismissedIds } from "@/app/lib/jobs/signals";
+import { hiddenIds, dismissedIds } from "@/app/lib/jobs/signals";
 
 /**
  * The matching pipeline:
@@ -51,6 +51,8 @@ export type RankOptions = {
   minScore?: number;
   /** Run the LLM reranker on the top `rerankTop` (default: when the user has a résumé and page 1). */
   rerank?: boolean;
+  /** Keep postings the person already applied to (the referral-outreach list needs them); the feed hides them. */
+  includeApplied?: boolean;
   rerankTop?: number;
   language?: "he" | "en";
 };
@@ -102,9 +104,9 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
   const final = cacheable
     ? await memo(`rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`, ttl(RANK_TTL_MS), compute)
     : await compute();
-  // "Not relevant" is final for that person: dismissed postings never come back, in any page or total.
-  const dismissed = profile.userId ? await dismissedIds(profile.userId) : null;
-  const visible = dismissed?.size ? final.filter((r) => !dismissed.has(r._id)) : final;
+  // "Not relevant" is final for that person, and an applied posting lives under Applications now: neither comes back, in any page or total.
+  const hidden = profile.userId ? await (opts.includeApplied ? dismissedIds(profile.userId) : hiddenIds(profile.userId)) : null;
+  const visible = hidden?.size ? final.filter((r) => !hidden.has(r._id)) : final;
   const page = visible.slice(skip, skip + limit);
   // The shown number: interview likelihood from the same features the outcome loop stores.
   const model = await loadModel().catch(() => null);

@@ -45,3 +45,26 @@ describe("parseDescription → blocks", () => {
     expect(blocks.every((b) => b.type === "paragraph")).toBe(true);
   });
 });
+
+describe("list items wrapped in paragraphs (Eightfold / Microsoft)", () => {
+  const EF = `<b>Qualifications</b><br><div><ul style="list-style-type: disc;"><li><p>5+ years of experience in ASIC design </p></li></ul></div><div><ul><li><p>BSc/MSc in Electrical Engineering</p></li></ul></div><ul><li></li><li></li></ul><p>Proven communication skills in English.</p>`;
+  it("htmlToText keeps the marker and its text on one line and drops empty items", () => {
+    const t = htmlToText(EF);
+    expect(t).toContain("• 5+ years of experience in ASIC design");
+    expect(t).toContain("• BSc/MSc in Electrical Engineering");
+    expect(t).not.toMatch(/(^|\n)•\s*(\n|$)/);
+    expect(parseDescription(t)).toEqual([
+      { type: "heading", text: "Qualifications" },
+      { type: "list", items: ["5+ years of experience in ASIC design", "BSc/MSc in Electrical Engineering"] },
+      { type: "paragraph", text: "Proven communication skills in English." },
+    ]);
+  });
+  it("parseDescription repairs text that was stored before the fix", () => {
+    const stored = "Qualifications\n\n•\n5+ years of experience in ASIC design\n\n•\nBSc/MSc in Electrical Engineering\n\n•\n•\n\nProven communication skills in English.";
+    expect(parseDescription(stored)).toEqual([
+      { type: "heading", text: "Qualifications" },
+      { type: "list", items: ["5+ years of experience in ASIC design", "BSc/MSc in Electrical Engineering"] },
+      { type: "paragraph", text: "Proven communication skills in English." },
+    ]);
+  });
+});

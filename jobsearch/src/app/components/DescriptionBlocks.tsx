@@ -23,8 +23,24 @@ function isHeading(line: string, next: string | undefined): boolean {
   return line.length <= 60 && !/[.!?,;]$/.test(line) && !!next && /\p{L}/u.test(line) && line.split(/\s+/).length <= 7;
 }
 
+const LONE_BULLET_RE = /^\s*[•\-\*·▪◦●■]\s*$/;
+
 export function parseDescription(text: string): Block[] {
-  const lines = (text || "").replace(/\r/g, "").split("\n").map((l) => l.trim());
+  const raw = (text || "").replace(/\r/g, "").split("\n").map((l) => l.trim());
+  // `<li><p>text</p></li>` markup (Eightfold, some Workday feeds) leaves the marker alone on
+  // its line and the item text below it: glue them back into one bullet before parsing.
+  const lines: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (LONE_BULLET_RE.test(raw[i])) {
+      const next = raw[i + 1];
+      if (next && !BULLET_RE.test(next) && !LONE_BULLET_RE.test(next)) {
+        lines.push(`• ${next}`);
+        i++;
+      }
+      continue; // a marker with nothing right after it (an empty item) is dropped
+    }
+    lines.push(raw[i]);
+  }
   const blocks: Block[] = [];
   let list: string[] | null = null;
   const flushList = () => {
