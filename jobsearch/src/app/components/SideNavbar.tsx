@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import Image from "next/image";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { X, Sparkles, Bell, MessageCircle, LayoutDashboard, Settings } from "lucide-react";
 import LogoutButton from "./Logout";
@@ -19,6 +20,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const pathname = usePathname();
   const { user, sessionExpired } = useCurrentUser();
   const lastPathRef = useRef(pathname);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const signInHref = loginHref(pathname);
 
   // Close when the route changes (link tapped inside the drawer).
@@ -48,13 +51,17 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
       active ? "bg-navy text-white" : "text-navy hover:bg-canvas"
     }`;
 
-  return (
-    <div className={`lg:hidden fixed inset-0 z-[70] ${isOpen ? "" : "pointer-events-none"}`} aria-hidden={!isOpen} inert={!isOpen}>
+  // Portal to <body>: the sticky header uses backdrop-blur, which makes it the containing
+  // block for `fixed` children, so rendered in place the drawer was only as tall as the header.
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className={`lg:hidden fixed inset-0 z-[70] overflow-hidden ${isOpen ? "" : "pointer-events-none"}`} aria-hidden={!isOpen} inert={!isOpen}>
       <div
         onClick={closeNav}
         className={`absolute inset-0 bg-navy/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
-      {/* The root is never dir="rtl" (see layout.tsx), so the panel always parks off the right edge. Tailwind 4's ltr:/rtl: variants both matched here and the rtl one won, leaving a 56px strip of the closed drawer on screen. */}
+      {/* The root is never dir="rtl" (see layout.tsx), so the panel always parks off the right edge (Tailwind 4's ltr:/rtl: variants both matched and the rtl one left a 56px strip on screen). The wrapper's overflow-hidden is essential: without it the parked panel's right edge widens the phone's layout viewport and the whole page lays out wider than the screen. */}
       <aside
         role="dialog"
         aria-label="Menu"
@@ -130,7 +137,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
         )}
       </aside>
     </div>
-  );
+  , document.body);
 };
 
 export default SideNavbar;
