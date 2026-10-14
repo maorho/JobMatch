@@ -107,7 +107,7 @@
   @apply w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 lg:py-14;
 }
 @utility jm-card {
-  @apply bg-surface/90 backdrop-blur-[2px] rounded-card border border-line shadow-card;
+  @apply bg-surface/90 rounded-card border border-line shadow-card;
 }
 @utility jm-card-hover {
   @apply transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:shadow-card-hover hover:border-lavender-200;
@@ -289,7 +289,7 @@
 .jm-aurora span {
   position: absolute;
   border-radius: 9999px;
-  filter: blur(90px);
+  filter: blur(60px); /* 90px looked the same and cost ~2× the raster time */
   opacity: 0.55;
   will-change: transform;
   mix-blend-mode: multiply;
@@ -313,3 +313,9 @@
 @media (prefers-reduced-motion: reduce) {
   .jm-aurora span { animation: none; }
 }
+/* Phones: a static aurora. The drift is invisible while scrolling and it drains the battery. */
+@media (max-width: 640px) {
+  .jm-aurora span { animation: none; }
+}
+/* Background tab: pause the drift (toggled by BackgroundAurora on visibilitychange). */
+.jm-aurora[data-paused] span { animation-play-state: paused; }
