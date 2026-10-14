@@ -21,17 +21,29 @@ export type TrackedApplication = { _id: string; status: string; company: string;
 
 const norm = (s: string) => (s || "").toLowerCase().replace(/\b(ltd|inc|llc|corp|technologies|technology|labs|group|the)\b/g, "").replace(/[^a-z0-9֐-׿]+/g, " ").trim();
 
-/** The user's applications with company/title resolved for both job models. */
+/** Emails older than this can't be about a live application; keeps the working set small. */
+const TRACK_WINDOW_DAYS = 90;
+
+/** The user's recent applications with company/title resolved for both job models (two `$in` reads, not one per row). */
 export async function loadApplications(userId: string): Promise<TrackedApplication[]> {
   await connectToDatabase();
-  const apps: any[] = await Candidates.find({ candidateId: userId }).lean();
+  const since = new Date(Date.now() - TRACK_WINDOW_DAYS * 86_400_000);
+  const apps: any[] = await Candidates.find({ candidateId: userId, createdAt: { $gte: since } }).select("status jobModel jobId").sort({ createdAt: -1 }).limit(500).lean();
+  const extIds = apps.filter((a) => a.jobModel === "ExternalJobs").map((a) => a.jobId);
+  const intIds = apps.filter((a) => a.jobModel === "Job").map((a) => a.jobId);
+  const [ext, int]: [any[], any[]] = await Promise.all([
+    extIds.length ? ExternalJobs.find({ _id: { $in: extIds } }).select("job company").lean() : [],
+    intIds.length ? Job.find({ _id: { $in: intIds } }).populate({ path: "company", model: Company, select: "companyName" }).select("job company").lean() : [],
+  ]);
+  const extOf = new Map(ext.map((j) => [String(j._id), j]));
+  const intOf = new Map(int.map((j) => [String(j._id), j]));
   const out: TrackedApplication[] = [];
   for (const a of apps) {
     if (a.jobModel === "ExternalJobs") {
-      const j: any = await ExternalJobs.findById(a.jobId).select("job company").lean();
+      const j = extOf.get(String(a.jobId));
       if (j) out.push({ _id: String(a._id), status: a.status, company: j.company || "", title: j.job || "", jobModel: a.jobModel, jobId: String(a.jobId) });
     } else if (a.jobModel === "Job") {
-      const j: any = await Job.findById(a.jobId).populate({ path: "company", model: Company, select: "companyName" }).select("job company").lean();
+      const j = intOf.get(String(a.jobId));
       if (j) out.push({ _id: String(a._id), status: a.status, company: j.company?.companyName || "", title: j.job || "", jobModel: a.jobModel, jobId: String(a.jobId) });
     }
   }
@@ -77,6 +89,7 @@ export async function syncUserEmails(userId: string, deps: SyncDeps = {}): Promi
 
   const result: SyncResult = { fetched: 0, classified: 0, events: 0, updated: 0, changes: [] };
   const publish = deps.publish || defaultPublish;
+  const startedRuns: string[] = []; // runs the default publish opened, to kick each one by id
   try {
     const accessToken = await refreshAccessToken(open(user.gmail.refreshTokenSealed));
     const messages: GmailMessage[] = await (deps.list || listApplicationMessages)(accessToken, { days: 14, max: 40 });
@@ -111,7 +124,8 @@ export async function syncUserEmails(userId: string, deps: SyncDeps = {}): Promi
         result.updated++;
         const change: ApplicationChange = { userId, applicationId: app._id, jobId: app.jobId, jobModel: app.jobModel, status, title: app.title, company: app.company };
         result.changes.push(change);
-        await publish(change).catch((e) => console.warn("[track] publish skipped:", (e as Error)?.message));
+        const started: any = await publish(change).catch((e) => console.warn("[track] publish skipped:", (e as Error)?.message));
+        if (!deps.publish && started?.runId) startedRuns.push(String(started.runId));
         await notify(userId, {
           type: "application_status",
           title: `עדכון ממייל: ${app.title} · ${app.company}`,
@@ -127,7 +141,7 @@ export async function syncUserEmails(userId: string, deps: SyncDeps = {}): Promi
       result.events++;
     }
     await User.updateOne({ _id: userId }, { $set: { "gmail.lastSyncAt": new Date(), "gmail.lastError": "" } });
-    if (result.changes.length && !deps.publish) kick();
+    for (const runId of startedRuns) kick(runId);
     return result;
   } catch (err: any) {
     const msg = err?.code === "REVOKED" ? "Gmail access was revoked — reconnect" : err?.message || "sync failed";

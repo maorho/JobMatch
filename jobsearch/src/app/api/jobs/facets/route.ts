@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company"; // registers the model for populate()
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { SENIORITY_LEVELS, WORK_MODES } from "@/app/lib/jobTaxonomy";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
 
@@ -44,9 +44,10 @@ async function computeFacets() {
     await connectToDatabase();
 
     const [extCompanies, extCities, extCountries, internal] = await Promise.all([
-      ExternalJobs.distinct("company"),
-      ExternalJobs.distinct("city"),
-      ExternalJobs.distinct("country"),
+      // Only open postings: a closed company shouldn't stay in the dropdown with zero results.
+      ExternalJobs.distinct("company", OPEN_JOBS),
+      ExternalJobs.distinct("city", OPEN_JOBS),
+      ExternalJobs.distinct("country", OPEN_JOBS),
       // Internal postings are few; one populated read covers all three facets.
       Job.find({}, "company city country")
         .populate({ path: "company", model: Company, select: "companyName" })

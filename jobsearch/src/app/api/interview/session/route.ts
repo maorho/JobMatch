@@ -116,6 +116,14 @@ export async function PATCH(req: NextRequest) {
   const answer = String(body?.answer || "").trim().slice(0, MAX_ANSWER);
   if (!mongoose.Types.ObjectId.isValid(sessionId)) return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
   if (!answer) return NextResponse.json({ error: "Empty answer" }, { status: 400 });
+  // Every turn is an LLM call: capped per day like the session start.
+  try {
+    await consumeQuota(userId, "interview_turn");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
 
   try {
     await connectToDatabase();

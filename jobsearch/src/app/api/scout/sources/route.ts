@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import CompanySource from "@/app/models/CompanySource";
-import ExternalJobs from "@/app/models/ExternalJobs";
-import Candidates from "@/app/models/Candidates";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { normalizeDomain } from "@/app/lib/scout/logo";
+import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,11 +11,8 @@ export const dynamic = "force-dynamic";
 // List configured company sources. Guarded, and never returns the ATS token
 // (secondaryIdentifier) to avoid leaking credentials.
 export async function GET(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
   await connectToDatabase();
   const sources = await CompanySource.find()
     .select("-secondaryIdentifier")
@@ -30,11 +27,8 @@ export async function GET(req: NextRequest) {
  *     careersUrl?, enabled? }
  */
 export async function POST(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
 
   await connectToDatabase();
   const body = await req.json().catch(() => ({}));
@@ -66,18 +60,16 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Delete a company source and (optionally) the jobs ingested from it.
- * Guarded by cron_secret. Query:
+ * Delete a company source. Its ingested jobs are soft-closed (nobody polls
+ * them any more); applications are never touched. Guarded by cron_secret. Query:
  *   ?company=Name         match source(s) by company name, OR
  *   ?atsType=..&identifier=..   match one exact source
- *   ?purgeJobs=1          also delete that company's ingested ExternalJobs
+ *   ?purgeJobs=1          admin escape hatch: hard-delete that company's
+ *                         ingested ExternalJobs instead of closing them
  */
 export async function DELETE(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = requireCron(req);
+  if (denied) return denied;
 
   await connectToDatabase();
   const sp = req.nextUrl.searchParams;
@@ -104,24 +96,17 @@ export async function DELETE(req: NextRequest) {
 
   const sources = await CompanySource.find(filter);
   let jobsDeleted = 0;
-  if (purgeJobs && sources.length) {
-    // Only delete jobs that belong to the matched source(s), by companySource.
+  let jobsClosed = 0;
+  if (sources.length) {
+    // Only the jobs that belong to the matched source(s), by companySource.
     const sourceIds = sources.map((s) => s._id);
-    const jobs = await ExternalJobs.find({
-      companySource: { $in: sourceIds },
-    }).select("_id");
-    const jobIds = jobs.map((j) => j._id);
-    // Cascade: remove orphaned application records before deleting the jobs.
-    if (jobIds.length) {
-      await Candidates.deleteMany({
-        jobModel: "ExternalJobs",
-        jobId: { $in: jobIds },
-      });
+    if (purgeJobs) {
+      const res = await ExternalJobs.deleteMany({ companySource: { $in: sourceIds } });
+      jobsDeleted = res.deletedCount ?? 0;
+    } else {
+      const res = await ExternalJobs.updateMany({ companySource: { $in: sourceIds }, ...OPEN_JOBS }, { $set: { active: false, closedAt: new Date() } });
+      jobsClosed = res.modifiedCount ?? 0;
     }
-    const res = await ExternalJobs.deleteMany({
-      companySource: { $in: sourceIds },
-    });
-    jobsDeleted = res.deletedCount ?? 0;
   }
   const srcRes = await CompanySource.deleteMany(filter);
 
@@ -129,5 +114,6 @@ export async function DELETE(req: NextRequest) {
     ok: true,
     sourcesDeleted: srcRes.deletedCount ?? 0,
     jobsDeleted,
+    jobsClosed,
   });
 }

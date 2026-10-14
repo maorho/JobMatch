@@ -46,7 +46,8 @@ export async function dismissedIds(userId: string): Promise<Set<string>> {
 export async function appliedIds(userId: string): Promise<Set<string>> {
   await connectToDatabase();
   const [manual, auto]: [any[], any[]] = await Promise.all([
-    Candidates.find({ candidateId: userId }).select("jobId").lean(),
+    // Covered by the {candidateId, jobId} index: no document fetch.
+    Candidates.find({ candidateId: userId }).select("jobId -_id").lean(),
     AutoApplication.find({ userId, status: { $in: ["submitted", "submitting", "needs_user"] } }).select("jobId").lean(),
   ]);
   return new Set([...manual, ...auto].map((r) => String(r.jobId)));
@@ -58,14 +59,19 @@ export async function hiddenIds(userId: string): Promise<Set<string>> {
   return new Set([...d, ...a]);
 }
 
-/** The saved list with the posting's current details (gone postings still show their title). */
+/**
+ * The saved list with the posting's current details. `gone` (what the card
+ * reads) is true for a posting that was soft-closed or hard-deleted; `closed`
+ * says which: the closed one still has a job page to open.
+ */
 export async function savedJobs(userId: string, limit = 100) {
   await connectToDatabase();
   const rows: any[] = await JobSignal.find({ userId, kind: "saved" }).sort({ createdAt: -1 }).limit(limit).lean();
-  const ext: any[] = await ExternalJobs.find({ _id: { $in: rows.filter((r) => r.jobModel !== "Job").map((r) => r.jobId) } }).select("job company city country remote logoUrl companyDomain finalUrl url postedAt").lean();
+  const ext: any[] = await ExternalJobs.find({ _id: { $in: rows.filter((r) => r.jobModel !== "Job").map((r) => r.jobId) } }).select("job company city country remote logoUrl companyDomain finalUrl url postedAt active closedAt").lean();
   const byId = new Map(ext.map((j) => [String(j._id), j]));
   return rows.map((r) => {
     const j = byId.get(String(r.jobId));
-    return { jobId: String(r.jobId), jobModel: r.jobModel, savedAt: r.createdAt, title: j?.job || r.title, company: j?.company || r.company, city: j?.city || "", remote: !!j?.remote, logoUrl: j?.logoUrl || "", companyDomain: j?.companyDomain || "", gone: !j && r.jobModel !== "Job", matchScore: r.matchScore };
+    const closed = !!j && j.active === false;
+    return { jobId: String(r.jobId), jobModel: r.jobModel, savedAt: r.createdAt, title: j?.job || r.title, company: j?.company || r.company, city: j?.city || "", remote: !!j?.remote, logoUrl: j?.logoUrl || "", companyDomain: j?.companyDomain || "", gone: (!j || closed) && r.jobModel !== "Job", closed, closedAt: closed ? j.closedAt || null : null, matchScore: r.matchScore };
   });
 }

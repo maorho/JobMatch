@@ -18,6 +18,15 @@ export const DEFAULT_LIMITS: Record<string, number> = {
   resume_build: 10, // full résumé generations
   tailor: 15, // résumé tailored to a posting
   research: 10, // company research briefs a person can trigger (cached per company anyway)
+  explain: 60, // "why this match" verdicts (cached per résumé version, but the first look costs a rerank call)
+  practice_turn: 200, // mock-interview turns on a prep plan (stateless practice)
+  outreach: 30, // referral messages drafted
+  outcome_questions: 30, // "what did they ask?" captures structured by the LLM
+  interview_turn: 300, // simulator turns (PATCH on a session)
+  progress_rebuild: 5, // coach-memory rebuilds a person can force per day
+  mcp_matches: 60, // MCP my_matches (ranks + reranks)
+  mcp_prep: 20, // MCP interview_prep (plan generation)
+  mcp_apply: 10, // MCP apply_to_job (tailor + Applier)
 };
 
 export const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);

@@ -3,7 +3,7 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { rankForUser } from "@/app/lib/matcher/hybrid";
 import { PRIVATE_CACHE, memo, ttl } from "@/app/lib/cache";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,10 +43,10 @@ export async function GET(req: NextRequest) {
       source: "external" as const,
     }));
 
-    // The whole catalogue, for the headline: the personalised list is the best `total` of these.
+    // The open catalogue, for the headline: the personalised list is the best `total` of these (indexed count on `active`).
     const catalogTotal = await memo("catalog-total", ttl(5 * 60_000), async () => {
       await connectToDatabase();
-      return ExternalJobs.estimatedDocumentCount();
+      return ExternalJobs.countDocuments(OPEN_JOBS);
     });
     return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal }, { headers: PRIVATE_CACHE });
   } catch (err: any) {

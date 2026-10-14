@@ -1,5 +1,6 @@
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
+import OpsAlert from "@/app/models/OpsAlert";
 import { notifyMany } from "@/app/lib/notifications/notify";
 import { sendEmail } from "@/app/lib/email/send";
 import { absolute } from "@/app/lib/seo/site";
@@ -8,17 +9,29 @@ import { absolute } from "@/app/lib/seo/site";
  * Operational alerts: an in-app notification to every admin (which also
  * reaches their WhatsApp/Telegram when linked) and, when ALERT_EMAIL (or
  * CONTACT_TO_EMAIL) is set, an email. Deduplicated per key for an hour so a
- * failing cron can't send sixty of them. Never throws.
+ * failing cron can't send sixty of them. The dedup lives in Mongo (OpsAlert)
+ * because every warm lambda would otherwise send its own copy. Never throws.
  */
-const recent = new Map<string, number>();
 export const ALERT_DEDUP_MS = 60 * 60_000;
+
+/** Claim the right to send `key` now: true when the last send is older than the window (or there was none). */
+async function claimAlert(key: string, title: string): Promise<boolean> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - ALERT_DEDUP_MS);
+  try {
+    // Upsert only matches a stale (or missing) row; a fresh one makes the upsert collide on the unique key → deduped.
+    const r = await OpsAlert.findOneAndUpdate({ key, lastSentAt: { $lt: cutoff } }, { $set: { lastSentAt: now, title }, $setOnInsert: { key } }, { upsert: true, new: true }).lean();
+    return !!r;
+  } catch (e: any) {
+    if (e?.code === 11000) return false;
+    throw e;
+  }
+}
 
 export async function alertAdmins(key: string, title: string, body: string, link = "/AdminDashboard"): Promise<{ notified: number; emailed: boolean; deduped: boolean }> {
   try {
-    const last = recent.get(key) || 0;
-    if (Date.now() - last < ALERT_DEDUP_MS) return { notified: 0, emailed: false, deduped: true };
-    recent.set(key, Date.now());
     await connectToDatabase();
+    if (!(await claimAlert(key, title))) return { notified: 0, emailed: false, deduped: true };
     const admins: any[] = await User.find({ admin: true }).select("_id").limit(20).lean();
     const notified = await notifyMany(admins.map((a) => String(a._id)), { type: "system", title: `⚠️ ${title}`, body, link, meta: { alert: key } });
     const to = process.env.ALERT_EMAIL || process.env.CONTACT_TO_EMAIL;
@@ -35,6 +48,7 @@ export async function alertAdmins(key: string, title: string, body: string, link
 }
 
 /** Tests: forget the dedup memory. */
-export function resetAlertDedup() {
-  recent.clear();
+export async function resetAlertDedup(): Promise<void> {
+  await connectToDatabase();
+  await OpsAlert.deleteMany({});
 }

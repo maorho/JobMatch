@@ -1,5 +1,5 @@
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
 import { vectorSearch, textSearch, type VectorFilter } from "./atlas";
 import { toMatchScore } from "./cosine";
@@ -140,7 +140,8 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
   const ids = [...new Set([...vec.map((v) => v._id), ...txt.map((t) => t._id)])];
 
   // Light projection for the whole pool (descriptions are ~10KB each; only the rerank head needs them).
-  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids } }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority").lean();
+  // Soft-closed postings fall out here, whichever index (Atlas or the fallback) recalled them.
+  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority").lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
   const ranked: RankedJob[] = ids

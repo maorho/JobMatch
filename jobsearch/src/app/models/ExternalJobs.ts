@@ -90,16 +90,31 @@ const ExternalJobSchema = new mongoose.Schema({
         type: Date,
         default: Date.now, // last scout poll that still found this posting in the ATS feed
     },
+    // Soft close: a posting that left its ATS feed (or went stale) is kept with
+    // active:false so applications, saved lists and the SSR job page still
+    // resolve it; every list/feed/search reads through OPEN_JOBS below.
     active:{
         type: Boolean,
         default: true,
+    },
+    closedAt:{
+        type: Date,
     },
     embedding:{
         type: [Number], // reserved for the Matcher (in-app cosine, Atlas-ready)
         default: undefined,
         select: false,
+    },
+    // Small indexed marker for "has an embedding": `embedding: {$exists}` cannot
+    // use an index (a 1536-float array), so the backfill and the health counts
+    // go through this field instead.
+    embeddedAt:{
+        type: Date,
     }
 },{timestamps:true});
+
+/** Filter for everything a user may still apply to. `$ne:false` so legacy docs without the field stay open. */
+export const OPEN_JOBS = { active: { $ne: false } } as const;
 
 // Stable per-company dedup for ATS-sourced jobs: two sources on the same ATS
 // with a colliding sourceJobId stay independent. CSV/manual docs (no sourceJobId)
@@ -115,7 +130,12 @@ ExternalJobSchema.index({ company: 1 });
 ExternalJobSchema.index({ country: 1 });
 ExternalJobSchema.index({ city: 1 });
 ExternalJobSchema.index({ active: 1 });
-// Backs the staleness sweep (delete ATS jobs not seen in the latest polls).
+// Open postings newest-first: the public feed, the sitemap and the search fallback.
+ExternalJobSchema.index({ active: 1, postedAt: -1 });
+// Embedding backfill ("open and not embedded yet") and the health counts.
+ExternalJobSchema.index({ embeddedAt: 1 });
+ExternalJobSchema.index({ active: 1, embeddedAt: 1 });
+// Backs the staleness sweep (soft-close ATS jobs not seen in the latest polls).
 ExternalJobSchema.index({ lastSeenAt: 1 });
 // "What's new since X" sorts (match digest) must use an index: a blocking sort
 // over documents that carry a 1536-float embedding exceeds Mongo's 32MB limit.

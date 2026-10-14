@@ -29,5 +29,7 @@ const NotificationSchema = new mongoose.Schema(
 );
 
 NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+// Retention: notifications leave after 90 days.
+NotificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 });
 
 export default mongoose.models.Notification || mongoose.model("Notification", NotificationSchema);

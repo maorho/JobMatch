@@ -13,8 +13,9 @@ export async function loadJob(source: string, id: string): Promise<any | null> {
     return j ? JSON.parse(JSON.stringify({ ...j, source: "internal" })) : null;
   }
   if (source === "external") {
+    // A soft-closed posting still renders (the page says "המשרה נסגרה" from `active:false`); only a missing one is a 404.
     const j: any = await ExternalJobs.findById(id).lean();
-    return j ? JSON.parse(JSON.stringify({ ...j, source: "external", embedding: undefined })) : null;
+    return j ? JSON.parse(JSON.stringify({ ...j, source: "external", active: j.active !== false, closedAt: j.closedAt || null, embedding: undefined })) : null;
   }
   return null;
 }

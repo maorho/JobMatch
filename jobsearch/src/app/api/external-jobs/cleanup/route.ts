@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { maybeRunExternalJobsCleanup } from "@/app/lib/maybeRunExternalJobsCleanup";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+import { requireCron } from "@/app/lib/cron/requireCron";
+
 export async function GET(req: NextRequest) {
-  const secret = (req.nextUrl.searchParams.get("cron_secret") ?? "").trim();
-  const expected = (process.env.CRON_SECRET ?? "").trim();
-  if (!expected || secret !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = requireCron(req);
+  if (denied) return denied;
+  // Awaited: the sweep runs inside the request (cleanup-now is what cron calls; this is the "only if due" variant).
+  try {
+    const { triggered, report } = await maybeRunExternalJobsCleanup();
+    return NextResponse.json({ triggered, report });
+  } catch (err: any) {
+    console.error("❌ Cleanup failed:", err);
+    return NextResponse.json({ message: "Cleanup failed", error: err?.message }, { status: 500 });
   }
-  const triggered = await maybeRunExternalJobsCleanup();
-  return NextResponse.json({ triggered });
 }

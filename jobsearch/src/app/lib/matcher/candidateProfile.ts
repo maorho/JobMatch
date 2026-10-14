@@ -20,9 +20,16 @@ export async function embedAndStoreResume(
   if (!text.trim()) return null;
 
   const vec = await embedText(text);
+  // resumeUpdatedAt is the résumé version in every match cache key (rank list,
+  // reranker verdicts, MatchCache), and searchVectorKey is the blended search
+  // vector's cache key: bumping one and dropping the other makes the feed
+  // re-rank against the new résumé instead of serving the old one.
   await User.updateOne(
     { _id: userId },
-    { $set: { resumeText: (resumeText || "").slice(0, 20000), embedding: vec, level: inferCandidateLevel(resumeText || "", (user as any).currentJob || "") } }
+    {
+      $set: { resumeText: (resumeText || "").slice(0, 20000), embedding: vec, level: inferCandidateLevel(resumeText || "", (user as any).currentJob || ""), resumeUpdatedAt: new Date() },
+      $unset: { searchVectorKey: 1 },
+    }
   );
   return vec;
 }

@@ -72,7 +72,7 @@ describe("runScout ingestion", () => {
 });
 
 describe("runScout freshness (reconciliation)", () => {
-  it("deletes a posting that left a complete feed and refreshes lastSeenAt on the rest", async () => {
+  it("soft-closes a posting that left a complete feed (row + applications kept) and refreshes lastSeenAt on the rest", async () => {
     await runScout();
     const before = (await ExternalJobs.findOne({ job: "Remote SRE" }).lean()) as any;
     const sre = await ExternalJobs.findOne({ job: "Backend Engineer" });
@@ -82,10 +82,34 @@ describe("runScout freshness (reconciliation)", () => {
     await new Promise((r) => setTimeout(r, 5));
     const r = await runScout();
     expect(r.removed).toBe(1);
-    expect(await ExternalJobs.findOne({ job: "Backend Engineer" })).toBeNull();
-    expect(await Candidates.countDocuments()).toBe(0); // cascade
+    const closed: any = await ExternalJobs.findOne({ job: "Backend Engineer" }).lean();
+    expect(closed).not.toBeNull(); // never deleted: the person who applied keeps their history
+    expect(closed.active).toBe(false);
+    expect(closed.closedAt).toBeInstanceOf(Date);
+    expect(await Candidates.countDocuments()).toBe(1); // no cascade
     const after = (await ExternalJobs.findOne({ job: "Remote SRE" }).lean()) as any;
     expect(after.lastSeenAt.getTime()).toBeGreaterThan(before.lastSeenAt.getTime());
+
+    // Still gone next poll: not counted as closed twice.
+    const r2 = await runScout();
+    expect(r2.removed).toBe(0);
+  });
+
+  it("reopens a closed posting that comes back instead of creating a duplicate", async () => {
+    await runScout();
+    const gone = board.acme.find((j) => j.id === 1)!;
+    board.acme = board.acme.filter((j) => j.id !== 1);
+    await runScout();
+    expect(((await ExternalJobs.findOne({ job: "Backend Engineer" }).lean()) as any).active).toBe(false);
+
+    board.acme.push(gone); // reposted
+    const r = await runScout();
+    expect(r.created).toBe(0);
+    expect(r.results.find((x) => x.company === "Acme")!.reopened).toBe(1);
+    const back: any = await ExternalJobs.findOne({ job: "Backend Engineer" }).lean();
+    expect(back.active).toBe(true);
+    expect(back.closedAt).toBeUndefined();
+    expect(await ExternalJobs.countDocuments({ job: "Backend Engineer" })).toBe(1);
   });
 
   it("never wipes a company on a transient empty fetch", async () => {
@@ -93,7 +117,38 @@ describe("runScout freshness (reconciliation)", () => {
     board.acme = []; // ATS glitch: 200 with no jobs
     const r = await runScout();
     expect(r.removed).toBe(0);
-    expect(await ExternalJobs.countDocuments({ company: "Acme" })).toBe(2);
+    expect(await ExternalJobs.countDocuments({ company: "Acme", active: true })).toBe(2);
+  });
+
+  it("a source past its deadline is an error — nothing is ingested or closed for it, the others continue", async () => {
+    await runScout();
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: any, init: any) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.includes("/acme/")) await new Promise((r) => setTimeout(r, 200)); // Acme hangs
+      return (realFetch as any)(input, init);
+    }));
+    board.acme = board.acme.filter((j) => j.id !== 1); // would close Backend Engineer if the fetch finished
+    const r = await runScout({ sourceDeadlineMs: 50 });
+    const acme = r.results.find((x) => x.company === "Acme")!;
+    expect(acme.error).toMatch(/deadline/);
+    expect(acme.removed).toBe(0);
+    expect(((await ExternalJobs.findOne({ job: "Backend Engineer" }).lean()) as any).active).toBe(true); // no partial reconciliation
+    expect(r.results.find((x) => x.company === "Globex")!.error).toBeUndefined();
+  });
+
+  it("refresh rewrites text but keeps a location the Locator already cleaned unless the raw string changed", async () => {
+    await runScout();
+    // The Locator (LLM stage) decided this is Tel Aviv-Yafo / Israel; the raw string is unchanged.
+    await ExternalJobs.updateOne({ job: "Backend Engineer" }, { $set: { city: "Tel Aviv-Yafo", country: "Israel" } });
+    board.acme.find((j) => j.id === 1)!.title = "Backend Engineer (Go)";
+    board.acme.find((j) => j.id === 2)!.location.name = "Remote - Canada"; // raw location changed
+    await runScout({ refresh: true });
+    const be: any = await ExternalJobs.findOne({ sourceJobId: "1" }).lean();
+    expect(be.job).toBe("Backend Engineer (Go)");
+    expect(be.city).toBe("Tel Aviv-Yafo"); // kept
+    const sre: any = await ExternalJobs.findOne({ sourceJobId: "2" }).lean();
+    expect(sre.rawLocation).toMatch(/Canada/); // rewritten
   });
 });
 
@@ -125,7 +180,7 @@ describe("runScout chunking for serverless", () => {
 });
 
 describe("sweepStaleExternalJobs (backstop)", () => {
-  it("deletes ATS jobs unseen for the window, cascades applications, keeps CSV and fresh jobs", async () => {
+  it("soft-closes ATS jobs unseen for the window, keeps applications, CSV and fresh jobs", async () => {
     await runScout();
     const old = new Date(Date.now() - 20 * 24 * 3600 * 1000);
     const stale = await ExternalJobs.findOne({ job: "Remote SRE" });
@@ -137,11 +192,18 @@ describe("sweepStaleExternalJobs (backstop)", () => {
     await ExternalJobs.collection.insertOne({ job: "CSV job", company: "Manual", country: "IL", url: "u2", finalUrl: "f2", skills: [], seniority: [], lastSeenAt: old, createdAt: old } as any);
 
     const r = await sweepStaleExternalJobs(14);
-    expect(r.deleted).toBe(2);
-    expect(r.applicationsDeleted).toBe(1);
-    expect(await ExternalJobs.findOne({ job: "Remote SRE" })).toBeNull();
-    expect(await ExternalJobs.findOne({ job: "Legacy" })).toBeNull();
-    expect(await ExternalJobs.findOne({ job: "CSV job" })).not.toBeNull();
-    expect(await ExternalJobs.countDocuments({ job: { $in: ["Backend Engineer", "Frontend Developer"] } })).toBe(2);
+    expect(r.closed).toBe(2);
+    expect(r.deleted).toBe(0);
+    expect(r.applicationsDeleted).toBe(0);
+    // Closed, not gone: the rows stay (applications still resolve them), flagged inactive with a timestamp.
+    const sre: any = await ExternalJobs.findOne({ job: "Remote SRE" }).lean();
+    expect(sre).toMatchObject({ active: false });
+    expect(sre.closedAt).toBeInstanceOf(Date);
+    expect((await ExternalJobs.findOne({ job: "Legacy" }).lean()) as any).toMatchObject({ active: false });
+    expect(await Candidates.countDocuments({ jobId: stale!._id })).toBe(1);
+    expect(((await ExternalJobs.findOne({ job: "CSV job" }).lean()) as any).active).not.toBe(false);
+    expect(await ExternalJobs.countDocuments({ job: { $in: ["Backend Engineer", "Frontend Developer"] }, active: { $ne: false } })).toBe(2);
+    // Idempotent: a second pass finds nothing open to close.
+    expect((await sweepStaleExternalJobs(14)).closed).toBe(0);
   });
 });

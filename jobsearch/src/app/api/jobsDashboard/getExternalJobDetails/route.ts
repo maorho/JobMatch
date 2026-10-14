@@ -17,13 +17,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const job = await ExternalJobs.findById(jobId).lean();
+    const job: any = await ExternalJobs.findById(jobId).lean();
 
     if (!job) {
       return NextResponse.json({ message: "Job not found" }, { status: 404 });
     }
 
-    return NextResponse.json(job);
+    // A closed posting is still returned (applications link to it); `active:false` tells the UI.
+    return NextResponse.json({ ...job, active: job.active !== false, closedAt: job.closedAt || null });
   } catch (error) {
     console.error("Error fetching external job details:", error);
     return NextResponse.json({ message: "Server error" }, { status: 500 });

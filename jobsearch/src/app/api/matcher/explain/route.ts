@@ -10,6 +10,7 @@ import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { interviewLikelihood } from "@/app/lib/matcher/likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,14 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const jobId = req.nextUrl.searchParams.get("jobId") || "";
   if (!mongoose.Types.ObjectId.isValid(jobId)) return NextResponse.json({ error: "Invalid jobId" }, { status: 400 });
+  // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+  try {
+    await consumeQuota(userId, "explain");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
   await connectToDatabase();
   const [profile, job]: [any, any] = await Promise.all([loadCandidateProfile(userId), ExternalJobs.findById(jobId).select("+embedding job company description city country seniority").lean()]);
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 
 /**
@@ -67,7 +67,7 @@ async function fetchWebsiteExcerpt(domain: string): Promise<string | undefined> 
 export async function gatherCompanyContext(company: string, opts: { fetchWebsite?: boolean } = {}): Promise<CompanyContext> {
   await connectToDatabase();
   const [jobs, source]: [any[], any] = await Promise.all([
-    ExternalJobs.find({ company }).select("job description companyDomain").limit(40).lean(),
+    ExternalJobs.find({ company, ...OPEN_JOBS }).select("job description companyDomain").limit(40).lean(),
     CompanySource.findOne({ companyName: company }).select("domain careersUrl").lean(),
   ]);
   const domain = (source?.domain || jobs.find((j) => j.companyDomain)?.companyDomain || "").replace(/^www\./, "") || undefined;

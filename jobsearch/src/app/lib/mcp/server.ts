@@ -1,6 +1,7 @@
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import Candidates from "@/app/models/Candidates";
+import { consumeQuota, QuotaError } from "@/app/lib/ops/quota";
 import "@/app/models/Job";
 import "@/app/models/AddedJobs";
 import AutoApplication from "@/app/models/AutoApplication";
@@ -45,6 +46,18 @@ const text = (s: string) => ({ content: [{ type: "text", text: s }] });
 const json = (o: unknown) => ({ content: [{ type: "text", text: JSON.stringify(o, null, 2) }], structuredContent: o });
 const jobUrl = (id: string, source = "external") => `${siteUrl()}/job/${source}/${id}`;
 
+// Paid tools count against the person's daily cap (lib/ops/quota.ts); the refusal is a plain tool error, not a crash.
+const QUOTA_MSG = (e: QuotaError) => `Daily limit reached for this tool (${e.used}/${e.limit}). Try again tomorrow.`;
+async function withQuota<T>(userId: string, key: string, run: () => Promise<T>): Promise<T | ReturnType<typeof text>> {
+  try {
+    await consumeQuota(userId, key);
+  } catch (e) {
+    if (e instanceof QuotaError) return text(QUOTA_MSG(e));
+    throw e;
+  }
+  return run();
+}
+
 const brief = (j: any) => ({ id: String(j._id), title: j.job, company: j.company, location: [j.city, j.country].filter((v) => v && v !== "Unknown").join(", ") || (j.remote ? "Remote" : ""), remote: !!j.remote, postedAt: j.postedAt, url: jobUrl(String(j._id)), applyUrl: j.finalUrl || j.url });
 
 export const TOOLS: Tool[] = [
@@ -57,7 +70,7 @@ export const TOOLS: Tool[] = [
       const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 50);
       const filter = { company: args.company ? [String(args.company)] : undefined, city: args.city ? [String(args.city)] : undefined, country: args.country ? [String(args.country)] : undefined };
       const hits = await textSearch(String(args.query || ""), { limit: limit * 3, filter });
-      const docs: any[] = await ExternalJobs.find({ _id: { $in: hits.map((h) => h._id) } }).select("job company city country remote postedAt finalUrl url").lean();
+      const docs: any[] = await ExternalJobs.find({ _id: { $in: hits.map((h) => h._id) }, ...OPEN_JOBS }).select("job company city country remote postedAt finalUrl url").lean();
       const pos = new Map(hits.map((h, i) => [h._id, i]));
       const jobs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0)).slice(0, limit).map(brief);
       return json({ query: args.query, count: jobs.length, jobs });
@@ -78,11 +91,12 @@ export const TOOLS: Tool[] = [
     description: "The signed-in candidate's best-matching postings, ranked against their résumé (fit 0–100 with a one-line reason). Requires the user's JobMatch API key.",
     inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 30, default: 10 }, query: { type: "string", description: "optional focus, e.g. 'remote backend'" } } },
     requiresAuth: true,
-    async run(args, ctx) {
-      const { jobs, profile } = await rankForUser(ctx.userId!, { limit: Math.min(Math.max(Number(args.limit) || 10, 1), 30), query: args.query ? String(args.query) : undefined, rerank: true });
-      if (!profile?.vector) return text("No résumé on file yet — upload one at " + siteUrl() + "/ResumeAI first.");
-      return json({ level: profile.level, count: jobs.length, jobs: jobs.map((j) => ({ ...brief(j), fit: j.matchScore, interviewLikelihoodPct: j.likelihood?.pct ?? null, why: j.why || "", gaps: j.gaps || [] })) });
-    },
+    run: (args, ctx) =>
+      withQuota(ctx.userId!, "mcp_matches", async () => {
+        const { jobs, profile } = await rankForUser(ctx.userId!, { limit: Math.min(Math.max(Number(args.limit) || 10, 1), 30), query: args.query ? String(args.query) : undefined, rerank: true });
+        if (!profile?.vector) return text("No résumé on file yet — upload one at " + siteUrl() + "/ResumeAI first.");
+        return json({ level: profile.level, count: jobs.length, jobs: jobs.map((j) => ({ ...brief(j), fit: j.matchScore, interviewLikelihoodPct: j.likelihood?.pct ?? null, why: j.why || "", gaps: j.gaps || [] })) });
+      }),
   },
   {
     name: "similar_jobs",
@@ -93,7 +107,7 @@ export const TOOLS: Tool[] = [
       const j: any = await ExternalJobs.findById(String(args.id || "")).select("+embedding").lean().catch(() => null);
       if (!j?.embedding) return text("Job not found or not embedded yet.");
       const hits = (await vectorSearch(j.embedding, { limit: (Number(args.limit) || 8) + 1 })).filter((h) => h._id !== String(j._id));
-      const docs: any[] = await ExternalJobs.find({ _id: { $in: hits.map((h) => h._id) } }).select("job company city country remote postedAt finalUrl url").lean();
+      const docs: any[] = await ExternalJobs.find({ _id: { $in: hits.map((h) => h._id) }, ...OPEN_JOBS }).select("job company city country remote postedAt finalUrl url").lean();
       return json({ jobs: docs.map(brief) });
     },
   },
@@ -105,12 +119,15 @@ export const TOOLS: Tool[] = [
     async run(args, ctx) {
       const job = await loadJob("external", String(args.id || ""));
       if (!job) return text("Job not found.");
-      const r = await autoApplyForUser(ctx.userId!, [{ jobId: String(job._id), jobModel: "ExternalJobs", score: 100, title: job.job, company: job.company }], { explicit: true });
-      if (r.submitted.length) return json({ status: "submitted", job: brief(job) });
-      if (r.needsUser.length) return json({ status: "needs_user", reason: r.needsUser[0].reason, applyUrl: job.finalUrl || job.url, job: brief(job) });
-      if (r.capped) return text("Daily application cap reached — try again tomorrow or raise it in Settings.");
-      if (r.skipped) return text("Already applied (or already handed to you) for this posting.");
-      return text("Could not apply automatically — open " + (job.finalUrl || job.url) + " and apply manually.");
+      if (job.active === false) return text("This posting has closed — it is no longer accepting applications.");
+      return withQuota(ctx.userId!, "mcp_apply", async () => {
+        const r = await autoApplyForUser(ctx.userId!, [{ jobId: String(job._id), jobModel: "ExternalJobs", score: 100, title: job.job, company: job.company }], { explicit: true });
+        if (r.submitted.length) return json({ status: "submitted", job: brief(job) });
+        if (r.needsUser.length) return json({ status: "needs_user", reason: r.needsUser[0].reason, applyUrl: job.finalUrl || job.url, job: brief(job) });
+        if (r.capped) return text("Daily application cap reached — try again tomorrow or raise it in Settings.");
+        if (r.skipped) return text("Already applied (or already handed to you) for this posting.");
+        return text("Could not apply automatically — open " + (job.finalUrl || job.url) + " and apply manually.");
+      });
     },
   },
   {
@@ -118,11 +135,12 @@ export const TOOLS: Tool[] = [
     description: "Build (or fetch) the candidate's interview preparation plan for a posting: stages, likely questions with how to answer, gaps to close, questions to ask. Requires the API key.",
     inputSchema: { type: "object", properties: { id: { type: "string" }, language: { type: "string", enum: ["he", "en"], default: "he" } }, required: ["id"] },
     requiresAuth: true,
-    async run(args, ctx) {
-      const r = await ensureInterviewPlan({ userId: ctx.userId!, jobId: String(args.id || ""), source: "external", language: args.language === "en" ? "en" : "he" });
-      if (!r) return text("Job not found.");
-      return json({ job: r.job, cached: r.cached, practiceUrl: `${siteUrl()}/interview-prep/external/${args.id}`, plan: r.plan });
-    },
+    run: (args, ctx) =>
+      withQuota(ctx.userId!, "mcp_prep", async () => {
+        const r = await ensureInterviewPlan({ userId: ctx.userId!, jobId: String(args.id || ""), source: "external", language: args.language === "en" ? "en" : "he" });
+        if (!r) return text("Job not found.");
+        return json({ job: r.job, cached: r.cached, practiceUrl: `${siteUrl()}/interview-prep/external/${args.id}`, plan: r.plan });
+      }),
   },
   {
     name: "who_do_i_know",

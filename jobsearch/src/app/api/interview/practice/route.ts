@@ -5,6 +5,7 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import { practiceReply, STAGE_KEYS, type StageKey, type PracticeTurn } from "@/app/lib/interview/prepare";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,14 @@ export async function POST(req: NextRequest) {
     ? body.transcript.filter((t: any) => (t?.role === "user" || t?.role === "assistant") && typeof t?.content === "string").map((t: any) => ({ role: t.role, content: String(t.content).slice(0, 4000) })).slice(-30)
     : [];
   if (!mongoose.Types.ObjectId.isValid(prepId)) return NextResponse.json({ error: "Invalid prepId" }, { status: 400 });
+  // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+  try {
+    await consumeQuota(userId, "practice_turn");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
 
   try {
     await connectToDatabase();

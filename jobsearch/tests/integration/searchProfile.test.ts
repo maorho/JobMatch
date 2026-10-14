@@ -81,6 +81,14 @@ describe("search profile", () => {
     expect(u.level).toBe("junior");
     const again = await candidateSearchVector(dana);
     expect(again.vector).toEqual(sv.vector); // served from the cache
+    // A new résumé (PDF upload / ResumeAI) bumps the résumé version and drops the cached blend, so every match cache rolls over.
+    const prior: any = await User.findById(dana).select("resumeUpdatedAt").lean();
+    await embedAndStoreResume(dana, "Junior frontend developer. React, TypeScript, CSS, web apps with hooks. 1 year.");
+    const bumped: any = await User.findById(dana).select("searchVectorKey resumeUpdatedAt").lean();
+    expect(bumped.searchVectorKey).toBeUndefined();
+    expect(new Date(bumped.resumeUpdatedAt).getTime()).toBeGreaterThan(prior?.resumeUpdatedAt ? new Date(prior.resumeUpdatedAt).getTime() - 1 : 0);
+    expect((await candidateSearchVector(dana)).vector).toEqual(sv.vector); // recomputed from the same résumé → same blend
+    expect(((await User.findById(dana).select("searchVectorKey").lean()) as any).searchVectorKey).toBeTruthy();
     const after = await rankForUser(dana, { limit: 20, rerank: false });
     expect(after.jobs.map((j) => j.job).sort()).toEqual(["Junior React Developer", "Remote Frontend Developer"]);
     expect(after.profile?.searchProfile?.level).toBe("junior");

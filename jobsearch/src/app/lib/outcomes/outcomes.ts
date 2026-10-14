@@ -185,15 +185,38 @@ export type DuePrompts = {
 
 const stageKeyOf = (reached: StageReached): "hr" | "technical" | "final" => (reached === "screen" ? "hr" : reached === "offer" ? "final" : "technical");
 
+/**
+ * Outcome rows whose application no longer exists (hard-deleted by an old
+ * sweep, or withdrawn): close them so nobody is asked about them again.
+ * The row itself stays — it is still training data.
+ */
+async function retireOrphans(rows: any[], now: Date): Promise<Set<string>> {
+  const ids = rows.map((r) => r.applicationId).filter(Boolean);
+  if (!ids.length) return new Set();
+  const alive = new Set((await Candidates.find({ _id: { $in: ids } }).select("_id").lean()).map((a: any) => String(a._id)));
+  const orphans = rows.filter((r) => !alive.has(String(r.applicationId)));
+  if (orphans.length) {
+    await ApplicationOutcome.updateMany(
+      { _id: { $in: orphans.map((r) => r._id) } },
+      { $set: { askCount: MAX_ASKS, questionsAskCount: QUESTIONS_MAX_ASKS, resolvedAt: now } }
+    );
+    // A still-pending orphan counts as "no reply" (the same thing a timeout would have said).
+    await ApplicationOutcome.updateMany({ _id: { $in: orphans.map((r) => r._id) }, outcome: "pending" }, { $set: { outcome: "no_reply", source: "timeout" } });
+  }
+  return new Set(orphans.map((r) => String(r._id)));
+}
+
 /** What to ask this user right now (dashboard card). `now` is injectable for tests. */
 export async function duePrompts(userId: string, now = new Date()): Promise<DuePrompts> {
   await connectToDatabase();
   await ensureOutcomesForUser(userId).catch(() => 0);
   const rows: any[] = await ApplicationOutcome.find({ userId, $or: [{ outcome: { $in: ["pending", "no_reply"] } }, { reached: { $in: ["screen", "interview", "offer"] } }] }).sort({ appliedAt: -1 }).limit(100).lean();
+  const retired = await retireOrphans(rows, now).catch(() => new Set<string>());
   const t = now.getTime();
   const replies: DuePrompts["replies"] = [];
   const questions: DuePrompts["questions"] = [];
   for (const r of rows) {
+    if (retired.has(String(r._id))) continue;
     if (r.outcome === "pending" || r.outcome === "no_reply") {
       const age = (t - new Date(r.appliedAt).getTime()) / DAY;
       const sinceAsk = r.askedAt ? (t - new Date(r.askedAt).getTime()) / DAY : Infinity;

@@ -22,4 +22,7 @@ const AgentRunSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Retention: finished runs leave after 30 days (running ones have no finishedAt and never expire).
+AgentRunSchema.index({ finishedAt: 1 }, { expireAfterSeconds: 30 * 24 * 3600 });
+
 export default mongoose.models.AgentRun || mongoose.model("AgentRun", AgentRunSchema);

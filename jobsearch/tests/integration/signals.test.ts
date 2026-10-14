@@ -68,6 +68,43 @@ describe("saved / dismissed signals", () => {
   });
 });
 
+describe("soft-closed postings", () => {
+  it("leave the feed and the search, but the person's application and saved entry survive (gone/closed for the card)", async () => {
+    const Candidates = (await import("@/app/models/Candidates")).default;
+    const { GET: searchGET } = await import("@/app/api/jobs/search/route");
+    const { loadJob } = await import("@/app/lib/jobs/loadJob");
+    const ember = String((await ExternalJobs.create(job("Junior Ember Developer", "Ember TypeScript frontend")))._id);
+    await embedPendingJobs();
+    expect(await ExternalJobs.countDocuments({ _id: ember, embeddedAt: { $exists: true }, active: true })).toBe(1);
+    await setSignal(dana, { jobId: ember, kind: "saved", on: true, matchScore: 70 });
+    await Candidates.create({ candidateId: dana, jobId: ember, jobModel: "ExternalJobs", status: "HR Phone Interview" });
+    expect((await rankForUser(dana, { limit: 20, rerank: false, includeApplied: true })).jobs.map((j) => j._id)).toContain(ember);
+    expect((await (await searchGET(new NextRequest("http://localhost/api/jobs/search?q=ember"))).json()).jobs.map((j: any) => j._id)).toEqual([ember]);
+    // What the Scout does when the posting leaves the ATS feed (and what the sweep does for stale ones).
+    await ExternalJobs.updateOne({ _id: ember }, { $set: { active: false, closedAt: new Date() } });
+    expect((await rankForUser(dana, { limit: 20, rerank: false, includeApplied: true })).jobs.map((j) => j._id)).not.toContain(ember);
+    const s = await (await searchGET(new NextRequest("http://localhost/api/jobs/search?q=ember"))).json();
+    expect(s.jobs).toEqual([]);
+    expect(s.externalTotal).toBe(0);
+    // Nothing of the person's was deleted, and the page still loads it as closed.
+    expect(await Candidates.countDocuments({ candidateId: dana, jobId: ember })).toBe(1);
+    const saved = (await savedJobs(dana)).find((j) => j.jobId === ember)!;
+    expect(saved).toMatchObject({ gone: true, closed: true, title: "Junior Ember Developer" });
+    expect(saved.closedAt).toBeTruthy();
+    expect(await loadJob("external", ember)).toMatchObject({ active: false, job: "Junior Ember Developer" });
+    await Candidates.deleteMany({ jobId: ember }); // keep the applied-ids expectations below exact
+  });
+
+  it("the unique (candidateId, jobId) index refuses a second application to the same posting", async () => {
+    const Candidates = (await import("@/app/models/Candidates")).default;
+    await Candidates.syncIndexes();
+    const dup = { candidateId: dana, jobId: react, jobModel: "ExternalJobs", status: "Submitted Resume" };
+    await Candidates.create(dup);
+    await expect(Candidates.create(dup)).rejects.toMatchObject({ code: 11000 });
+    await Candidates.deleteMany({ jobId: react });
+  });
+});
+
 describe("applied postings", () => {
   it("leave the feed once the person applied, by hand or through the Applier", async () => {
     const Candidates = (await import("@/app/models/Candidates")).default;

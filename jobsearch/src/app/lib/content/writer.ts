@@ -2,7 +2,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import Article from "@/app/models/Article";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { mineTechSignals } from "@/app/lib/interview/companyContext";
@@ -36,10 +36,10 @@ export async function catalogFacts(): Promise<CatalogFacts> {
   await connectToDatabase();
   const week = new Date(Date.now() - 7 * 864e5);
   const [totalJobs, newLast7Days, juniorJobs, remoteJobs, topCompanies, topJuniorCompanies, topCities, sample] = await Promise.all([
-    ExternalJobs.countDocuments({}),
-    ExternalJobs.countDocuments({ postedAt: { $gte: week } }),
-    ExternalJobs.countDocuments({ job: JUNIOR_RE }),
-    ExternalJobs.countDocuments({ $or: [{ remote: true }, { country: "Remote" }] }),
+    ExternalJobs.countDocuments({ ...OPEN_JOBS }),
+    ExternalJobs.countDocuments({ ...OPEN_JOBS, postedAt: { $gte: week } }),
+    ExternalJobs.countDocuments({ ...OPEN_JOBS, job: JUNIOR_RE }),
+    ExternalJobs.countDocuments({ ...OPEN_JOBS, $or: [{ remote: true }, { country: "Remote" }] }),
     ExternalJobs.aggregate([{ $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
     ExternalJobs.aggregate([{ $match: { job: JUNIOR_RE } }, { $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
     ExternalJobs.aggregate([{ $match: { city: { $nin: ["", "Unknown", null] } } }, { $group: { _id: "$city", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 8 }, { $project: { _id: 0, city: "$_id", jobs: 1 } }]),

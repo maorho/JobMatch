@@ -27,4 +27,11 @@ const CandidateSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// One application per (person, posting): the apply routes turn the 11000 into a
+// 409. Production needs src/scripts/dedupe-candidates.ts before this index can
+// build. The jobId index serves "who applied to this posting" and the feed's
+// applied-ids lookup (covered: candidateId + jobId only).
+CandidateSchema.index({ candidateId: 1, jobId: 1 }, { unique: true });
+CandidateSchema.index({ jobId: 1 });
+
 export default mongoose.models.Candidate || mongoose.model('Candidate', CandidateSchema);

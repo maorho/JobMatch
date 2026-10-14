@@ -1,5 +1,5 @@
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { NextRequest, NextResponse } from "next/server";
 import { memo, snippet, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
 
@@ -21,8 +21,9 @@ export async function GET(req: NextRequest) {
         // Sort by real posting date (interleaves companies); fall back to
         // ingestion time for older docs that have no postedAt. `_id` breaks the
         // (frequent) ties so skip/limit paging never repeats a job.
-        ExternalJobs.find().sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
-        ExternalJobs.countDocuments(),
+        // Open postings only (index {active, postedAt}); closed ones live on under Applications / saved lists.
+        ExternalJobs.find(OPEN_JOBS).sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
+        ExternalJobs.countDocuments(OPEN_JOBS),
       ]);
       return { jobs: jobs.map((job: any) => ({ ...job, description: snippet(job.description), source: "external" })), total, page, pages: Math.ceil(total / limit) };
     });

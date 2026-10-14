@@ -1,13 +1,19 @@
 import { connectToDatabase } from "@/app/lib/db";
 import Maintenance from "@/app/models/Maintenance";
-import { sweepStaleExternalJobs } from "@/app/lib/staleJobsSweep";
+import { sweepStaleExternalJobs, type SweepResult } from "@/app/lib/staleJobsSweep";
 
 const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 שעות
 // A held lock older than this is considered stale (crashed/frozen run) and may
 // be taken over, so a lost run can't deadlock cleanup forever.
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
-export async function maybeRunExternalJobsCleanup() {
+/**
+ * Run the stale-jobs sweep if it hasn't run in the last 24h, under a Mongo
+ * lock. The sweep is awaited: on Vercel a detached promise is frozen with the
+ * lambda, which left the lock held and the sweep half-done. Returns whether
+ * this call did the work (and its report).
+ */
+export async function maybeRunExternalJobsCleanup(): Promise<{ triggered: boolean; report: SweepResult | null }> {
   await connectToDatabase();
 
   const key = "externalJobsCleanup";
@@ -46,33 +52,24 @@ export async function maybeRunExternalJobsCleanup() {
     // טיפול ב־duplicate key במקביל (race condition)
     if (err.code === 11000) {
       console.warn("⚠️ Cleanup already locked by another process, skipping.");
-      return false;
+      return { triggered: false, report: null };
     }
     throw err;
   }
 
   // אם לא ננעל → אין מה להריץ
   if (!locked || locked.running !== true) {
-    return false;
+    return { triggered: false, report: null };
   }
 
-  // מריצים ברקע כדי לא לחסום את ה־API
-  (async () => {
-    try {
-      await sweepStaleExternalJobs();
-
-      await Maintenance.updateOne(
-        { _id: key },
-        { $set: { lastRunAt: new Date(), running: false } }
-      );
-
-      console.log("✅ Cleanup finished successfully.");
-    } catch (e) {
-      console.error("❌ Cleanup agent failed:", e);
-      // משחררים נעילה גם במקרה של כישלון
-      await Maintenance.updateOne({ _id: key }, { $set: { running: false } });
-    }
-  })();
-
-  return true;
+  try {
+    const report = await sweepStaleExternalJobs();
+    await Maintenance.updateOne({ _id: key }, { $set: { lastRunAt: new Date(), running: false } });
+    return { triggered: true, report };
+  } catch (e) {
+    console.error("❌ Cleanup agent failed:", e);
+    // משחררים נעילה גם במקרה של כישלון
+    await Maintenance.updateOne({ _id: key }, { $set: { running: false } });
+    throw e;
+  }
 }

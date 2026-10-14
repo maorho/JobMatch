@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 import { resolveLogoDomain, getLogoUrl } from "@/app/lib/scout/logo";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
 async function computeCompanies(q: string, limit: number) {
   {
     await connectToDatabase();
-    const match: Record<string, unknown> = { company: { $nin: ["", null] } };
+    // "Companies with open postings": closed jobs don't count.
+    const match: Record<string, unknown> = { ...OPEN_JOBS, company: { $nin: ["", null] } };
     if (q) match.company = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
 
     const [rows, sources] = await Promise.all([

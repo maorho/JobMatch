@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import Contact from "@/app/models/Contact";
 import Candidates from "@/app/models/Candidates";
@@ -31,27 +32,51 @@ export type Opportunity = {
   applied: boolean;
 };
 
-const fuzzyHas = (a: string, b: string) => !!a && !!b && (a === b || new RegExp(`(^|\\s)${b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`).test(a) || new RegExp(`(^|\\s)${a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`).test(b));
+/** Companies per person we look at (grouped, not one row per contact); a LinkedIn export rarely has more. */
+const MAX_COMPANY_KEYS = 2000;
+/** Contacts named per opportunity; `contactCount` carries the rest. */
+const SAMPLE_CONTACTS = 3;
+
+type ContactGroup = { key: string; n: number; sample: { _id: string; fullName: string; position: string; url: string }[] };
+
+/** "wix" is one of the words of "wix com" (either direction) — a word-boundary check without a RegExp per pair. */
+const wordOf = (phrase: string, word: string) => phrase === word || phrase.startsWith(word + " ") || phrase.endsWith(" " + word) || phrase.includes(" " + word + " ");
+const fuzzyHas = (a: string, b: string) => !!a && !!b && (wordOf(a, b) || wordOf(b, a));
 
 export async function referralOpportunities(userId: string, opts: { depth?: number; limit?: number } = {}): Promise<{ opportunities: Opportunity[]; scanned: number; contacts: number }> {
   await connectToDatabase();
-  const contacts: any[] = await Contact.find({ userId }).select("fullName position url companyKey").lean();
-  if (!contacts.length) return { opportunities: [], scanned: 0, contacts: 0 };
-  const byKey = new Map<string, any[]>();
-  for (const c of contacts) {
-    if (!c.companyKey || c.companyKey.length < 2) continue;
-    byKey.set(c.companyKey, [...(byKey.get(c.companyKey) || []), c]);
+  // One row per company the person knows someone at: count + a few names, never the whole address book.
+  const [groups, contactTotal]: [ContactGroup[], number] = await Promise.all([
+    Contact.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId), companyKey: { $type: "string", $ne: "" } } },
+      { $group: { _id: "$companyKey", n: { $sum: 1 }, sample: { $push: { _id: "$_id", fullName: "$fullName", position: "$position", url: "$url" } } } },
+      { $sort: { n: -1, _id: 1 } },
+      { $limit: MAX_COMPANY_KEYS },
+      { $project: { _id: 0, key: "$_id", n: 1, sample: { $slice: ["$sample", SAMPLE_CONTACTS] } } },
+    ]),
+    Contact.countDocuments({ userId }),
+  ]);
+  if (!contactTotal) return { opportunities: [], scanned: 0, contacts: 0 };
+  // Normalised once: exact lookup by key, and a word index for the fuzzy case ("wix" ↔ "wix com").
+  const byKey = new Map<string, ContactGroup>();
+  const byWord = new Map<string, ContactGroup[]>();
+  for (const g of groups) {
+    if (g.key.length < 2) continue;
+    byKey.set(g.key, g);
+    for (const w of g.key.split(" ")) if (w) byWord.set(w, [...(byWord.get(w) || []), g]);
   }
-  const keys = [...byKey.keys()];
   const { jobs } = await rankForUser(userId, { limit: opts.depth ?? 300, rerank: false, includeApplied: true });
   const hits = jobs
     .map((j) => {
       const k = companyKey(j.company);
       const exact = byKey.get(k);
-      const matched = exact || keys.filter((ck) => fuzzyHas(ck, k)).flatMap((ck) => byKey.get(ck) || []);
-      return matched.length ? { job: j, contacts: matched } : null;
+      if (exact) return { job: j, groups: [exact] };
+      // Candidates share a word with the job's company; then the boundary check settles it.
+      const seen = new Set<ContactGroup>();
+      for (const w of k.split(" ")) for (const g of byWord.get(w) || []) if (fuzzyHas(g.key, k)) seen.add(g);
+      return seen.size ? { job: j, groups: [...seen] } : null;
     })
-    .filter(Boolean) as { job: any; contacts: any[] }[];
+    .filter(Boolean) as { job: any; groups: ContactGroup[] }[];
   const jobIds = hits.map((h) => h.job._id);
   const [apps, insiders]: [any[], any[]] = await Promise.all([
     Candidates.find({ candidateId: userId, jobId: { $in: jobIds } }).select("jobId").lean(),
@@ -59,7 +84,9 @@ export async function referralOpportunities(userId: string, opts: { depth?: numb
   ]);
   const applied = new Set(apps.map((a) => String(a.jobId)));
   const insidersOf = new Map(insiders.map((i) => [i._id, i.n]));
-  const opportunities: Opportunity[] = hits.map(({ job, contacts: cs }) => {
+  const opportunities: Opportunity[] = hits.map(({ job, groups: gs }) => {
+    const cs = gs.flatMap((g) => g.sample).slice(0, SAMPLE_CONTACTS);
+    const contactCount = gs.reduce((s, g) => s + g.n, 0);
     return {
       jobId: job._id,
       jobModel: "ExternalJobs",
@@ -73,12 +100,12 @@ export async function referralOpportunities(userId: string, opts: { depth?: numb
       matchScore: job.matchScore,
       reranked: !!job.reranked,
       why: job.why,
-      contacts: cs.slice(0, 4).map((c) => ({ _id: String(c._id), fullName: c.fullName, position: c.position || "", url: c.url || "" })),
-      contactCount: cs.length,
+      contacts: cs.map((c) => ({ _id: String(c._id), fullName: c.fullName, position: c.position || "", url: c.url || "" })),
+      contactCount,
       insiders: insidersOf.get(bankKey(job.company)) || 0,
       applied: applied.has(job._id),
     };
   });
   opportunities.sort((a, b) => b.matchScore - a.matchScore || b.contactCount - a.contactCount);
-  return { opportunities: opportunities.slice(0, opts.limit ?? 60), scanned: jobs.length, contacts: contacts.length };
+  return { opportunities: opportunities.slice(0, opts.limit ?? 60), scanned: jobs.length, contacts: contactTotal };
 }

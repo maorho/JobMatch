@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
@@ -86,6 +86,8 @@ function externalWorkModeFilter(modes: string[]) {
 }
 
 const ANON_TTL_MS = ttl(60_000);
+/** Totals are not personal: one count per filter combination serves everyone for a minute. */
+const COUNT_TTL_MS = ttl(60_000);
 /** Atlas recall depth; a query with fewer hits than this has an exact total without a second count. */
 const RECALL = 600;
 
@@ -130,7 +132,10 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
         : null;
 
     // ---------- external (ATS) postings: the bulk, paginated ----------
-    const extAnd: object[] = [];
+    // Closed postings never appear in search results or totals.
+    const extAnd: object[] = [OPEN_JOBS];
+    // Everything that shapes the external filter, for the shared count cache.
+    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority })}`;
     // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
     // falls back to the every-word regex when Atlas Search isn't available.
     let rankedIds: string[] | null = null;
@@ -148,7 +153,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     if (country.length) extAnd.push({ country: { $in: country } });
     if (jobType.length) extAnd.push(externalWorkModeFilter(jobType));
     if (seniority.length) extAnd.push(seniorityFilter(seniority));
-    const extFilter = extAnd.length ? { $and: extAnd } : {};
+    const extFilter = { $and: extAnd };
 
     // ---------- internal postings: few, all returned on page 1 ----------
     let internalJobs: any[] = [];
@@ -205,14 +210,14 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       // Relevance order: the page's ids first (cheap, ids only, honouring the other filters), then just those documents.
       const matchingIds: any[] = await ExternalJobs.find({ ...extFilter, _id: { $in: rankedIds } }).select("_id").lean();
       const ordered = matchingIds.map((d) => String(d._id)).sort((a, b) => (rankPos.get(a) ?? 1e9) - (rankPos.get(b) ?? 1e9));
-      // Fewer hits than the recall depth → the hit list IS the whole result set; otherwise count the long way.
-      externalTotal = rankedIds!.length < RECALL ? ordered.length : await ExternalJobs.countDocuments({ ...extFilter, $and: [...(extAnd.length ? extAnd : []), textMatch(["job", "description", "company", "city", "country"])!] });
+      // Fewer hits than the recall depth → the hit list IS the whole result set; otherwise count the long way (shared, cached).
+      externalTotal = rankedIds!.length < RECALL ? ordered.length : await memo(`${countKey}:text`, COUNT_TTL_MS, () => ExternalJobs.countDocuments({ $and: [...extAnd, textMatch(["job", "description", "company", "city", "country"])!] }));
       const pageIds = ordered.slice(skip, skip + limit);
       const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: pageIds } }).select("+embedding") : ExternalJobs.find({ _id: { $in: pageIds } })).lean();
       const pos = new Map(pageIds.map((id, i) => [id, i]));
       externalDocs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
     } else {
-      [externalTotal, externalDocs] = await Promise.all([ExternalJobs.countDocuments(extFilter), pageQuery.sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean()]);
+      [externalTotal, externalDocs] = await Promise.all([memo(countKey, COUNT_TTL_MS, () => ExternalJobs.countDocuments(extFilter)), pageQuery.sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean()]);
     }
 
     let external = externalDocs.map((d: any) => {

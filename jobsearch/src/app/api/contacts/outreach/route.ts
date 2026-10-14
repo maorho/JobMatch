@@ -7,6 +7,7 @@ import Contact from "@/app/models/Contact";
 import { loadJobForPrep } from "@/app/lib/interview/ensurePlan";
 import { composeOutreach } from "@/app/lib/contacts/outreach";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,14 @@ export async function POST(req: NextRequest) {
   const channel = body?.channel === "email" ? "email" : "linkedin";
   const language = body?.language === "en" ? "en" : "he";
   if (!mongoose.Types.ObjectId.isValid(contactId) || !mongoose.Types.ObjectId.isValid(jobId)) return NextResponse.json({ error: "Invalid ids" }, { status: 400 });
+  // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+  try {
+    await consumeQuota(userId, "outreach");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
 
   try {
     await connectToDatabase();

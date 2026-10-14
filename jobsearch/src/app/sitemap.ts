@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { connectToDatabase } from "./lib/db";
-import ExternalJobs from "./models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "./models/ExternalJobs";
 import Job from "./models/Job";
 import { listArticles } from "./lib/content/articles";
 import { companiesWithQuestions } from "./lib/outcomes/questions";
@@ -27,7 +27,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const a of await listArticles()) entries.push({ url: `${SITE_URL}/Articels/${a.slug}`, lastModified: new Date(a.date), changeFrequency: "monthly", priority: 0.6 });
     await connectToDatabase();
     const [external, internal]: [any[], any[]] = await Promise.all([
-      ExternalJobs.find({}).select("_id updatedAt firstSeenAt").sort({ firstSeenAt: -1 }).limit(MAX_JOBS).lean(),
+      ExternalJobs.find(OPEN_JOBS).select("_id updatedAt firstSeenAt").sort({ firstSeenAt: -1 }).limit(MAX_JOBS).lean(),
       Job.find({}).select("_id updatedAt").limit(500).lean(),
     ]);
     for (const j of external) entries.push({ url: `${SITE_URL}/job/external/${j._id}`, lastModified: j.updatedAt || j.firstSeenAt || now, changeFrequency: "daily", priority: 0.5 });

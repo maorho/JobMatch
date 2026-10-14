@@ -1,5 +1,5 @@
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { cosineSimilarity } from "./cosine";
 
 /**
@@ -12,38 +12,66 @@ import { cosineSimilarity } from "./cosine";
  * Index definitions (created once on the cluster; see scripts in memory):
  *   job_vectors: vector(embedding, 1536, cosine) + filters company/country/city/remote/firstSeenAt
  *   job_text:    string job/description/company/skills, token city/country
+ *
+ * Closed postings (active:false) are dropped by the callers (hybrid.ts loads
+ * the hits through OPEN_JOBS). Once `active` is added as a filter field to
+ * both indexes, set ATLAS_FILTER_ACTIVE=1 and the exclusion moves into the
+ * Atlas query itself so closed jobs stop taking recall slots.
  */
 export const VECTOR_INDEX = "job_vectors";
 export const TEXT_INDEX = "job_text";
 
-let atlasAvailable: boolean | null = process.env.ATLAS_SEARCH === "0" ? false : null;
+/** After Atlas Search fails, how long we serve the in-process fallback before trying Atlas again. */
+export const ATLAS_RETRY_MS = 10 * 60_000;
+/** Working set of the fallback: enough for a good page, small enough for a lambda's memory. */
+export const FALLBACK_LIMIT = 1500;
 
-/** True once a `$vectorSearch` has succeeded; false after it failed with "not supported". */
+// `ok` is what the last attempt said (null = never tried); `failedAt` lets the
+// instance retry after ATLAS_RETRY_MS instead of latching to the fallback for life.
+const state: { ok: boolean | null; failedAt: number; warned: boolean } = { ok: process.env.ATLAS_SEARCH === "0" ? false : null, failedAt: 0, warned: false };
+
+/** True once Atlas Search has succeeded; false after it failed (or ATLAS_SEARCH=0); null before the first attempt. */
 export function isAtlasSearchAvailable(): boolean | null {
-  return atlasAvailable;
+  return state.ok;
 }
 export function _resetAtlasFlag() {
-  atlasAvailable = process.env.ATLAS_SEARCH === "0" ? false : null;
+  state.ok = process.env.ATLAS_SEARCH === "0" ? false : null;
+  state.failedAt = 0;
+  state.warned = false;
 }
 
-const notSupported = (e: any) => /Unrecognized pipeline stage|\$vectorSearch|\$search|not allowed|is not supported|CommandNotSupported/i.test(String(e?.message || e));
+const shouldTryAtlas = () => state.ok !== false || (process.env.ATLAS_SEARCH !== "0" && Date.now() - state.failedAt > ATLAS_RETRY_MS);
+
+// Only the errors that mean "this server has no Atlas Search" switch us to the
+// fallback; anything else (timeouts, bad filters, auth) propagates.
+// (mongodb-memory-server says "$vectorSearch stage is only allowed on MongoDB Atlas".)
+const notSupported = (e: any) => /only allowed on MongoDB Atlas|Unrecognized pipeline stage name|index .*(not found|does not exist)|not allowed|not supported|CommandNotSupported|Atlas Search (is )?not (enabled|available)/i.test(String(e?.message || e));
+
+function markFailed(e: unknown) {
+  state.ok = false;
+  state.failedAt = Date.now();
+  if (!state.warned) {
+    state.warned = true;
+    console.warn(`[atlas] Atlas Search unavailable, ranking in-process over the newest ${FALLBACK_LIMIT} embedded postings (retry in ${ATLAS_RETRY_MS / 60_000} min):`, (e as Error)?.message || e);
+  }
+}
 
 export type VectorHit = { _id: string; score: number };
 export type VectorFilter = { company?: string[]; country?: string[]; city?: string[]; remote?: boolean; firstSeenAfter?: Date };
 
 function atlasFilter(f?: VectorFilter): Record<string, unknown> | undefined {
-  if (!f) return undefined;
   const and: Record<string, unknown>[] = [];
-  if (f.company?.length) and.push({ company: { $in: f.company } });
-  if (f.country?.length) and.push({ country: { $in: f.country } });
-  if (f.city?.length) and.push({ city: { $in: f.city } });
-  if (f.remote !== undefined) and.push({ remote: f.remote });
-  if (f.firstSeenAfter) and.push({ firstSeenAt: { $gt: f.firstSeenAfter } });
+  if (f?.company?.length) and.push({ company: { $in: f.company } });
+  if (f?.country?.length) and.push({ country: { $in: f.country } });
+  if (f?.city?.length) and.push({ city: { $in: f.city } });
+  if (f?.remote !== undefined) and.push({ remote: f.remote });
+  if (f?.firstSeenAfter) and.push({ firstSeenAt: { $gt: f.firstSeenAfter } });
+  if (process.env.ATLAS_FILTER_ACTIVE === "1") and.push({ active: { $ne: false } });
   return and.length ? { $and: and } : undefined;
 }
 
 function mongoFilter(f?: VectorFilter): Record<string, unknown> {
-  const q: Record<string, unknown> = { embedding: { $exists: true } };
+  const q: Record<string, unknown> = { ...OPEN_JOBS, embedding: { $exists: true } };
   if (f?.company?.length) q.company = { $in: f.company };
   if (f?.country?.length) q.country = { $in: f.country };
   if (f?.city?.length) q.city = { $in: f.city };
@@ -56,21 +84,21 @@ function mongoFilter(f?: VectorFilter): Record<string, unknown> {
 export async function vectorSearch(vec: number[], opts: { limit?: number; numCandidates?: number; filter?: VectorFilter } = {}): Promise<VectorHit[]> {
   await connectToDatabase();
   const limit = opts.limit ?? 50;
-  if (atlasAvailable !== false) {
+  if (shouldTryAtlas()) {
     try {
       const stage: Record<string, unknown> = { index: VECTOR_INDEX, path: "embedding", queryVector: vec, numCandidates: opts.numCandidates ?? Math.max(limit * 8, 200), limit };
       const filter = atlasFilter(opts.filter);
       if (filter) stage.filter = filter;
       const rows: any[] = await ExternalJobs.aggregate([{ $vectorSearch: stage } as any, { $project: { _id: 1, score: { $meta: "vectorSearchScore" } } }]);
-      atlasAvailable = true;
+      state.ok = true;
       return rows.map((r) => ({ _id: String(r._id), score: Number(r.score) }));
     } catch (e) {
       if (!notSupported(e)) throw e;
-      atlasAvailable = false;
+      markFailed(e);
     }
   }
-  // Fallback: in-process cosine over (a bounded slice of) the embedded catalog.
-  const docs: any[] = await ExternalJobs.find(mongoFilter(opts.filter)).select("+embedding").sort({ postedAt: -1 }).limit(5000).lean();
+  // Fallback: in-process cosine over the newest open embedded postings (bounded).
+  const docs: any[] = await ExternalJobs.find(mongoFilter(opts.filter)).select("+embedding").sort({ postedAt: -1 }).limit(FALLBACK_LIMIT).lean();
   return docs
     .filter((d) => Array.isArray(d.embedding) && d.embedding.length === vec.length)
     .map((d) => ({ _id: String(d._id), score: cosineSimilarity(vec, d.embedding) }))
@@ -86,13 +114,15 @@ export async function textSearch(query: string, opts: { limit?: number; filter?:
   const limit = opts.limit ?? 200;
   const q = query.trim();
   if (!q) return [];
-  if (atlasAvailable !== false) {
+  if (shouldTryAtlas()) {
     try {
       const must: Record<string, unknown>[] = [];
       const f = opts.filter;
       if (f?.company?.length) must.push({ text: { query: f.company, path: "company" } });
       if (f?.country?.length) must.push({ in: { value: f.country, path: "country" } });
       if (f?.city?.length) must.push({ in: { value: f.city, path: "city" } });
+      // Needs `active` indexed as a boolean in job_text (see the header).
+      if (process.env.ATLAS_FILTER_ACTIVE === "1") must.push({ equals: { value: true, path: "active" } });
       const compound: Record<string, unknown> = {
         should: [
           { text: { query: q, path: "job", score: { boost: { value: 3 } } } },
@@ -102,11 +132,11 @@ export async function textSearch(query: string, opts: { limit?: number; filter?:
         ...(must.length ? { filter: must } : {}),
       };
       const rows: any[] = await ExternalJobs.aggregate([{ $search: { index: TEXT_INDEX, compound } }, { $limit: limit }, { $project: { _id: 1, score: { $meta: "searchScore" } } }]);
-      atlasAvailable = true;
+      state.ok = true;
       return rows.map((r) => ({ _id: String(r._id), score: Number(r.score) }));
     } catch (e) {
       if (!notSupported(e)) throw e;
-      atlasAvailable = false;
+      markFailed(e);
     }
   }
   // Fallback: every word must appear somewhere (same rule the search route used).

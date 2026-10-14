@@ -4,6 +4,7 @@ import { captureInterviewQuestions, skipQuestions, questionBank } from "@/app/li
 import { QUESTION_STAGES } from "@/app/models/InterviewQuestion";
 import ApplicationOutcome from "@/app/models/ApplicationOutcome";
 import { connectToDatabase } from "@/app/lib/db";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,14 @@ export async function POST(req: NextRequest) {
     roleTitle = roleTitle || row.title;
   }
   if (!company) return NextResponse.json({ error: "company is required" }, { status: 400 });
+  // Daily cap on this paid action (lib/ops/quota.ts); skipping is free, structuring the text is not.
+  try {
+    await consumeQuota(userId, "outcome_questions");
+  } catch (e) {
+    const q = quotaResponse(e);
+    if (q) return q;
+    throw e;
+  }
   const r = await captureInterviewQuestions({ userId, applicationId, company, roleTitle, stage, text: text.slice(0, 6000), shareable: body.shareable !== false, language: body.language === "en" ? "en" : undefined });
   return NextResponse.json({ ok: true, created: r.created, questions: r.questions });
 }
