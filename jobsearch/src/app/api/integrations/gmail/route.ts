@@ -4,6 +4,7 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
 import ApplicationEvent from "@/app/models/ApplicationEvent";
 import { syncUserEmails } from "@/app/lib/email/track";
+import { isSecretBoxConfigured } from "@/app/lib/crypto/secretBox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,8 @@ export async function GET(req: NextRequest) {
     address: user?.gmail?.address || "",
     lastSyncAt: user?.gmail?.lastSyncAt || null,
     lastError: user?.gmail?.lastError || "",
-    configured: !!(process.env.GOOGLE_CLIENT_ID && process.env.TOKEN_ENCRYPTION_KEY),
+    // The Settings page hides the "connect" button when this is false.
+    configured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) && isSecretBoxConfigured(),
     events,
   });
 }

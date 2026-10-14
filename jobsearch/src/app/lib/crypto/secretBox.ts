@@ -5,6 +5,11 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:
  * Key: TOKEN_ENCRYPTION_KEY (any string; hashed to 32 bytes). Output is
  * "v1.<iv>.<tag>.<ciphertext>" base64url, so the format can evolve.
  */
+/** True when TOKEN_ENCRYPTION_KEY is set — check before starting a flow that ends in seal(). */
+export function isSecretBoxConfigured(): boolean {
+  return !!process.env.TOKEN_ENCRYPTION_KEY;
+}
+
 function key(): Buffer {
   const raw = process.env.TOKEN_ENCRYPTION_KEY;
   if (!raw) throw new Error("TOKEN_ENCRYPTION_KEY is not configured");

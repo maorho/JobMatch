@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: ["**"]
   pull_request:
 
 concurrency:
@@ -18,9 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Same major as the Vercel runtime (package.json "engines" + .nvmrc).
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: jobsearch/package-lock.json
 
@@ -32,6 +33,11 @@ jobs:
           key: mongodb-binaries-${{ runner.os }}
 
       - run: npm ci
+
+      # Advisory only: surfaces critical advisories in production deps without blocking the merge.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+        continue-on-error: true
 
       - name: Type check
         run: npm run typecheck
@@ -50,7 +56,10 @@ jobs:
         run: npm run build
         env:
           # Build must not need real services; routes connect lazily.
+          # Values satisfy the production env contract (lib/env.ts) in case the
+          # build evaluates it: 32+ char CRON_SECRET, https APP_URL.
           MONGO_URI: mongodb://localhost:27017/build-placeholder
           JWT_SECRET: test-jwt-secret-at-least-32-characters-long
-          CRON_SECRET: test-cron-secret
+          CRON_SECRET: test-cron-secret-at-least-32-characters-long
           OPENAI_API_KEY: test-key-not-used
+          APP_URL: https://ci.invalid

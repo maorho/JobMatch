@@ -9,7 +9,15 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/Dashboard", "/RecruiterDashboard", "/AdminDashboard", "/Settings", "/messages", "/notifications", "/onboarding", "/interview-prep/", "/ResumeAI", "/Login", "/SignUp", "/PasswordReset", "/EmployerDashboard", "/EmplopyerSettings"],
+        disallow: [
+          "/api/",
+          // Signed-in areas (nothing indexable behind them).
+          "/Dashboard", "/RecruiterDashboard", "/AdminDashboard", "/Settings", "/settings", "/messages", "/notifications", "/onboarding",
+          "/interview-prep/", "/practice", "/referrals", "/ResumeAI",
+          "/Login", "/SignUp", "/PasswordReset",
+          // Removed employer pages — harmless once the folders are gone, keeps stale crawls out meanwhile.
+          "/EmployerDashboard", "/EmplopyerSettings",
+        ],
       },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { appOrigin } from "@/app/lib/oauth/providers";
+import { isSecretBoxConfigured } from "@/app/lib/crypto/secretBox";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,8 +18,10 @@ export const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly openi
 export async function GET(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return NextResponse.redirect(new URL("/Login?next=/Settings", req.nextUrl.origin));
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.TOKEN_ENCRYPTION_KEY) {
-    return NextResponse.redirect(new URL("/Settings?gmail=not_configured", req.nextUrl.origin));
+  // Refuse before sending the user to Google: without the sealing key the
+  // callback would throw after consent, leaving a granted-but-unsaved token.
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !isSecretBoxConfigured()) {
+    return NextResponse.json({ error: "לא מוגדר", detail: "Gmail tracking needs GOOGLE_CLIENT_ID/SECRET and TOKEN_ENCRYPTION_KEY" }, { status: 503 });
   }
   const state = randomBytes(16).toString("hex");
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");

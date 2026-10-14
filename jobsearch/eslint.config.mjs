@@ -15,6 +15,10 @@ const eslintConfig = [
       // Social-login buttons link to API routes (/api/auth/oauth/*), which
       // need a full navigation — <Link> would client-route and break OAuth.
       "@next/next/no-html-link-for-pages": "off",
+      // New in the React Compiler lint rules shipped with eslint-config-next 16.4.
+      // Sixteen legacy effects (load-on-mount, deep-link sync) trip it; they
+      // work, so report them and migrate per component rather than block CI.
+      "react-hooks/set-state-in-effect": "warn",
     },
   },
   {

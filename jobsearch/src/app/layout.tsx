@@ -20,7 +20,9 @@ export const metadata: Metadata = {
   openGraph: { type: "website", siteName: "JobMatch", locale: "he_IL", url: siteUrl(), images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
   twitter: { card: "summary_large_image" },
   robots: { index: true, follow: true },
-  alternates: { canonical: "/" },
+  // No root canonical: it would be inherited by every page that doesn't set
+  // its own. Indexable pages (jobs, articles, companies, interview questions,
+  // partners) declare their canonical themselves.
 };
 
 export const viewport: Viewport = {
@@ -36,7 +38,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={outfit.variable}>
+    // The UI is Hebrew. Direction stays the default (ltr) on purpose: pages and
+    // containers set dir="rtl"/"ltr" themselves (≈40 of each), and flipping it
+    // here would mirror every ml-/mr-/text-left layout that assumes ltr.
+    <html lang="he" className={outfit.variable}>
       <head>
         <link rel="icon" href="/favicon.png" sizes="32x32" />
       </head>

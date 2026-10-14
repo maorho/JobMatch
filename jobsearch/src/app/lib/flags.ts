@@ -9,9 +9,16 @@ export const FEATURES = {
   get phone() {
     return process.env.FEATURE_PHONE === "1";
   },
-  /** Auto-apply through the Puppeteer server: on, but labelled beta in the UI. */
+  /**
+   * Auto-apply through the Puppeteer server (labelled beta in the UI).
+   * Default: on only when PUPPETEER_SERVER_URL is set — there is nothing to
+   * apply with otherwise. FEATURE_AUTO_APPLY="1"/"0" overrides either way.
+   */
   get autoApply() {
-    return process.env.FEATURE_AUTO_APPLY !== "0";
+    const explicit = process.env.FEATURE_AUTO_APPLY;
+    if (explicit === "1") return true;
+    if (explicit === "0") return false;
+    return !!process.env.PUPPETEER_SERVER_URL;
   },
   /** Personal MCP keys. */
   get mcp() {

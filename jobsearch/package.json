@@ -2,6 +2,9 @@
   "name": "jobsearch",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "puppeteer-server": "ts-node --project ./server/tsconfig.server.json ./server/index.ts",
