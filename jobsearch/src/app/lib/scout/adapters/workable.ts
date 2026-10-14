@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
 
 /**
  * Workable public widget API (no key).
@@ -14,7 +14,7 @@ const HEADERS = { "User-Agent": "Mozilla/5.0 JobMatchScout", Accept: "applicatio
 
 export const workable: Adapter = async (identifier) => {
   const slug = encodeURIComponent(identifier);
-  const res = await fetch(`${BASE}/${slug}`, { headers: HEADERS, cache: "no-store" });
+  const res = await fetchWithTimeout(`${BASE}/${slug}`, { headers: HEADERS, cache: "no-store" });
   if (!res.ok) throw new Error(`Workable ${identifier}: HTTP ${res.status}`);
   const data = await res.json();
   const jobs: any[] = Array.isArray(data?.jobs) ? data.jobs : [];
@@ -34,7 +34,7 @@ export const workable: Adapter = async (identifier) => {
 
   for (const p of out.slice(0, MAX_DETAIL)) {
     try {
-      const d = await fetch(`${BASE}/${slug}/jobs/${encodeURIComponent(p.sourceJobId)}`, { headers: HEADERS, cache: "no-store" });
+      const d = await fetchWithTimeout(`${BASE}/${slug}/jobs/${encodeURIComponent(p.sourceJobId)}`, { headers: HEADERS, cache: "no-store" });
       if (!d.ok) continue;
       const job = await d.json();
       p.description = [job.description, job.requirements ? `<h3>Requirements</h3>${job.requirements}` : "", job.benefits ? `<h3>Benefits</h3>${job.benefits}` : ""].filter(Boolean).map((h) => htmlToText(String(h))).join("\n\n");

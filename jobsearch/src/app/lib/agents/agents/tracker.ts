@@ -17,7 +17,15 @@ export const trackerAgent = registerAgent({
       if (model) ctx.log(model.trained ? `Interview-likelihood model retrained on ${model.samples} outcomes (${model.positives} interviews): AUC ${model.auc}, log-loss ${model.logLoss}.` : `Interview-likelihood model: ${model.samples} outcomes so far, need ${20} — using the prior.`);
       const users = await usersWithDuePrompts(new Date(), p.limit ?? 200);
       let prompted = 0;
-      for (const userId of users) {
+      let left = 0;
+      for (const [i, userId] of users.entries()) {
+        // Near the dispatcher's budget: stop; unasked users are still due tomorrow.
+        if (Date.now() > ctx.deadline - 5_000) {
+          left = users.length - i;
+          ctx.log(`Out of time: ${left} candidate${left === 1 ? "" : "s"} left for the next run.`);
+          break;
+        }
+        await ctx.heartbeat();
         const due = await duePrompts(userId);
         if (!due.replies.length && !due.questions.length) continue;
         await markAsked(due);
@@ -28,7 +36,7 @@ export const trackerAgent = registerAgent({
         );
         prompted++;
       }
-      return `Closed ${expired} silent application${expired === 1 ? "" : "s"} as "no reply"; ${prompted} candidate${prompted === 1 ? "" : "s"} to ask.`;
+      return `Closed ${expired} silent application${expired === 1 ? "" : "s"} as "no reply"; ${prompted} candidate${prompted === 1 ? "" : "s"} to ask${left ? `, ${left} deferred (out of time)` : ""}.`;
     }
     const { userId } = msg.payload as Payloads["inbox.sync"];
     const r = await syncUserEmails(userId, {

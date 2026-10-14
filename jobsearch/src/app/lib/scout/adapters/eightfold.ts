@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
 
 /**
  * Eightfold-hosted career sites (Microsoft's apply.careers.microsoft.com and
@@ -21,11 +21,11 @@ const RETRY_DELAYS_MS = [3_000, 10_000];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchPolite(url: string): Promise<Response> {
-  let res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  let res = await fetchWithTimeout(url, { headers: HEADERS, cache: "no-store" });
   for (const delay of RETRY_DELAYS_MS) {
     if (res.status !== 429 && res.status !== 503) break;
     await sleep(delay);
-    res = await fetch(url, { headers: HEADERS, cache: "no-store" });
+    res = await fetchWithTimeout(url, { headers: HEADERS, cache: "no-store" });
   }
   return res;
 }
@@ -52,15 +52,15 @@ export const eightfold: Adapter = async (identifier, secondaryIdentifier) => {
   for (let start = 0; start < Math.min(count, MAX_POSITIONS); start += PAGE) {
     const url = `${base}/api/pcsx/search?domain=${encodeURIComponent(domain)}&query=&location=Israel&start=${start}&num=${PAGE}`;
     const res = await fetchPolite(url);
-    if (!res.ok) {
-      if (start === 0) throw new Error(`Eightfold ${host}: HTTP ${res.status}`);
-      break;
-    }
+    // Complete-feed contract: a failed page beyond the first is a partial list → throw.
+    if (!res.ok) throw new Error(`Eightfold ${host}: HTTP ${res.status} at start=${start}`);
     let data: any;
     try {
       data = await res.json();
     } catch {
-      break; // past the last page the site answers with HTML
+      // Past the last page the site answers with HTML; before it, that is a broken page.
+      if (out.length >= count) break;
+      throw new Error(`Eightfold ${host}: non-JSON page at start=${start} (${out.length}/${count} postings)`);
     }
     const positions: any[] = Array.isArray(data?.data?.positions) ? data.data.positions : [];
     if (typeof data?.data?.count === "number") count = data.data.count;
@@ -80,6 +80,9 @@ export const eightfold: Adapter = async (identifier, secondaryIdentifier) => {
       });
     }
     if (positions.length < PAGE) break;
+  }
+  if (out.length < count && out.length >= MAX_POSITIONS) {
+    throw new Error(`Eightfold ${host}: ${count} postings exceed the ${MAX_POSITIONS} cap — list would be partial`);
   }
 
   for (const p of out.slice(0, MAX_DETAIL)) {

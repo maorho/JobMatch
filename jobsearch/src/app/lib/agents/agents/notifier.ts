@@ -66,29 +66,46 @@ export const notifierAgent = registerAgent({
       }
       case "apply.report": {
         const p = msg.payload as Payloads["apply.report"];
+        const deferred = p.deferred ?? 0;
+        // Failures and deferrals ride along as a trailer line, so the person sees the whole picture.
+        const trailer = [p.failed ? `${p.failed} הגשות נכשלו (ראה/י את יומן ההגשה האוטומטית)` : "", deferred ? `${deferred} הגשות נדחו — שרת ההגשה לא היה זמין, ננסה שוב בסבב הבא` : ""].filter(Boolean).join("\n");
         if (p.submitted.length) {
           await notify(p.userId, {
             type: "application_status",
             title: p.submitted.length === 1 ? `הגשנו בשבילך מועמדות: ${p.submitted[0].title}` : `הגשנו בשבילך ${p.submitted.length} מועמדויות`,
-            body: p.submitted.map((s) => `${s.title} · ${s.company} (${s.score}%)`).join("\n"),
+            body: [p.submitted.map((s) => `${s.title} · ${s.company} (${s.score}%)`).join("\n"), trailer].filter(Boolean).join("\n"),
             link: "/Dashboard",
-            meta: { agent: "applier", jobIds: p.submitted.map((s) => s.jobId) },
+            meta: { agent: "applier", jobIds: p.submitted.map((s) => s.jobId), failed: p.failed, deferred },
           });
         }
         if (p.needsUser.length) {
           await notify(p.userId, {
             type: "system",
             title: p.needsUser.length === 1 ? `משרה מתאימה מחכה להגשה שלך: ${p.needsUser[0].title}` : `${p.needsUser.length} משרות מתאימות מחכות להגשה שלך`,
-            body: p.needsUser.map((n) => `${n.title} · ${n.company} — ${n.reason}`).join("\n"),
+            body: [p.needsUser.map((n) => `${n.title} · ${n.company} — ${n.reason}`).join("\n"), p.submitted.length ? "" : trailer].filter(Boolean).join("\n"),
             link: "/Dashboard#auto-apply",
             meta: { agent: "applier", jobIds: p.needsUser.map((n) => n.jobId) },
           });
         }
-        return `Reported ${p.submitted.length} submissions and ${p.needsUser.length} hand-offs.`;
+        if (!p.submitted.length && !p.needsUser.length && trailer) {
+          await notify(p.userId, {
+            type: "system",
+            title: deferred && !p.failed ? "ההגשה האוטומטית נדחתה לסבב הבא" : "ההגשה האוטומטית לא הצליחה",
+            body: trailer,
+            link: "/Dashboard#auto-apply",
+            meta: { agent: "applier", failed: p.failed, deferred },
+          });
+        }
+        return `Reported ${p.submitted.length} submissions, ${p.needsUser.length} hand-offs, ${p.failed} failed, ${deferred} deferred.`;
       }
       case "jobs.embedded": {
+        const p = msg.payload as Payloads["jobs.embedded"];
+        // No new postings → nobody has anything new to hear about; a company-scoped
+        // refresh (discovery) is too small for a digest and must not fan out to every user.
+        if (p.created === 0) return "Nothing new was ingested — digest skipped.";
+        if (p.company) return `Company-scoped refresh (${p.company}) — digest left to the next full catalog run.`;
         const r = await runJobMatchDigest();
-        return `Digest: ${r.newJobs} new postings vs ${r.users} candidates → ${r.notified} people notified.`;
+        return `Digest: ${r.newJobs} new postings vs ${r.users} candidates → ${r.notified} people notified${r.skippedRecent ? ` (${r.skippedRecent} heard from us in the last ${r.minHours}h)` : ""}.`;
       }
       case "candidate.matched": {
         const p = msg.payload as Payloads["candidate.matched"];

@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import { Adapter, NormalizedPosting, htmlToText, parseLocation } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText, parseLocation } from "../types";
 
 /**
  * Generic server-rendered HTML job board (staffing agencies, government and
@@ -77,7 +77,7 @@ const UA =
 const HEADERS = { "User-Agent": UA, Accept: "text/html", "Accept-Language": "he,en;q=0.8" };
 
 async function getHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: HEADERS, cache: "no-store", redirect: "follow" });
+  const res = await fetchWithTimeout(url, { headers: HEADERS, cache: "no-store", redirect: "follow" });
   if (!res.ok) throw new Error(`HTML board ${url}: HTTP ${res.status}`);
   return res.text();
 }

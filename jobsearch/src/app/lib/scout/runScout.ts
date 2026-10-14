@@ -1,7 +1,6 @@
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
-import Candidates from "@/app/models/Candidates";
 import { getAdapter } from "./adapters";
 import { getLogoUrl, resolveLogoDomain } from "./logo";
 import { isIsraelOrRemote } from "./locationFilter";
@@ -25,11 +24,13 @@ function locationFields(p: NormalizedPosting) {
 
 /**
  * ATS types whose adapter returns a company's COMPLETE current board in one
- * pass. For these we can reconcile immediately: a stored job that is no longer
- * in the feed has been filled/closed and is deleted on the spot. Excluded:
- * "workday" (adapter caps detail enrichment at ~80 postings, so its list can be
- * partial) and "serpapi" (an aggregator — one source maps to many companies),
- * which both rely on the time-based staleness sweep instead.
+ * pass (or throws — see the Adapter contract in types.ts). For these we can
+ * reconcile immediately: a stored job that is no longer in the feed has been
+ * filled/closed and is soft-closed on the spot (`active:false`, `closedAt`),
+ * keeping the row and its applications; it is reopened if it reappears.
+ * Excluded: "workday" (adapter caps detail enrichment at ~80 postings, so its
+ * list can be partial) and "serpapi" (an aggregator — one source maps to many
+ * companies), which both rely on the time-based staleness sweep instead.
  */
 const COMPLETE_FEED_ATS = new Set([
   "greenhouse",
@@ -49,9 +50,23 @@ export type ScoutSourceResult = {
   atsType: string;
   fetched: number;
   created: number;
+  /** Postings soft-closed because they left a complete feed. */
   removed: number;
+  /** Previously closed postings that came back. */
+  reopened?: number;
   error?: string;
 };
+
+/** One source may not eat the chunk: past this, it is recorded as errored and nothing is reconciled. */
+const SOURCE_DEADLINE_MS = 90_000;
+
+function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label}: source deadline of ${Math.round(ms / 1000)}s exceeded`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 export type ScoutResult = {
   sources: number; // sources handled in this call
@@ -79,9 +94,15 @@ export type RunOptions = {
   /**
    * Also rewrite title/description/location/postedAt of postings we already
    * have (normally only new postings are written). Used after parser or
-   * normalizer improvements so the existing catalog picks them up.
+   * normalizer improvements so the existing catalog picks them up. City /
+   * country / remote are only rewritten when the raw location string changed,
+   * so a value the Locator (LLM stage) already cleaned is kept.
    */
   refresh?: boolean;
+  /** Called after every source (the bus lease renewal when run as an agent). */
+  heartbeat?: () => Promise<void> | void;
+  /** Override the per-source deadline (tests). */
+  sourceDeadlineMs?: number;
 };
 
 /**
@@ -126,17 +147,21 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       const adapter = getAdapter(src.atsType);
       if (!adapter) throw new Error(`No adapter for atsType "${src.atsType}"`);
 
-      const postings = await adapter(src.identifier, src.secondaryIdentifier);
+      const postings = await withDeadline(adapter(src.identifier, src.secondaryIdentifier), opts.sourceDeadlineMs ?? SOURCE_DEADLINE_MS, src.companyName);
       result.fetched = postings.length;
 
       // Which of these do we already have? Dedup per company source so two
       // companies on the same ATS with a colliding sourceJobId stay independent.
+      // A stored posting that was soft-closed and is back in the feed is
+      // reopened below rather than treated as new.
       const ids = postings.map((p) => p.sourceJobId).filter(Boolean);
       const existing = await ExternalJobs.find({
         companySource: src._id,
         sourceJobId: { $in: ids },
-      }).select("sourceJobId");
+      }).select("sourceJobId active rawLocation");
       const seen = new Set(existing.map((e: any) => e.sourceJobId));
+      const closed = new Set(existing.filter((e: any) => e.active === false).map((e: any) => e.sourceJobId));
+      const storedRaw = new Map(existing.map((e: any) => [e.sourceJobId, e.rawLocation || ""]));
 
       // Relevance uses both the raw strings and the normalized remote flag, so
       // "Remote - USA" (normalized to country United States) still qualifies.
@@ -211,54 +236,57 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
         }
 
         // Refresh the "last seen" stamp on every still-open posting so the
-        // staleness sweep never expires a job that is still in the feed.
+        // staleness sweep never expires a job that is still in the feed, and
+        // reopen any that had been soft-closed (back in the feed = open again).
         if (keepIds.length) {
           await ExternalJobs.updateMany(
             { companySource: src._id, sourceJobId: { $in: keepIds } },
-            { $set: { lastSeenAt: new Date(), active: true } }
+            { $set: { lastSeenAt: new Date(), active: true }, $unset: { closedAt: 1 } }
           );
+          const reopened = keepIds.filter((id) => closed.has(id)).length;
+          if (reopened) result.reopened = reopened;
         }
 
         // Optional full refresh of existing postings (parser/normalizer upgrades).
+        // Location fields are left alone unless the raw string changed: the
+        // Locator may have resolved them better than the rules can.
         if (opts.refresh && keepPostings.length) {
           await ExternalJobs.bulkWrite(
-            keepPostings.map((p) => ({
-              updateOne: {
-                filter: { companySource: src._id, sourceJobId: p.sourceJobId },
-                update: {
-                  $set: {
-                    job: p.title,
-                    description: p.description,
-                    seniority: p.seniority || [],
-                    ...(p.postedAt ? { postedAt: p.postedAt } : {}),
-                    ...(p.applyUrl ? { applyUrl: p.applyUrl, url: p.applyUrl, finalUrl: p.applyUrl } : {}),
-                    ...locationFields(p),
+            keepPostings.map((p) => {
+              const loc = locationFields(p);
+              const sameRaw = storedRaw.has(p.sourceJobId) && storedRaw.get(p.sourceJobId) === loc.rawLocation;
+              return {
+                updateOne: {
+                  filter: { companySource: src._id, sourceJobId: p.sourceJobId },
+                  update: {
+                    $set: {
+                      job: p.title,
+                      description: p.description,
+                      seniority: p.seniority || [],
+                      ...(p.postedAt ? { postedAt: p.postedAt } : {}),
+                      ...(p.applyUrl ? { applyUrl: p.applyUrl, url: p.applyUrl, finalUrl: p.applyUrl } : {}),
+                      ...(sameRaw ? {} : loc),
+                    },
                   },
                 },
-              },
-            })),
+              };
+            }),
             { ordered: false }
           );
         }
 
         // Live reconciliation: for ATS types that return a complete board,
-        // a stored job no longer in the feed has been filled/closed — delete it
-        // (and cascade its application records). Guarded by postings.length > 0
-        // so a transient empty fetch can't wipe a company's jobs.
+        // a stored job no longer in the feed has been filled/closed — soft-close
+        // it (the row and its applications stay; readers filter active:false).
+        // Guarded by postings.length > 0 so a transient empty fetch can't close
+        // a company's jobs; an adapter that could not finish its pages threw
+        // above, so we never get here with a partial list.
         if (COMPLETE_FEED_ATS.has(src.atsType) && postings.length > 0) {
-          const gone = await ExternalJobs.find({
-            companySource: src._id,
-            sourceJobId: { $type: "string", $nin: keepIds },
-          }).select("_id");
-          if (gone.length) {
-            const goneIds = gone.map((g: any) => g._id);
-            await ExternalJobs.deleteMany({ _id: { $in: goneIds } });
-            await Candidates.deleteMany({
-              jobModel: "ExternalJobs",
-              jobId: { $in: goneIds },
-            });
-            result.removed = goneIds.length;
-          }
+          const gone = await ExternalJobs.updateMany(
+            { companySource: src._id, sourceJobId: { $type: "string", $nin: keepIds }, active: { $ne: false } },
+            { $set: { active: false, closedAt: new Date() } }
+          );
+          result.removed = gone.modifiedCount ?? 0;
         }
       } else {
         result.created = fresh.length; // would-create count
@@ -266,6 +294,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
           result.removed = await ExternalJobs.countDocuments({
             companySource: src._id,
             sourceJobId: { $type: "string", $nin: keepIds },
+            active: { $ne: false },
           });
         }
       }
@@ -289,6 +318,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
     }
 
     results.push(result);
+    await opts.heartbeat?.();
   }
 
   // More to do if we stopped early (budget) or this chunk didn't reach the end.

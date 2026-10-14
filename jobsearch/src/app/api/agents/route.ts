@@ -7,7 +7,7 @@ import { listAgents, startFlow, processQueue, type MessageType } from "@/app/lib
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // an admin drain may run one long handler (scout chunk, discovery)
 
 /** Admin: the agent roster, recent runs and queue depth. */
 export async function GET(req: NextRequest) {

@@ -190,12 +190,38 @@ describe("reliability", () => {
     const { runId } = await startFlow("fit.request", { userId: bad.userId, jobId: reactJob, jobModel: "ExternalJobs", context: bad }, { from: "coach" });
     const r = await processQueue({ runId });
     expect(r.handled).toBe(0);
-    expect(r.failed).toBe(3);
+    expect(r.failed).toBe(1); // one message failed (three attempts) — the admin alert counts messages, not retries
     const m: any = await AgentMessage.findOne({ runId }).lean();
     expect(m.status).toBe("failed");
     expect(m.attempts).toBe(3);
     expect(m.error).toMatch(/Cast|ObjectId/);
     expect(((await AgentRun.findById(runId).lean()) as any).status).toBe("failed");
+  });
+
+  it("reclaims an abandoned lease only while attempts remain; past the cap it is closed as failed", async () => {
+    const stale = new Date(Date.now() - 11 * 60_000);
+    const { runId } = await startFlow("catalog.sweep", {}, { from: "cron" });
+    const { runId: run2 } = await startFlow("catalog.sweep", {}, { from: "cron" });
+    await AgentMessage.updateOne({ runId }, { $set: { status: "processing", startedAt: stale, attempts: 1 } }); // a crashed worker
+    await AgentMessage.updateOne({ runId: run2 }, { $set: { status: "processing", startedAt: stale, attempts: 3 } }); // crashed three times already
+    const a = await processQueue({ runId });
+    expect(a.handled).toBe(1);
+    expect(((await AgentMessage.findOne({ runId }).lean()) as any).attempts).toBe(2);
+    const b = await processQueue({ runId: run2 });
+    expect(b.handled).toBe(0);
+    const dead: any = await AgentMessage.findOne({ runId: run2 }).lean();
+    expect(dead.status).toBe("failed");
+    expect(dead.error).toBe("exceeded attempts after timeout");
+    expect(((await AgentRun.findById(run2).lean()) as any).status).toBe("failed");
+  });
+
+  it("a live handler that heartbeats is never reclaimed", async () => {
+    // Simulate a long handler: the message is processing, startedAt is fresh (renewed) → not claimable.
+    const { runId } = await startFlow("catalog.sweep", {}, { from: "cron" });
+    await AgentMessage.updateOne({ runId }, { $set: { status: "processing", startedAt: new Date(), attempts: 1 } });
+    const r = await processQueue({ runId });
+    expect(r.handled).toBe(0);
+    expect(((await AgentMessage.findOne({ runId }).lean()) as any).status).toBe("processing");
   });
 
   it("claims messages atomically so two dispatchers never handle the same one", async () => {

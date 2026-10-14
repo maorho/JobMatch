@@ -4,7 +4,8 @@ export const EMBEDDING_MODEL = "text-embedding-3-small"; // 1536 dims, multiling
 
 let client: OpenAI | null = null;
 function getClient(): OpenAI {
-  if (!client) client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+  // A batch of 100 × 6k chars can take a while; a hung connection must not take a cron with it.
+  if (!client) client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000, maxRetries: 1 });
   return client;
 }
 

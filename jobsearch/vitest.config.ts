@@ -24,6 +24,8 @@ export default defineConfig({
       OPENAI_API_KEY: "test-key-not-used",
       CRON_SECRET: "test-cron-secret",
       JWT_SECRET: "test-jwt-secret-at-least-32-characters-long",
+      // The Applier is gated on an apply server in prod; the suites stub it.
+      FEATURE_AUTO_APPLY: "1",
     },
   },
 });

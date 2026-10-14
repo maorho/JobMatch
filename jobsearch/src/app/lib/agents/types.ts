@@ -21,12 +21,12 @@ export type Payloads = {
   "catalog.discover": { limit?: number; search?: boolean };
   /** Tracker: read one user's inbox and report application status changes. */
   "inbox.sync": { userId: string };
-  /** Scout → Locator: new postings landed since `since`. */
-  "jobs.ingested": { since: string; created: number; removed: number; sources: number };
-  /** Locator → Matcher: locations are clean, go embed. */
-  "jobs.normalized": { since: string; updatedDocs: number; unresolved: number };
-  /** Matcher → Notifier: new postings have vectors, tell people. */
-  "jobs.embedded": { since: string; embedded: number; remaining: number };
+  /** Scout → Locator: new postings landed since `since`. `company` marks a lightweight, company-scoped refresh (discovery): no digest. */
+  "jobs.ingested": { since: string; created: number; removed: number; sources: number; company?: string };
+  /** Locator → Matcher: locations are clean, go embed (`created`/`company` ride along from jobs.ingested). */
+  "jobs.normalized": { since: string; updatedDocs: number; unresolved: number; created?: number; company?: string };
+  /** Matcher → Notifier: new postings have vectors, tell people. The digest is skipped when `created` is 0 or the refresh was company-scoped. */
+  "jobs.embedded": { since: string; embedded: number; remaining: number; created?: number; company?: string };
   /** ResumeAI → Matcher: a user's résumé changed. */
   "resume.updated": { userId: string };
   /** Matcher → Notifier: a user's fresh top matches. */
@@ -70,9 +70,18 @@ export type Payloads = {
   /** Tracker → Notifier: ask this candidate about their applications / interviews. */
   "outcome.prompt": { userId: string; replies: { applicationId: string; title: string; company: string; daysAgo: number }[]; questions: { applicationId: string; title: string; company: string; stage: string }[] };
   /** Applier → Notifier: what happened with the auto-applications. */
-  "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number };
+  "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number; deferred?: number };
 };
 export type MessageType = keyof Payloads;
+
+/**
+ * Claim order. Work a person is waiting on (a fresh résumé, a graded attempt,
+ * an auto-apply pass and the notifications that close those loops) is picked
+ * before cron work, so a 400-source catalog refresh never makes a user wait.
+ */
+export const USER_PRIORITY = 10;
+const USER_TRIGGERED: ReadonlySet<MessageType> = new Set<MessageType>(["resume.updated", "coding.grade", "assignment.review", "apply.request", "candidate.matched", "practice.graded", "apply.report"]);
+export const priorityOf = (type: MessageType): number => (USER_TRIGGERED.has(type) ? USER_PRIORITY : 0);
 
 /** Who handles what. The bus routes by this table, so a message type has exactly one owner. */
 export const ROUTES: Record<MessageType, AgentName> = {
@@ -126,6 +135,14 @@ export type AgentContext = {
   reply<T extends MessageType>(type: T, payload: Payloads[T], says?: string): Promise<string>;
   /** Append a line to the current message's log (visible in the conversation view). */
   log(line: string): void;
+  /**
+   * Renew the lease on the current message. Long handlers call it between
+   * units of work (sources, candidates, companies, users) so another
+   * dispatcher never mistakes a busy message for a stuck one.
+   */
+  heartbeat(): Promise<void>;
+  /** When (ms since epoch) the dispatcher's budget ends; handlers stop starting new work near it. */
+  deadline: number;
 };
 
 export type AgentDef = {

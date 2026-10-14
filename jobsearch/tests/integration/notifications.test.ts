@@ -26,7 +26,7 @@ const asJson = async (res: Response) => ({ status: res.status, body: await res.j
 beforeAll(async () => {
   await resetDb();
   const c = await User.create({ username: "cand", email: "cand@test.dev", password: "x", fullname: "Cand", phone: "0" } as any);
-  const r = await User.create({ username: "rec", email: "rec@test.dev", password: "x", fullname: "Rec", phone: "0", recruiter: true, company: "Acme" } as any);
+  const r = await User.create({ username: "rec", email: "rec@test.dev", password: "x", fullname: "Rec", phone: "0", recruiter: true, approved: true, company: "Acme" } as any);
   const o = await User.create({ username: "other", email: "other@test.dev", password: "x", fullname: "Other", phone: "0" } as any);
   candidate = String(c._id); recruiter = String(r._id); other = String(o._id);
   const co = await Company.create({ companyName: "Acme" } as any).catch(() => Company.findOne({ companyName: "Acme" }));
@@ -112,6 +112,25 @@ describe("daily job-match digest", () => {
     // Second run the same day: nothing new → no second notification.
     const again = await asJson(await digestGET(new NextRequest(`${O}/api/notifications/job-matches?cron_secret=test-cron-secret`)));
     expect(again.body.notified).toBe(0);
+    expect(again.body.skippedRecent).toBe(1);
     expect(await Notification.countDocuments({ userId: candidate, type: "job_match" })).toBe(1);
+  });
+
+  it("waits at least 20h between digests for a person, and never stamps a quiet run", async () => {
+    const { runJobMatchDigest } = await import("@/app/lib/notifications/digest");
+    // A brand-new matching posting, but the person heard from us 2h ago → wait.
+    await ExternalJobs.create({ job: "Senior React Developer", company: "Acme", city: "Tel Aviv", country: "Israel", url: "u3", finalUrl: "u3", description: "React TypeScript frontend", skills: [], seniority: [], source: "greenhouse", sourceJobId: "d3", firstSeenAt: new Date(), embedding: fakeEmbed("Senior React Developer React TypeScript frontend developer") } as any);
+    await User.updateOne({ _id: candidate }, { $set: { lastMatchDigestAt: new Date(Date.now() - 2 * 3600_000) } });
+    expect((await runJobMatchDigest()).notified).toBe(0);
+    // 25h ago → due, and only now is the stamp moved.
+    const old = new Date(Date.now() - 25 * 3600_000);
+    await User.updateOne({ _id: candidate }, { $set: { lastMatchDigestAt: old } });
+    expect((await runJobMatchDigest()).notified).toBe(1);
+    expect((await User.findById(candidate))!.lastMatchDigestAt!.getTime()).toBeGreaterThan(old.getTime());
+    // A person with nothing new above the bar is not stamped, so a quiet day does not use up their window.
+    await User.updateOne({ _id: other }, { $set: { embedding: fakeEmbed("marine biologist coral reef diving research") } });
+    await User.updateOne({ _id: other }, { $unset: { lastMatchDigestAt: 1 } });
+    await runJobMatchDigest();
+    expect((await User.findById(other))!.lastMatchDigestAt).toBeFalsy();
   });
 });

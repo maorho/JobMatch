@@ -30,13 +30,17 @@ export const matcherAgent = registerAgent({
           remaining = r.remaining;
           if (remaining === 0 || r.processed === 0) break;
         }
+        // `created`/`company` ride along so the Notifier can skip the digest when there is nothing new
+        // or the refresh was one company's (discovery) — auto-apply below still sees the new postings.
         await ctx.send(
           "jobs.embedded",
-          { since: p.since, embedded, remaining },
-          `${embedded} postings now have vectors${remaining ? ` (${remaining} left for the next tick)` : ""}. Notifier — tell people about their new matches.`
+          { since: p.since, embedded, remaining, created: p.created, ...(p.company ? { company: p.company } : {}) },
+          p.company
+            ? `${embedded} postings embedded for ${p.company}. Notifier — nothing to digest for a single company; I'll still check auto-apply.`
+            : `${embedded} postings now have vectors${remaining ? ` (${remaining} left for the next tick)` : ""}. Notifier — tell people about their new matches.`
         );
         // Opted-in candidates: anything new that clears their bar goes to the Applier.
-        const picks = await autoApplyCandidatesSince(new Date(p.since));
+        const picks = p.created === 0 ? new Map<string, never[]>() : await autoApplyCandidatesSince(new Date(p.since));
         for (const [userId, jobs] of picks) {
           await ctx.send("apply.request", { userId, jobs, trigger: "new_postings" }, `Applier — ${jobs.length} new posting${jobs.length === 1 ? "" : "s"} clear this candidate's auto-apply bar (best ${jobs[0].score}%).`);
         }

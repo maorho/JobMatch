@@ -1,6 +1,7 @@
 import {
   Adapter,
   NormalizedPosting,
+  fetchWithTimeout,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -26,7 +27,7 @@ export const serpapi: Adapter = async (identifier, secondaryIdentifier) => {
   });
   if (secondaryIdentifier) params.set("location", secondaryIdentifier);
 
-  const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
+  const res = await fetchWithTimeout(`https://serpapi.com/search.json?${params.toString()}`, {
     cache: "no-store",
   });
   if (!res.ok) {

@@ -58,7 +58,7 @@ export async function PUT(req: NextRequest) {
   let runId: string | undefined;
   if (parsed.data.enabled && !wasOn) {
     runId = (await startFlow("resume.updated", { userId }, { from: "user", startedBy: `user:${userId}`, title: "Auto-apply switched on", says: "Auto-apply is on. Matcher — what clears the bar right now?" })).runId;
-    kick();
+    kick(runId);
   }
   return NextResponse.json({ ok: true, runId, ...(await snapshot(userId)) });
 }

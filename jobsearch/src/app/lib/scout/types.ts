@@ -30,11 +30,37 @@ export type AtsType =
   | "html"
   | "generic";
 
-/** An adapter turns a company's ATS identifier into normalized postings. */
+/**
+ * An adapter turns a company's ATS identifier into normalized postings.
+ * Contract: the list it resolves with is the COMPLETE current board. An
+ * adapter that cannot deliver that (a later page failed, a hard cap was hit
+ * before the reported total) must throw, so the source is recorded as errored
+ * and nothing is reconciled against a partial list.
+ */
 export type Adapter = (
   identifier: string,
   secondaryIdentifier?: string
 ) => Promise<NormalizedPosting[]>;
+
+export const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * `fetch` with a hard timeout. Every outbound call the Scout makes goes through
+ * here: an ATS that stops answering must cost one timeout, not a whole cron
+ * budget. Looks up `fetch` at call time so tests can stub the global.
+ */
+export async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw new Error(`timed out after ${Math.round(ms / 1000)}s: ${url}`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function decodeEntities(s: string): string {
   return (s || "")

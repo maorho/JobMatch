@@ -13,7 +13,20 @@ export const researcherAgent = registerAgent({
   async handle(msg, ctx) {
     if (msg.type === "companies.describe") {
       const { limit } = msg.payload as Payloads["companies.describe"];
-      const r = await describeMissingCompanies({ limit: limit ?? 15, log: ctx.log });
+      // Each profile is a web-search LLM call (~20–40s): only take on as many as fit the
+      // dispatcher's remaining budget, and renew the lease after every one.
+      const perCompanyMs = 30_000;
+      const affordable = Math.max(1, Math.floor((ctx.deadline - Date.now() - 10_000) / perCompanyMs));
+      const want = limit ?? 15;
+      const take = Math.min(want, affordable);
+      if (take < want) ctx.log(`Only ${take} of ${want} fit the remaining time budget; the rest wait for the next tick.`);
+      const r = await describeMissingCompanies({
+        limit: take,
+        log: (line) => {
+          ctx.log(line);
+          void ctx.heartbeat();
+        },
+      });
       return `Company profiles: ${r.described} written${r.skipped ? `, ${r.skipped} without enough to say` : ""}${r.failed ? `, ${r.failed} failed` : ""}; ${Math.max(0, r.due - r.described - r.skipped - r.failed)} of ${r.considered} still waiting.`;
     }
     const p = msg.payload as Payloads["research.request"];

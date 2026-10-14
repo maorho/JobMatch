@@ -8,6 +8,8 @@ import { loadJob } from "@/app/lib/jobs/loadJob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// An explicit apply runs the dry run and the real submit inline (up to 2 × 210s against the apply server).
+export const maxDuration = 300;
 
 /** GET → the user's auto-application log (newest first). */
 export async function GET(req: NextRequest) {
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
   }
   if (body?.action === "run") {
     const { runId } = await startFlow("resume.updated", { userId }, { from: "user", startedBy: `user:${userId}`, title: "Auto-apply: run now", says: "The candidate asked for a pass over the catalog. Matcher — what clears the bar?" });
-    kick();
+    kick(runId);
     return NextResponse.json({ ok: true, runId });
   }
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

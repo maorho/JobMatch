@@ -100,4 +100,23 @@ describe("company discovery", () => {
     expect(run.messages[0].result).toMatch(/probed 1: 0 new sources/);
     expect(types).toHaveLength(1); // nothing found → no refresh queued
   });
+
+  it("links a candidate whose board is already a source instead of renaming it, and stops probing near the deadline", async () => {
+    // "MoonActive" is a different candidate key from "Moon Active", but its slug hits the board we already have.
+    await Contact.create({ userId: dana, fullName: "G", company: "MoonActive", companyKey: "moonactive", dedupeKey: "g" } as any);
+    await Contact.create({ userId: dana, fullName: "H", company: "Umbrella Corp", companyKey: "umbrella", dedupeKey: "h" } as any);
+    const r = await discoverCompanies({ limit: 10, search: false, fetchImpl: fakeFetch as any, detect: noDetect });
+    expect(r.exists).toBe(1);
+    expect(r.found).toEqual([]);
+    const c: any = await DiscoveryCandidate.findOne({ key: "moonactive" }).lean();
+    expect(c.status).toBe("exists");
+    expect(String(c.sourceId)).toBe(String((await CompanySource.findOne({ identifier: "moonactive" }))!._id));
+    expect(((await CompanySource.findOne({ identifier: "moonactive" }).lean()) as any).companyName).toMatch(/^Moon Active/); // not renamed
+    expect(await CompanySource.countDocuments()).toBe(3);
+    // Out of time before the first probe: nothing probed, everything still pending.
+    await Contact.create({ userId: dana, fullName: "I", company: "Stark Industries", companyKey: "stark", dedupeKey: "i" } as any);
+    const late = await discoverCompanies({ limit: 10, search: false, fetchImpl: fakeFetch as any, detect: noDetect, deadline: Date.now() + 1000 });
+    expect(late).toMatchObject({ probed: 0, stoppedEarly: true });
+    expect(late.pending).toBeGreaterThanOrEqual(1);
+  });
 });

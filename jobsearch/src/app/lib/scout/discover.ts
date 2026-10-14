@@ -28,7 +28,12 @@ export type DiscoverDeps = {
   detect?: (url: string) => Promise<DetectedSource | null>;
   client?: ResearchClient | null;
   log?: (line: string) => void;
+  /** Renew the bus lease between candidates (each probe is several network calls). */
+  heartbeat?: () => Promise<void>;
 };
+
+/** Stop starting new probes this close to the dispatcher's deadline. */
+const DEADLINE_MARGIN_MS = 15_000;
 
 /** Process-wide defaults for the deps (tests point them at fakes so the agent path never touches the network). */
 let discoverDefaults: DiscoverDeps = {};
@@ -207,10 +212,14 @@ export async function probeCandidate(c: any, rawDeps: DiscoverDeps = {}): Promis
   return null;
 }
 
-export type DiscoverResult = { collected: { contacts: number; insiders: number; search: number; topic?: string }; probed: number; found: { name: string; atsType: string; identifier: string; jobs: number }[]; notFound: number; pending: number };
+export type DiscoverResult = { collected: { contacts: number; insiders: number; search: number; topic?: string }; probed: number; found: { name: string; atsType: string; identifier: string; jobs: number }[]; notFound: number; exists: number; pending: number; stoppedEarly: boolean };
 
-/** The whole pass: collect new names, probe up to `limit` of the pending ones, add the hits as sources. */
-export async function discoverCompanies(rawOpts: { limit?: number; search?: boolean } & DiscoverDeps = {}): Promise<DiscoverResult> {
+/**
+ * The whole pass: collect new names, probe up to `limit` of the pending ones,
+ * add the hits as sources. `deadline` (ms timestamp) stops the probing early;
+ * whatever was not probed stays pending for the next pass.
+ */
+export async function discoverCompanies(rawOpts: { limit?: number; search?: boolean; deadline?: number } & DiscoverDeps = {}): Promise<DiscoverResult> {
   const opts = withDefaults(rawOpts);
   await connectToDatabase();
   const collected = await collectCandidates(opts);
@@ -218,15 +227,36 @@ export async function discoverCompanies(rawOpts: { limit?: number; search?: bool
   const batch: any[] = await DiscoveryCandidate.find({ status: "pending", attempts: { $lt: 3 } }).sort({ createdAt: 1 }).limit(limit).lean();
   const found: DiscoverResult["found"] = [];
   let notFound = 0;
+  let exists = 0;
+  let probed = 0;
+  let stoppedEarly = false;
   for (const c of batch) {
+    if (opts.deadline && Date.now() > opts.deadline - DEADLINE_MARGIN_MS) {
+      stoppedEarly = true;
+      opts.log?.(`Out of time: ${batch.length - probed} candidate${batch.length - probed === 1 ? "" : "s"} left for the next pass.`);
+      break;
+    }
+    await opts.heartbeat?.();
+    probed++;
     const hit = await probeCandidate(c, opts).catch((e) => {
       opts.log?.(`${c.name}: probe failed — ${(e as Error)?.message}`);
       return null;
     });
     if (hit) {
+      const key = { atsType: hit.atsType, identifier: hit.identifier };
+      // The board is already a source under another name (a subsidiary, a renamed company,
+      // or two contacts' spellings): never rename or re-enable it, just link the candidate.
+      const prior: any = await CompanySource.findOne(key).select("_id companyName").lean();
+      if (prior) {
+        await DiscoveryCandidate.updateOne({ _id: c._id }, { $set: { status: "exists", sourceId: prior._id, tried: c.tried || [], lastTriedAt: new Date(), note: `${hit.atsType}/${hit.identifier} is already the source "${prior.companyName}"` }, $inc: { attempts: 1 } });
+        exists++;
+        opts.log?.(`= ${c.name} → ${hit.atsType}/${hit.identifier} already covered as "${prior.companyName}"`);
+        continue;
+      }
+      // $setOnInsert: a concurrent pass that wins the race keeps its own values.
       const source: any = await CompanySource.findOneAndUpdate(
-        { atsType: hit.atsType, identifier: hit.identifier },
-        { $set: { companyName: c.name, atsType: hit.atsType, identifier: hit.identifier, ...(hit.secondaryIdentifier ? { secondaryIdentifier: hit.secondaryIdentifier } : {}), careersUrl: hit.careersUrl, ...(c.domain ? { domain: normalizeDomain(c.domain) } : {}), enabled: true } },
+        key,
+        { $setOnInsert: { ...key, companyName: c.name, ...(hit.secondaryIdentifier ? { secondaryIdentifier: hit.secondaryIdentifier } : {}), careersUrl: hit.careersUrl, domain: c.domain ? normalizeDomain(c.domain) : "", enabled: true } },
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       await DiscoveryCandidate.updateOne({ _id: c._id }, { $set: { status: "found", sourceId: source._id, tried: c.tried || [], lastTriedAt: new Date(), note: `${hit.atsType}/${hit.identifier}${hit.jobs ? ` · ${hit.jobs} postings` : ""}` }, $inc: { attempts: 1 } });
@@ -239,5 +269,5 @@ export async function discoverCompanies(rawOpts: { limit?: number; search?: bool
     }
   }
   const pending = await DiscoveryCandidate.countDocuments({ status: "pending", attempts: { $lt: 3 } });
-  return { collected, probed: batch.length, found, notFound, pending };
+  return { collected, probed, found, notFound, exists, pending, stoppedEarly };
 }

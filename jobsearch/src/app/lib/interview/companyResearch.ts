@@ -69,10 +69,13 @@ Return STRICT JSON only: {"summary","whatTheyDo","products":[],"sizeAndStage","r
 export type ResearchClient = { responses: { create: (args: any) => Promise<any> } };
 type Client = ResearchClient;
 
+/** Web-search calls are slow but must still end: one retry, a minute each. */
+const openaiOpts = () => ({ apiKey: process.env.OPENAI_API_KEY, timeout: 60_000, maxRetries: 1 });
+
 /** The OpenAI Responses client, or null when there is no key (and always null under test unless a fake is injected). */
 export function researchClient(): Client | null {
   if (!process.env.OPENAI_API_KEY || process.env.NODE_ENV === "test") return null;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) as unknown as Client;
+  return new OpenAI(openaiOpts()) as unknown as Client;
 }
 
 /** Web search can't run in JSON mode; when the free-text answer isn't clean JSON, a cheap second pass converts it. */
@@ -109,7 +112,7 @@ export async function researchCompany(company: string, opts: { domain?: string; 
     const cached: any = await CompanyBrief.findOne({ key, createdAt: { $gt: new Date(Date.now() - BRIEF_TTL_DAYS * 864e5) } }).lean();
     if (cached) return { brief: cached.brief, cached: true, searched: !!cached.searched };
   }
-  const client = opts.client || (process.env.OPENAI_API_KEY ? (new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) as unknown as Client) : null); // (no test guard here: the research tests inject a fake)
+  const client = opts.client || (process.env.OPENAI_API_KEY ? (new OpenAI(openaiOpts()) as unknown as Client) : null); // (no test guard here: the research tests inject a fake)
   if (!client) return null;
   const { text, searched } = await callWithSearch(client, buildResearchPrompt(name, opts.domain, opts.hints));
   let parsed = briefSchema.safeParse(safeJson(text));

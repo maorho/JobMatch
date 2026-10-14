@@ -4,6 +4,8 @@
  * (Greenhouse, Lever, Comeet) and reports honestly when a form needs a
  * human (custom required questions, captcha, unknown layout).
  */
+import { applyServerBase, applyServerToken } from "./server";
+
 export type ApplyProfile = { firstName: string; lastName: string; email: string; phone: string; linkedin?: string };
 
 export type FormFieldInfo = { selector: string; label: string; type: string; required: boolean; options?: string[] };
@@ -12,6 +14,12 @@ export type SubmitResult = {
   /** `ready` only comes back from a dry run: the form is filled and nothing required is missing. */
   status: "submitted" | "needs_user" | "failed" | "ready";
   ats: string;
+  /**
+   * The failure is the apply server's, not the form's (unreachable, timed
+   * out, 503 Busy, 5xx, not configured): worth retrying on a later pass,
+   * never a verdict on the posting.
+   */
+  transient?: boolean;
   /** "agent" when the computer-use style agent handled the form. */
   mode?: string;
   steps?: { step: number; url: string; thought: string; status: string; applied: string[] }[];
@@ -40,11 +48,19 @@ export type SubmitInput = {
   company?: string;
 };
 
+/**
+ * Must exceed the server's own budget (server/index.ts: 40s page load + up to
+ * 150s of form agent + submit waits), otherwise a slow-but-successful submit
+ * is reported as a timeout and the user is told to check their inbox for nothing.
+ */
+export const APPLY_CLIENT_TIMEOUT_MS = 210_000;
+
 export async function submitExternalApplication(input: SubmitInput): Promise<SubmitResult> {
-  const base = process.env.PUPPETEER_SERVER_URL || "http://localhost:4000";
-  const token = process.env.SCRAPER_TOKEN || process.env.CRON_SECRET || "";
+  const base = applyServerBase();
+  if (!base) return { status: "failed", ats: "", transient: true, reason: "apply server not configured" };
+  const token = applyServerToken();
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 120_000);
+  const t = setTimeout(() => controller.abort(), APPLY_CLIENT_TIMEOUT_MS);
   try {
     const res = await fetch(`${base}/api/apply`, {
       method: "POST",
@@ -65,11 +81,12 @@ export async function submitExternalApplication(input: SubmitInput): Promise<Sub
       cache: "no-store",
     });
     const data: any = await res.json().catch(() => ({}));
-    if (!res.ok) return { status: "failed", ats: data?.ats || "", reason: data?.error || `apply server returned ${res.status}` };
+    // 503 is the server's "Busy, try again"; any 5xx is its problem, not the form's.
+    if (!res.ok) return { status: "failed", ats: data?.ats || "", transient: res.status >= 500, reason: data?.error || `apply server returned ${res.status}` };
     const status = ["submitted", "needs_user", "ready"].includes(data?.status) ? data.status : "failed";
     return { status, ats: data?.ats || "", mode: data?.mode, steps: data?.steps, reason: data?.reason, confirmation: data?.confirmation, fields: data?.fields, missing: data?.missing, captchaPresent: data?.captchaPresent };
   } catch (e: any) {
-    return { status: "failed", ats: "", reason: e?.name === "AbortError" ? "apply server timed out" : e?.message || "apply server unreachable" };
+    return { status: "failed", ats: "", transient: true, reason: e?.name === "AbortError" ? "apply server timed out" : `apply server unreachable: ${e?.message || e}` };
   } finally {
     clearTimeout(t);
   }

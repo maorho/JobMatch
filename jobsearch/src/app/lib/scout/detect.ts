@@ -1,4 +1,5 @@
-import { AtsType } from "./types";
+import { AtsType, fetchWithTimeout } from "./types";
+import { applyServerBase, applyServerToken } from "@/app/lib/apply/server";
 
 export type DetectedSource = {
   atsType: AtsType;
@@ -83,7 +84,7 @@ export function detectFromUrl(raw: string): DetectedSource | null {
 
 async function scanHtml(raw: string): Promise<DetectedSource | null> {
   try {
-    const res = await fetch(raw, {
+    const res = await fetchWithTimeout(raw, {
       headers: { "User-Agent": "Mozilla/5.0" },
       cache: "no-store",
     });
@@ -98,13 +99,16 @@ async function scanHtml(raw: string): Promise<DetectedSource | null> {
 
 /** Render the page (Puppeteer) and match ATS from captured network/HTML. */
 async function detectViaRenderer(raw: string): Promise<DetectedSource | null> {
-  const base = process.env.PUPPETEER_SERVER_URL || "http://localhost:4000";
-  const token = process.env.SCRAPER_TOKEN || process.env.CRON_SECRET || "";
+  const base = applyServerBase();
+  if (!base) return null; // production without a configured server: skip, logged once
+  const token = applyServerToken();
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
   try {
-    const res = await fetch(
+    // The renderer loads the page and waits a few seconds itself: allow more than an API call.
+    const res = await fetchWithTimeout(
       `${base}/api/detect-ats?url=${encodeURIComponent(raw)}${tokenParam}`,
-      { cache: "no-store" }
+      { cache: "no-store" },
+      45_000
     );
     if (!res.ok) return null;
     const data = await res.json();

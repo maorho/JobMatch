@@ -4,7 +4,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import AgentMessage from "@/app/models/AgentMessage";
 import AgentRun from "@/app/models/AgentRun";
 import { getAgent, ownerOf } from "./registry";
-import type { AgentContext, BusMessage, MessageType, Payloads, Sender } from "./types";
+import { priorityOf, type AgentContext, type BusMessage, type MessageType, type Payloads, type Sender } from "./types";
 
 /**
  * The agent bus. Agents never call each other directly: they post messages
@@ -14,7 +14,14 @@ import type { AgentContext, BusMessage, MessageType, Payloads, Sender } from "./
  * crashed process just resumes from the queue.
  */
 const MAX_ATTEMPTS = 3;
-const STUCK_AFTER_MS = 10 * 60 * 1000; // a "processing" message older than this is retried
+/**
+ * Lease: a "processing" message whose `startedAt` is older than this is
+ * considered abandoned and reclaimed. Long handlers renew it via
+ * `ctx.heartbeat()` (which bumps `startedAt`), so the worker and the cron
+ * tick never double-process a message that is merely slow.
+ */
+const STUCK_AFTER_MS = 10 * 60 * 1000;
+const staleBefore = () => new Date(Date.now() - STUCK_AFTER_MS);
 
 export type SendInput<T extends MessageType> = {
   runId: string;
@@ -45,6 +52,7 @@ export async function send<T extends MessageType>(input: SendInput<T>): Promise<
     says: input.says || "",
     replyTo: input.replyTo,
     parentId: input.parentId,
+    priority: priorityOf(input.type), // harmless until the schema carries the field (then claims sort by it)
   });
   await AgentRun.updateOne({ _id: input.runId }, { $inc: { "stats.messages": 1 }, $set: { status: "running" }, $unset: { finishedAt: 1 } });
   return String(doc._id);
@@ -61,11 +69,13 @@ export async function startFlow<T extends MessageType>(
   return { runId, messageId };
 }
 
+/** `failed` counts distinct messages that failed at least once in this pass, not attempts. */
 export type ProcessResult = { handled: number; failed: number; remaining: number };
 
 /**
- * Drain the queue, oldest first, until it is empty or `budgetMs` is spent.
- * Safe to run from several processes: a message is claimed atomically.
+ * Drain the queue — user-triggered work first, then oldest first — until it
+ * is empty or `budgetMs` is spent. Safe to run from several processes: a
+ * message is claimed atomically and leased (see STUCK_AFTER_MS).
  */
 export async function processQueue(opts: { budgetMs?: number; max?: number; runId?: string } = {}): Promise<ProcessResult> {
   await connectToDatabase();
@@ -73,18 +83,32 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
   const max = opts.max ?? 200;
   const deadline = Date.now() + budgetMs;
   const result: ProcessResult = { handled: 0, failed: 0, remaining: 0 };
+  const failedIds = new Set<string>();
   const touchedRuns = new Set<string>();
+  const scope = opts.runId ? { runId: opts.runId } : {};
 
-  while (result.handled + result.failed < max && Date.now() < deadline) {
+  // Abandoned messages that already used every attempt are closed, not reclaimed forever.
+  const exhausted: any[] = await AgentMessage.find({ ...scope, status: "processing", startedAt: { $lt: staleBefore() }, attempts: { $gte: MAX_ATTEMPTS } }).select("_id runId").lean();
+  if (exhausted.length) {
+    await AgentMessage.updateMany({ _id: { $in: exhausted.map((m) => m._id) } }, { $set: { status: "failed", error: "exceeded attempts after timeout", finishedAt: new Date() } });
+    for (const m of exhausted) {
+      touchedRuns.add(String(m.runId));
+      await AgentRun.updateOne({ _id: m.runId }, { $inc: { "stats.failed": 1 } });
+    }
+  }
+
+  let claims = 0;
+  while (claims < max && Date.now() < deadline) {
     const claimed: any = await AgentMessage.findOneAndUpdate(
       {
-        ...(opts.runId ? { runId: opts.runId } : {}),
-        $or: [{ status: "queued" }, { status: "processing", startedAt: { $lt: new Date(Date.now() - STUCK_AFTER_MS) } }],
+        ...scope,
+        $or: [{ status: "queued" }, { status: "processing", startedAt: { $lt: staleBefore() }, attempts: { $lt: MAX_ATTEMPTS } }],
       },
       { $set: { status: "processing", startedAt: new Date() }, $inc: { attempts: 1 } },
-      { sort: { createdAt: 1 }, new: true }
+      { sort: { priority: -1, createdAt: 1 }, new: true }
     ).lean();
     if (!claimed) break;
+    claims++;
 
     const msg = toBusMessage(claimed);
     touchedRuns.add(msg.runId);
@@ -94,6 +118,10 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
       send: (type, payload, says) => send({ runId: msg.runId, from: msg.to, type, payload, says, parentId: msg._id }),
       reply: (type, payload, says) => send({ runId: msg.runId, from: msg.to, type, payload, says, parentId: msg._id, replyTo: msg._id }),
       log: (line) => log.push(line),
+      heartbeat: async () => {
+        await AgentMessage.updateOne({ _id: msg._id, status: "processing" }, { $set: { startedAt: new Date() } });
+      },
+      deadline,
     };
 
     try {
@@ -114,13 +142,14 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
         { $set: { status: giveUp ? "failed" : "queued", error: message, result: log.join("\n").slice(0, 2000), finishedAt: giveUp ? new Date() : undefined } }
       );
       if (giveUp) await AgentRun.updateOne({ _id: msg.runId }, { $inc: { "stats.failed": 1 } });
-      result.failed++;
+      failedIds.add(msg._id);
       console.error(`[agents] ${msg.to} failed on ${msg.type} (attempt ${msg.attempts}):`, message);
     }
   }
 
+  result.failed = failedIds.size;
   for (const runId of touchedRuns) await settleRun(runId);
-  result.remaining = await AgentMessage.countDocuments({ status: "queued", ...(opts.runId ? { runId: opts.runId } : {}) });
+  result.remaining = await AgentMessage.countDocuments({ status: "queued", ...scope });
   return result;
 }
 
@@ -148,13 +177,16 @@ function toBusMessage(doc: any): BusMessage {
 }
 
 /**
- * Best-effort nudge after a user action: drain a little of the queue right
- * away so the user sees the agents react, without blocking the response.
- * Off in tests (they drive the bus explicitly) and when AGENTS_INLINE=0.
+ * Best-effort nudge after a user action: drain THAT run right away so the
+ * user sees the agents react, without blocking the response and without a
+ * request handler picking up unrelated cron work (the scout chunks belong to
+ * the worker / tick). Off in tests (they drive the bus explicitly) and when
+ * AGENTS_INLINE=0.
  */
-export function kick(opts: { budgetMs?: number } = {}): void {
+export function kick(runId: string, opts: { budgetMs?: number } = {}): void {
   if (process.env.NODE_ENV === "test" || process.env.AGENTS_INLINE === "0") return;
-  const run = () => processQueue({ budgetMs: opts.budgetMs ?? 8_000, max: 20 }).catch((e) => console.error("[agents] kick failed:", e?.message));
+  if (!runId) return;
+  const run = () => processQueue({ runId, budgetMs: opts.budgetMs ?? 8_000, max: 20 }).catch((e) => console.error("[agents] kick failed:", e?.message));
   try {
     // Next's `after` keeps the function alive past the response on serverless;
     // it throws outside a request scope, in which case we just run inline.

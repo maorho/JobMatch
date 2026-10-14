@@ -1,24 +1,29 @@
-import { Adapter, NormalizedPosting, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
 
 /**
  * SmartRecruiters public postings API.
  * List:   https://api.smartrecruiters.com/v1/companies/{company}/postings
  * Detail: https://api.smartrecruiters.com/v1/companies/{company}/postings/{id}
+ * Complete-feed adapter: any failed page, or a board bigger than the cap, throws.
  */
+const LIMIT = 100;
+const MAX_RESULTS = 1000;
+
 export const smartrecruiters: Adapter = async (identifier) => {
   const base = `https://api.smartrecruiters.com/v1/companies/${encodeURIComponent(
     identifier
   )}/postings`;
 
   const out: NormalizedPosting[] = [];
-  const LIMIT = 100;
-  for (let offset = 0; offset < 1000; offset += LIMIT) {
-    const res = await fetch(`${base}?limit=${LIMIT}&offset=${offset}`, {
+  let total = Infinity;
+  for (let offset = 0; offset < MAX_RESULTS; offset += LIMIT) {
+    const res = await fetchWithTimeout(`${base}?limit=${LIMIT}&offset=${offset}`, {
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`SmartRecruiters ${identifier}: HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`SmartRecruiters ${identifier}: HTTP ${res.status} at offset ${offset}`);
     const data = await res.json();
     const content: any[] = Array.isArray(data?.content) ? data.content : [];
+    if (typeof data?.totalFound === "number") total = data.totalFound;
     if (content.length === 0) break;
 
     for (const p of content) {
@@ -27,7 +32,7 @@ export const smartrecruiters: Adapter = async (identifier) => {
       // One detail fetch per posting for the description (best-effort).
       let description = "";
       try {
-        const dr = await fetch(`${base}/${p.id}`, { cache: "no-store" });
+        const dr = await fetchWithTimeout(`${base}/${p.id}`, { cache: "no-store" });
         if (dr.ok) {
           const detail = await dr.json();
           const sections = detail?.jobAd?.sections || {};
@@ -55,7 +60,10 @@ export const smartrecruiters: Adapter = async (identifier) => {
         postedAt: p.releasedDate ? new Date(p.releasedDate) : undefined,
       });
     }
-    if (content.length < LIMIT) break;
+    if (content.length < LIMIT || out.length >= total) break;
+  }
+  if (out.length < total && out.length >= MAX_RESULTS) {
+    throw new Error(`SmartRecruiters ${identifier}: ${total} postings exceed the ${MAX_RESULTS} cap — list would be partial`);
   }
   return out;
 };

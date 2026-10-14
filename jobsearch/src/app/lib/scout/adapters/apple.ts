@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout } from "../types";
 
 /**
  * Apple Jobs (verified 2026-10-07).
@@ -66,16 +66,15 @@ export const apple: Adapter = async (identifier, secondaryIdentifier) => {
   const seen = new Set<string>();
   let total = Infinity;
 
-  for (let page = 1; page <= MAX_PAGES && out.length < total; page++) {
+  let page = 1;
+  for (; page <= MAX_PAGES && out.length < total; page++) {
     const url = `${BASE}?location=${encodeURIComponent(location)}&page=${page}${extra}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": UA, Accept: "text/html" },
       cache: "no-store",
     });
-    if (!res.ok) {
-      if (page === 1) throw new Error(`Apple jobs: HTTP ${res.status}`);
-      break;
-    }
+    // Any failed page makes the list partial — complete-feed contract: throw.
+    if (!res.ok) throw new Error(`Apple jobs: HTTP ${res.status} on page ${page}`);
     const { results, total: t } = extract(await res.text());
     if (t) total = t;
     if (results.length === 0) break;
@@ -109,6 +108,9 @@ export const apple: Adapter = async (identifier, secondaryIdentifier) => {
 
     if (results.length < PAGE_SIZE) break;
     await new Promise((r) => setTimeout(r, 300)); // be polite
+  }
+  if (page > MAX_PAGES && out.length < total) {
+    throw new Error(`Apple jobs: ${total} postings exceed the ${MAX_PAGES}-page cap — list would be partial`);
   }
 
   return out;

@@ -33,4 +33,31 @@ describe("isIsraelOrRemote", () => {
     const longDesc = "x".repeat(700) + " remote";
     expect(isIsraelOrRemote({ city: "Austin", country: "US", description: longDesc })).toBe(false);
   });
+
+  it("knows the Israeli cities ATS feeds actually use, with loose apostrophes and hyphens", () => {
+    const cities = [
+      "Rosh Haayin", "Rosh Ha'ayin", "Rosh Ha-Ayin", "Hod Hasharon", "Hod HaSharon", "Kiryat Ono", "Bnei Brak", "Or Yehuda", "Yokneam", "Yokne'am", "Yoqneam",
+      "Kfar Saba", "Kfar Sava", "Ra'anana", "Raanana", "Modi'in", "Modiin", "Rehovot", "Ness Ziona", "Nes Ziona", "Yavne", "Ashdod", "Ashkelon",
+      "Beer Sheva", "Be'er Sheva", "Beersheba", "Beer-Sheva", "Nazareth", "Karmiel", "Migdal HaEmek", "Migdal Ha'emek", "Caesarea", "Binyamina", "Airport City",
+      "Kiryat Gat", "Lod", "Ramla", "Rishon LeZion", "Rishon Lezion", "Rishon LeTsiyon", "Holon", "Bat Yam", "Givatayim", "Ramat Gan", "Ramat-Gan",
+      "Petah Tikva", "Petach Tikvah", "Petah Tiqwa", "Herzliya", "Herzlia", "Hertzliya", "Herzliya Pituach", "Netanya", "Hadera", "Haifa", "Hefa",
+      "Tirat Carmel", "Nesher", "Jerusalem", "Yerushalayim", "Eilat", "Sderot", "Tel Aviv-Yafo", "Tel-Aviv", "TEL AVIV",
+    ];
+    for (const city of cities) expect(isIsraelOrRemote({ city, country: "" }), city).toBe(true);
+    for (const city of ["ראש העין", "הוד השרון", "קרית אונו", "בני ברק", "ראשון לציון", "בת ים", "גבעתיים", "נס ציונה"]) expect(isIsraelOrRemote({ city, country: "" }), city).toBe(true);
+    // Still not Israel.
+    expect(isIsraelOrRemote({ city: "Lodz", country: "Poland" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Hadersfield", country: "UK" })).toBe(false);
+  });
+
+  it("does not treat a negated remote mention as remote", () => {
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "This is not a remote position." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "No remote work. On-site only." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Non-remote role, office based" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "On-site only" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "ברלין", country: "גרמניה", description: "לא מרחוק" })).toBe(false);
+    // A real remote signal next to a negated one still counts.
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Not remote-only: hybrid, remote 3 days a week" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Remote", country: "Germany" })).toBe(true);
+  });
 });

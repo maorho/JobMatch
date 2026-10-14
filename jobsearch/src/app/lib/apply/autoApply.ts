@@ -11,6 +11,8 @@ import { tailorResumeToJob } from "@/app/lib/resume/tailor";
 import { renderResumePdf } from "@/app/lib/resume/renderPdf";
 import { isStructuredResume, type StructuredResume } from "@/app/lib/resume/structuredToText";
 import { submitExternalApplication, splitName } from "./submit";
+import { checkApplyServer, type ApplyServerHealth } from "./server";
+import { FEATURES } from "@/app/lib/flags";
 import { rankJobs } from "@/app/lib/matcher/hybrid";
 import { inferCandidateLevel } from "@/app/lib/matcher/level";
 import { answerFormFields } from "./formAgent";
@@ -24,6 +26,8 @@ export type ApplyOutcome = {
   failed: number;
   skipped: number;
   capped: number;
+  /** Postings we could not even try (apply server down/busy/timed out before any click): no row is written, the next pass retries them. */
+  deferred: number;
   disabled?: boolean;
 };
 
@@ -31,9 +35,15 @@ export type AutoApplyDeps = {
   submit?: typeof submitExternalApplication;
   tailor?: typeof tailorResumeToJob;
   answer?: typeof answerFormFields;
+  /** Reachability probe run once per pass before any tailoring (tests inject; default skips under NODE_ENV=test). */
+  health?: () => Promise<ApplyServerHealth>;
   /** The user explicitly asked to apply to these postings (MCP/UI): ignore the opt-in switch and the score bar; keep dedupe + cap. */
   explicit?: boolean;
 };
+
+/** Failures that are the apply server's, not the form's — retry later, never record a verdict. */
+const transientFailure = (r: { status: string; transient?: boolean; reason?: string }) =>
+  r.status === "failed" && (r.transient === true || /unreachable|timed out|not configured|returned 5\d\d|busy/i.test(r.reason || ""));
 
 const startOfToday = () => {
   const d = new Date();
@@ -53,10 +63,22 @@ export const UNKNOWN_OUTCOME_REASON = "ייתכן שההגשה נשלחה; בד�
 
 export async function autoApplyForUser(userId: string, candidates: ApplyCandidate[], deps: AutoApplyDeps = {}): Promise<ApplyOutcome> {
   await connectToDatabase();
-  const out: ApplyOutcome = { submitted: [], needsUser: [], failed: 0, skipped: 0, capped: 0 };
+  const out: ApplyOutcome = { submitted: [], needsUser: [], failed: 0, skipped: 0, capped: 0, deferred: 0 };
+  if (!FEATURES.autoApply) {
+    console.warn(`[autoApply] feature is off (FEATURE_AUTO_APPLY / PUPPETEER_SERVER_URL unset) — ${candidates.length} posting${candidates.length === 1 ? "" : "s"} for user ${userId} not applied to`);
+    return { ...out, skipped: candidates.length, disabled: true };
+  }
   const user: any = await User.findById(userId).select("+resumeText +resumeStructured fullname email phone currentJob autoApply").lean();
   if (!user) return { ...out, skipped: candidates.length, disabled: true };
   if (!deps.explicit && !user.autoApply?.enabled) return { ...out, skipped: candidates.length, disabled: true };
+
+  // One reachability probe per pass, taken lazily before the first external posting
+  // needs it, so an unreachable server costs nothing (no tailor LLM call per job).
+  let health: ApplyServerHealth | null = null;
+  const serverHealthy = async () => {
+    if (!health) health = await (deps.health || (process.env.NODE_ENV === "test" ? async () => ({ ok: true }) : checkApplyServer))();
+    return health;
+  };
 
   const minScore = deps.explicit ? 0 : user.autoApply?.minScore ?? 75;
   const dailyCap = user.autoApply?.dailyCap ?? 5;
@@ -132,6 +154,13 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       out.failed++;
       continue;
     }
+    const h = await serverHealthy();
+    if (!h.ok) {
+      // Nothing is written: the posting stays eligible and the next pass retries it.
+      if (out.deferred === 0) console.warn(`[autoApply] apply server not available (${h.reason}) — deferring external postings for user ${userId}`);
+      out.deferred++;
+      continue;
+    }
 
     // Résumé to attach: tailored to the posting when we can, else the stored one.
     let resume: StructuredResume | null = baseResume;
@@ -161,6 +190,12 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
 
     // Phase 1: fill the standard fields and see what else the form wants.
     let r = await submit({ ...base, dryRun: true });
+    if (transientFailure(r)) {
+      // Before any click, a server-side failure (down, busy, timed out) is not a verdict: no row, retry next pass.
+      console.warn(`[autoApply] deferred ${c.title} @ ${c.company}: ${r.reason}`);
+      out.deferred++;
+      continue;
+    }
     let answers: { selector: string; value: string }[] = [];
     let unanswered: string[] = [];
     if (r.status === "needs_user" && r.fields?.length) {
@@ -184,8 +219,8 @@ export async function autoApplyForUser(userId: string, candidates: ApplyCandidat
       r = { ...r, reason: `The form asks for: ${unanswered.join(", ")}.` };
     }
     // The click may have landed even though the answer never came back: that is "unknown", not "failed".
-    if (pressed && r.status === "failed" && /timed out/i.test(r.reason || "")) {
-      await record("needs_user", { url, ats: r.ats, note: `Outcome unknown: the apply server timed out after the submit step. Not resent. Check the inbox for a confirmation before applying by hand.`, resumeStructured: resume });
+    if (pressed && transientFailure(r)) {
+      await record("needs_user", { url, ats: r.ats, note: `Outcome unknown: the apply server ${/timed out/i.test(r.reason || "") ? "timed out" : `did not answer (${r.reason || "no reason"})`} after the submit step. Not resent. Check the inbox for a confirmation before applying by hand.`, resumeStructured: resume });
       out.needsUser.push({ jobId: c.jobId, title: c.title, company: c.company, reason: UNKNOWN_OUTCOME_REASON });
       continue;
     }

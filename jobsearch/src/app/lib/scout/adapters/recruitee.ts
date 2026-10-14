@@ -1,6 +1,7 @@
 import {
   Adapter,
   NormalizedPosting,
+  fetchWithTimeout,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -11,7 +12,7 @@ import {
  */
 export const recruitee: Adapter = async (identifier) => {
   const url = `https://${encodeURIComponent(identifier)}.recruitee.com/api/offers/`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Recruitee ${identifier}: HTTP ${res.status}`);
   const data = await res.json();
   const offers: any[] = Array.isArray(data?.offers) ? data.offers : [];

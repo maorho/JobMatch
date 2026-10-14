@@ -310,6 +310,16 @@ export async function act(page: Page, action: AgentAction, ctx: AgentContext, el
 
 export type Llm = (system: string, user: string, screenshotB64?: string) => Promise<string>;
 
+/** Per-step cap on the model call (the OpenAI client in server/index.ts should carry its own `timeout`/`maxRetries` too). */
+const LLM_STEP_TIMEOUT_MS = 45_000;
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const t = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([p, t]).finally(() => clearTimeout(timer));
+}
+
 /** The loop. */
 export async function runFormAgent(page: Page, ctx: AgentContext, llm: Llm, opts: { maxSteps?: number; budgetMs?: number; screenshots?: boolean } = {}): Promise<AgentResult> {
   const maxSteps = opts.maxSteps ?? 14;
@@ -332,7 +342,8 @@ export async function runFormAgent(page: Page, ctx: AgentContext, llm: Llm, opts
     const { system, user } = buildAgentPrompt(obs, ctx, steps);
     let decision: Decision;
     try {
-      decision = parseDecision(await llm(system, user, obs.screenshot));
+      // One model call may not eat the whole budget: cap it at the time left (max LLM_STEP_TIMEOUT_MS).
+      decision = parseDecision(await withTimeout(llm(system, user, obs.screenshot), Math.min(LLM_STEP_TIMEOUT_MS, Math.max(1_000, deadline - Date.now())), "agent decision"));
     } catch (e: any) {
       return { status: "failed", reason: `agent decision failed: ${e?.message}`, steps, filled };
     }

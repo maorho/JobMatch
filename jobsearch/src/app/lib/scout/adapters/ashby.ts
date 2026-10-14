@@ -1,6 +1,7 @@
 import {
   Adapter,
   NormalizedPosting,
+  fetchWithTimeout,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -14,7 +15,7 @@ export const ashby: Adapter = async (identifier) => {
     identifier
   )}?includeCompensation=true`;
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Ashby ${identifier}: HTTP ${res.status}`);
   const data = await res.json();
   const jobs: any[] = Array.isArray(data?.jobs) ? data.jobs : [];

@@ -1,6 +1,7 @@
 import {
   Adapter,
   NormalizedPosting,
+  fetchWithTimeout,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -15,7 +16,7 @@ export const greenhouse: Adapter = async (identifier) => {
     identifier
   )}/jobs?content=true`;
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Greenhouse ${identifier}: HTTP ${res.status}`);
   }

@@ -3,6 +3,9 @@ import { NextRequest } from "next/server";
 import { setupTestDb, resetDb } from "../setup/mongo";
 
 delete process.env.OPENAI_API_KEY;
+// The Applier is gated on FEATURES.autoApply (on when the apply server is configured, or forced on).
+process.env.FEATURE_AUTO_APPLY = "1";
+process.env.PUPPETEER_SERVER_URL = "http://apply.test";
 vi.mock("@/app/lib/matcher/embeddings", async () => import("../setup/fakeEmbedder"));
 
 // The form-filler is scripted per URL; the tailor returns the stored résumé unchanged.
@@ -267,12 +270,83 @@ describe("exactly-once submission (intent-then-confirm)", () => {
     expect(submit.mock.calls.length).toBe(calls);
   });
 
-  it("a failure BEFORE any click (server unreachable on the dry run) stays a plain failure", async () => {
-    const submit = vi.fn(async () => ({ status: "failed", ats: "", reason: "apply server unreachable" }));
-    const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
-    expect(r.failed).toBe(1);
-    expect(r.needsUser).toEqual([]);
-    expect(((await AutoApplication.findOne({ userId: eli, jobId: j4 }).lean()) as any).status).toBe("failed");
+  it("a server-side failure BEFORE any click (unreachable / busy / timed out on the dry run) is deferred, not failed: no row, retried next pass", async () => {
+    for (const reason of ["apply server unreachable", "apply server returned 503", "apply server timed out"]) {
+      const submit = vi.fn(async () => ({ status: "failed", ats: "", transient: true, reason }));
+      const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
+      expect(r.failed).toBe(0);
+      expect(r.deferred).toBe(1);
+      expect(r.needsUser).toEqual([]);
+      expect(await AutoApplication.countDocuments({ userId: eli, jobId: j4 })).toBe(0); // nothing recorded → eligible again
+    }
     expect(await AutoApplication.countDocuments({ userId: eli, status: "submitting" })).toBe(0); // no claim without a click
+    // Once the server is back, the same posting goes through.
+    const submit = vi.fn(async (input: any) => (input.dryRun ? { status: "ready", ats: "greenhouse" } : { status: "submitted", ats: "greenhouse" }));
+    const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
+    expect(r.submitted.map((x) => x.jobId)).toEqual([j4]);
+  });
+
+  it("an unhealthy apply server defers the whole pass before any tailoring or form call", async () => {
+    const jobs = await ExternalJobs.create([mkJob("c5", "React Dev E", "React", "https://boards.greenhouse.io/acme/jobs/105")] as any);
+    const j5 = String(jobs[0]._id);
+    const submit = vi.fn(async () => ({ status: "submitted", ats: "greenhouse" }));
+    const tailor = vi.fn(async () => ({ tailoredResume: RESUME }));
+    const r = await autoApplyForUser(eli, [cand(j5, "React Dev E")], { submit: submit as any, tailor: tailor as any, health: async () => ({ ok: false, reason: "apply server unreachable" }) });
+    expect(r).toMatchObject({ deferred: 1, failed: 0, submitted: [] });
+    expect(submit).not.toHaveBeenCalled();
+    expect(tailor).not.toHaveBeenCalled();
+    expect(await AutoApplication.countDocuments({ userId: eli, jobId: j5 })).toBe(0);
+  });
+
+  it("a plain form failure (no form found) is still a terminal failure", async () => {
+    const jobs = await ExternalJobs.create([mkJob("c6", "React Dev F", "React", "https://boards.greenhouse.io/acme/jobs/106")] as any);
+    const j6 = String(jobs[0]._id);
+    const submit = vi.fn(async () => ({ status: "failed", ats: "unknown", reason: "no form" }));
+    const r = await autoApplyForUser(eli, [cand(j6, "React Dev F")], { submit: submit as any });
+    expect(r).toMatchObject({ failed: 1, deferred: 0 });
+    expect(((await AutoApplication.findOne({ userId: eli, jobId: j6 }).lean()) as any).status).toBe("failed");
+  });
+
+  it("does nothing when the feature flag is off", async () => {
+    process.env.FEATURE_AUTO_APPLY = "0";
+    try {
+      const submit = vi.fn(async () => ({ status: "submitted", ats: "greenhouse" }));
+      const r = await autoApplyForUser(eli, [cand(j1, "React Dev A")], { submit: submit as any });
+      expect(r.disabled).toBe(true);
+      expect(submit).not.toHaveBeenCalled();
+    } finally {
+      process.env.FEATURE_AUTO_APPLY = "1";
+    }
+  });
+});
+
+describe("apply server client", () => {
+  it("marks unreachable / 5xx / timeouts as transient and refuses to default to localhost in production", async () => {
+    const { submitExternalApplication } = await vi.importActual<typeof import("@/app/lib/apply/submit")>("@/app/lib/apply/submit");
+    const { applyServerBase, checkApplyServer } = await import("@/app/lib/apply/server");
+    const input = { url: "https://boards.greenhouse.io/acme/jobs/1", profile: { firstName: "A", lastName: "B", email: "a@b.c", phone: "0" }, resumePdf: new Uint8Array([1]) };
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 503, json: async () => ({ error: "Busy, try again" }) })));
+    expect(await submitExternalApplication(input)).toMatchObject({ status: "failed", transient: true, reason: "Busy, try again" });
+    expect(await checkApplyServer()).toMatchObject({ ok: false });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 400, json: async () => ({ error: "URL not allowed" }) })));
+    expect(await submitExternalApplication(input)).toMatchObject({ status: "failed", transient: false });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+    expect(await submitExternalApplication(input)).toMatchObject({ status: "failed", transient: true });
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) })));
+    expect(await checkApplyServer()).toEqual({ ok: true });
+    vi.unstubAllGlobals();
+
+    const prev = { url: process.env.PUPPETEER_SERVER_URL, env: process.env.NODE_ENV };
+    delete process.env.PUPPETEER_SERVER_URL;
+    (process.env as any).NODE_ENV = "production";
+    try {
+      expect(applyServerBase()).toBeNull();
+      expect(await submitExternalApplication(input)).toMatchObject({ status: "failed", transient: true, reason: "apply server not configured" });
+      (process.env as any).NODE_ENV = "development";
+      expect(applyServerBase()).toBe("http://localhost:4000");
+    } finally {
+      process.env.PUPPETEER_SERVER_URL = prev.url;
+      (process.env as any).NODE_ENV = prev.env;
+    }
   });
 });

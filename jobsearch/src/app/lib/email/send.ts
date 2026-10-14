@@ -28,15 +28,51 @@ export function mailTransportName(): MailResult["transport"] {
   return "console";
 }
 
+const RESEND_TIMEOUT_MS = 15_000;
+
+async function resendOnce(mail: Mail & { from: string }): Promise<{ id?: string }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), RESEND_TIMEOUT_MS);
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: mail.from, to: [mail.to], subject: mail.subject, html: mail.html, text: mail.text }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const err: any = new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      err.retryable = res.status >= 500 || res.status === 429;
+      throw err;
+    }
+    const j: any = await res.json().catch(() => ({}));
+    return { id: j.id };
+  } catch (e: any) {
+    if (e?.name === "AbortError") {
+      const err: any = new Error(`Resend timed out after ${RESEND_TIMEOUT_MS / 1000}s`);
+      err.retryable = true;
+      throw err;
+    }
+    if (e?.retryable === undefined) e.retryable = true; // network error
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Resend over HTTP with a hard timeout and one retry on a transient failure (never on a 4xx). */
 async function viaResend(mail: Mail & { from: string }): Promise<{ id?: string }> {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: mail.from, to: [mail.to], subject: mail.subject, html: mail.html, text: mail.text }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const j: any = await res.json().catch(() => ({}));
-  return { id: j.id };
+  if (!process.env.EMAIL_FROM) {
+    // Sandbox senders only deliver to the account owner: in production this is a silent black hole.
+    console.error(`[email] EMAIL_FROM is not set — sending "${mail.subject}" to ${mail.to} from the fallback sender "${mail.from}"; set EMAIL_FROM to a verified Resend domain`);
+  }
+  try {
+    return await resendOnce(mail);
+  } catch (e: any) {
+    if (!e?.retryable) throw e;
+    console.warn(`[email] Resend failed once (${e?.message}); retrying`);
+    return resendOnce(mail);
+  }
 }
 
 async function viaSmtp(mail: Mail & { from: string }): Promise<{ id?: string }> {

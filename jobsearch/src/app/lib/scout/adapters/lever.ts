@@ -1,6 +1,7 @@
 import {
   Adapter,
   NormalizedPosting,
+  fetchWithTimeout,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -14,7 +15,7 @@ export const lever: Adapter = async (identifier) => {
     identifier
   )}?mode=json`;
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetchWithTimeout(url, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`Lever ${identifier}: HTTP ${res.status}`);
   }

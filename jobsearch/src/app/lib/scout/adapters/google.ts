@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
 
 /**
  * Google Careers (verified 2026-10-07).
@@ -71,16 +71,15 @@ export const google: Adapter = async (identifier, secondaryIdentifier) => {
   const out: NormalizedPosting[] = [];
   const seen = new Set<string>();
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  let page = 1;
+  for (; page <= MAX_PAGES; page++) {
     const url = `${BASE}?location=${encodeURIComponent(location)}&page=${page}${extra}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { "User-Agent": UA, Accept: "text/html" },
       cache: "no-store",
     });
-    if (!res.ok) {
-      if (page === 1) throw new Error(`Google careers: HTTP ${res.status}`);
-      break;
-    }
+    // Complete-feed contract: a failed page (first or later) means a partial list → throw.
+    if (!res.ok) throw new Error(`Google careers: HTTP ${res.status} on page ${page}`);
     const rows = extractRows(await res.text());
     if (rows.length === 0) break;
 
@@ -126,6 +125,10 @@ export const google: Adapter = async (identifier, secondaryIdentifier) => {
 
     if (rows.length < PAGE_SIZE) break;
     await new Promise((r) => setTimeout(r, 300)); // be polite
+  }
+  // Google reports no total: a full last page at the cap means there is more.
+  if (page > MAX_PAGES) {
+    throw new Error(`Google careers: more than ${MAX_PAGES} pages for "${location}" — list would be partial`);
   }
 
   return out;

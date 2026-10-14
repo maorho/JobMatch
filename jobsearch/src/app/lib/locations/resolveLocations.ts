@@ -35,7 +35,7 @@ function fromNormalized(n: NormalizedLocation, source: ResolvedLocation["source"
 async function resolveWithLLM(raws: string[], model: string): Promise<Map<string, ResolvedLocation>> {
   const out = new Map<string, ResolvedLocation>();
   if (!process.env.OPENAI_API_KEY || raws.length === 0) return out;
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
 
   for (let i = 0; i < raws.length; i += LLM_BATCH) {
     const batch = raws.slice(i, i + LLM_BATCH);

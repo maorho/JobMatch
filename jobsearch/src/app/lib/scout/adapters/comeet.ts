@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
 
 /**
  * Comeet careers API (the dominant Israeli ATS).
@@ -14,7 +14,7 @@ export const comeet: Adapter = async (identifier, secondaryIdentifier) => {
     identifier
   )}/positions?token=${encodeURIComponent(secondaryIdentifier)}&details=true`;
 
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
     cache: "no-store",
   });
