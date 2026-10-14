@@ -35,9 +35,15 @@ function parseCsvLine(line: string): string[] {
 export default async function fetchSheetAsJson(): Promise<any[]> {
   const csvUrl = process.env.NEXT_PUBLIC_CSV_URL;
   if (!csvUrl) {
-    throw new Error("❌ CSV_URL is not defined in environment variables");
+    // The sheet is an optional legacy source; without it the sync is simply a no-op.
+    console.warn("⚠️ NEXT_PUBLIC_CSV_URL is not set — skipping the external-jobs sheet");
+    return [];
   }
   const res = await fetch(csvUrl);
+  if (!res.ok) {
+    console.warn(`⚠️ external-jobs sheet returned ${res.status} — skipping`);
+    return [];
+  }
   const csvText = await res.text();
   const lines = csvText.trim().split("\n");
 

@@ -3,9 +3,10 @@ import HealthCard from "./components/HealthCard";
 
 import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import {Job} from "../components/JobTable";
-import { IUser } from "../models/User";
+import type { IUser } from "../models/User";
 import { motion } from "framer-motion";
 import JobrecruiterCard from "../RecruiterDashboard/components/JobrecruiterCard";
 import { AdminHero } from "../components/HeroImages";
@@ -24,8 +25,7 @@ const changeStatus = async (recruiterId: string, status: 'approve' | 'decline') 
     });
 
     if (!res.ok) throw new Error("Failed to change recruiter status");
-    const data = await res.json();
-    console.log(data.msg);
+    await res.json();
   } catch (err) {
     console.error("❌ Error changing recruiter status:", err);
   }
@@ -38,8 +38,7 @@ const approveRecruiter = async (recruiterId: string) => {
       body: JSON.stringify({ recruiterId }),
   });
   if (!res.ok) throw new Error("Failed to approve recruiter");
-  const data = await res.json();
-  console.log(data.msg);
+  await res.json();
 }
 const declineRecruiter = async (recruiterId: string) => {
   const res = await fetch("/api/admin/declinerecruiter", {
@@ -48,8 +47,7 @@ const declineRecruiter = async (recruiterId: string) => {
       body: JSON.stringify({ recruiterId }),
   });
   if (!res.ok) throw new Error("Failed to decline recruiter");
-  const data = await res.json();
-  console.log(data.msg);
+  await res.json();
 }
 const Jobs = ({ jobs }: { jobs: Job[] }) =>
   jobs.length === 0 ? (
@@ -57,7 +55,7 @@ const Jobs = ({ jobs }: { jobs: Job[] }) =>
   ) : (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
       {jobs.map((job, i) => (
-        <JobrecruiterCard key={job.id || i} job={job} jobIndex={i} />
+        <JobrecruiterCard key={job._id || job.id || i} job={job} jobIndex={i} />
       ))}
     </div>
   );
@@ -116,71 +114,75 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
   )
 
 }
-function EmployerDashboard() {
-  const { user } = useCurrentUser();
+const LOGIN_HREF = "/Login?next=%2FAdminDashboard";
+
+function AdminDashboard() {
+  const { user, loading: authLoading } = useCurrentUser();
+  const router = useRouter();
   const [recruitersList, setRecruitersList] = useState<IUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<number>(0);
-
+  const isAdmin = !!user?.admin;
+  const company: string = user?.company ?? "";
 
   const fetchAllRecruiters = useCallback(async () => {
-    if (!user) return;
-
     try {
       const res = await fetch("/api/admin/allrecruiters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName: user.company }),
+        body: JSON.stringify({ companyName: company }),
       });
 
       if (!res.ok) throw new Error("Failed to fetch recruiters");
       const data = await res.json();
       setRecruitersList(data||[]);
-      console.log(recruitersList);
     } catch (err) {
       console.error("❌ Error fetching recruiters:", err);
     }
-  }, [user]);
+  }, [company]);
 
 
   const fetchAllCompaniesJobs = useCallback(async () => {
-    if (!user) return;
-
     try {
       const res = await fetch("/api/jobsDashboard/Company/allCompanyJobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName: user.company }),
+        body: JSON.stringify({ companyName: company }),
       });
 
       if (!res.ok) throw new Error("Failed to fetch jobs");
       const data = await res.json();
       setJobs(data||[]);
-      console.log(jobs);
     } catch (err) {
       console.error("❌ Error fetching jobs:", err);
     }
-  }, [user]);
+  }, [company]);
 
 
+  // Logged-out visitors go to the login page (and come back here afterwards).
   useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    console.log(user);
+    if (!authLoading && !user) router.replace(LOGIN_HREF);
+  }, [authLoading, user, router]);
+
+  // Data loads only for admins; the auth phase is a separate flag so a
+  // logged-out visitor never sees an endless spinner.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
     const loadData = async () => {
       await Promise.all([fetchAllRecruiters(), fetchAllCompaniesJobs()]);
-      setLoading(false);
+      if (!cancelled) setDataLoading(false);
     };
-
     loadData();
-  }, [user, fetchAllRecruiters, fetchAllCompaniesJobs]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, fetchAllRecruiters, fetchAllCompaniesJobs]);
 
-  // ⏳ מצב טעינה
-  if (!user || loading) {
+  if (authLoading) {
     return <Spinner label="Loading dashboard..." />;
   }
-
 
   if (!user) {
     return (
@@ -188,8 +190,9 @@ function EmployerDashboard() {
         <EmptyState
           icon="🔒"
           title="You are not logged in."
+          text="Redirecting to sign in…"
           action={
-            <Link href="/Login" className="jm-btn jm-btn-primary">
+            <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
               Go to Login
             </Link>
           }
@@ -198,21 +201,25 @@ function EmployerDashboard() {
     );
   }
 
-
   if (!user.admin) {
     return (
       <div className="jm-page">
         <EmptyState
           icon="🔒"
-          title="You are not an admin."
+          title="This area is for admins only."
+          text={`You are signed in as ${user.fullname || user.email}, which is not an admin account.`}
           action={
-            <Link href="/Login" className="jm-btn jm-btn-primary">
-              Go to Login
+            <Link href={user.recruiter ? "/RecruiterDashboard" : "/Dashboard"} className="jm-btn jm-btn-primary">
+              Go to your dashboard
             </Link>
           }
         />
       </div>
     );
+  }
+
+  if (dataLoading) {
+    return <Spinner label="Loading dashboard..." />;
   }
 
   const tabs: Tab[] = [
@@ -303,4 +310,4 @@ function EmployerDashboard() {
   );
 }
 
-export default EmployerDashboard;
+export default AdminDashboard;

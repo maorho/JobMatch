@@ -10,13 +10,16 @@ import NotificationBell from "./NotificationBell";
 import MessagesBadge from "./MessagesBadge";
 import LogoutButton from "./Logout";
 import { NAV_LINKS, dashboardHref, userInitial } from "./nav";
+import { loginHref } from "../lib/hooks/nextPath";
 
 function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user } = useCurrentUser();
+  const { user, sessionExpired } = useCurrentUser();
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // Sign-in link carries the current page so login lands back here.
+  const signInHref = loginHref(pathname);
 
   // Close the account menu on outside click / Escape.
   useEffect(() => {
@@ -87,7 +90,7 @@ function Header() {
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href="/Login" className="jm-btn jm-btn-sm text-white hover:bg-white/10">Sign in</Link>
+                <Link href={signInHref} className="jm-btn jm-btn-sm text-white hover:bg-white/10">Sign in</Link>
                 <Link href="/SignUp" className="jm-btn jm-btn-accent jm-btn-sm">Sign up</Link>
               </div>
             )}
@@ -117,6 +120,18 @@ function Header() {
           </button>
         </div>
       </div>
+
+      {/* Session fallback: the token expired while this tab was open. */}
+      {sessionExpired && !user && (
+        <div className="bg-sky-50 text-sky-600 border-t border-sky/20" role="status" dir="rtl">
+          <div className="jm-container py-2 text-sm flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+            <span>ההתחברות פגה, התחבר/י שוב</span>
+            <Link href={signInHref} className="font-semibold underline underline-offset-2 hover:text-sky">
+              להתחברות
+            </Link>
+          </div>
+        </div>
+      )}
 
       <SideNavbar isOpen={drawerOpen} closeNav={() => setDrawerOpen(false)} />
     </header>

@@ -60,23 +60,6 @@ export default function InterviewPrepPage() {
   useEffect(() => {
     fetch("/api/interview/phone/status").then(async (r) => r.ok && setPhoneCfg(await r.json())).catch(() => setPhoneCfg({ configured: false }));
   }, []);
-  // While the phone rings/runs, poll the session until it is finished (feedback written by the bridge + finish job).
-  useEffect(() => {
-    if (!calling) return;
-    const t = setInterval(async () => {
-      const r = await fetch(`/api/interview/session?sessionId=${calling.sessionId}`, { cache: "no-store" });
-      if (!r.ok) return;
-      const d = await r.json();
-      setSession(d.session);
-      if (d.session.wrappedUp && !d.session.feedback) {
-        const f = await fetch("/api/interview/session/finish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) });
-        if (f.ok) { const fd = await f.json(); setSession((s) => s && { ...s, status: "finished", feedback: fd.feedback, delivery: fd.delivery }); }
-      }
-      if (d.session.status === "finished" || d.session.feedback) { setCalling(null); if (prep) loadHistory(prep.prepId); }
-    }, 4000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calling]);
   const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" } } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
@@ -117,6 +100,54 @@ export default function InterviewPrepPage() {
   useEffect(() => {
     if (prep?.prepId) loadHistory(prep.prepId);
   }, [prep?.prepId]);
+
+  // While the phone rings/runs, poll the session until it is finished (feedback
+  // written by the bridge + finish job). A timeout re-armed after each response
+  // (never overlapping requests); `prep` is read through a ref so the closure
+  // never goes stale; everything stops on unmount or when the call ends.
+  const prepRef = useRef<Prep | null>(null);
+  useEffect(() => {
+    prepRef.current = prep;
+  }, [prep]);
+  useEffect(() => {
+    if (!calling) return;
+    const sessionId = calling.sessionId;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async () => {
+      if (stopped) return;
+      let done = false;
+      try {
+        const r = await fetch(`/api/interview/session?sessionId=${sessionId}`, { cache: "no-store" });
+        if (stopped) return;
+        if (r.ok) {
+          const d = await r.json();
+          if (stopped) return;
+          setSession(d.session);
+          if (d.session.wrappedUp && !d.session.feedback) {
+            const f = await fetch("/api/interview/session/finish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
+            if (stopped) return;
+            if (f.ok) { const fd = await f.json(); setSession((s) => s && { ...s, status: "finished", feedback: fd.feedback, delivery: fd.delivery }); }
+          }
+          if (d.session.status === "finished" || d.session.feedback) {
+            done = true;
+            setCalling(null);
+            const p = prepRef.current;
+            if (p) loadHistory(p.prepId);
+          }
+        }
+      } catch {
+        // transient network error: just try again on the next tick
+      }
+      if (!stopped && !done) timer = setTimeout(tick, 4000);
+    };
+    timer = setTimeout(tick, 4000);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calling]);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [session?.transcript.length, busy]);
@@ -215,7 +246,7 @@ export default function InterviewPrepPage() {
   if (!user) {
     return (
       <div className="jm-page" dir="rtl">
-        <EmptyState icon="🔒" title="צריך להתחבר" text="ההכנה לראיון נבנית מקורות החיים שלך." action={<Link href="/Login" className="jm-btn jm-btn-primary">התחברות</Link>} />
+        <EmptyState icon="🔒" title="צריך להתחבר" text="ההכנה לראיון נבנית מקורות החיים שלך." action={<Link href={`/Login?next=${encodeURIComponent(`/interview-prep/${source}/${jobId}`)}`} className="jm-btn jm-btn-primary">התחברות</Link>} />
       </div>
     );
   }

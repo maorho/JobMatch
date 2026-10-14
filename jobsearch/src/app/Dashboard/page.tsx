@@ -14,8 +14,11 @@ import AutoApplyCard from "../components/AutoApplyCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
 import { EmptyState, Spinner } from "../components/ui";
+import { Modal } from "../components/Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import { isSelfAddedJob } from "../../../utils/isSelfAddedJob";
+
+const LOGIN_HREF = "/Login?next=%2FDashboard";
 
 const fetcher = async ([url, body]: [string, any]) => {
   const res = await fetch(url, {
@@ -61,8 +64,11 @@ const DashboardPage: React.FC = () => {
     data: jobsSubmitted,
     error,
     isLoading,
+    mutate: refetchApplications,
   } = useSWR(swrKey, fetcher, {
-    refreshInterval: 10000,
+    // Changes made on this page call `refetchApplications()` right away; the
+    // interval only catches status updates made by recruiters elsewhere.
+    refreshInterval: 60_000,
     revalidateOnFocus: true,
   });
   // Derived from the user's own applications (a small per-user list), so an
@@ -95,7 +101,7 @@ const DashboardPage: React.FC = () => {
           icon="🔒"
           title="You are not logged in."
           action={
-            <Link href="/Login" className="jm-btn jm-btn-primary">
+            <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
               Go to Login
             </Link>
           }
@@ -208,21 +214,19 @@ const DashboardPage: React.FC = () => {
         <h2 className="jm-h2 mb-3">⚡ הגשה אוטומטית</h2>
         <AutoApplyCard showList />
       </section>
-      {jobsSubmitted && <JobManagement jobs={filteredJobs}/>}
+      {jobsSubmitted && <JobManagement jobs={filteredJobs} onChanged={() => refetchApplications()} />}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="jm-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <OutsideJobAdding />
-            <button
-              onClick={() => setShowModal(false)}
-              className="jm-btn jm-btn-ghost w-full mt-3"
-            >
-              Close
-            </button>
-          </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} label="Add new job">
+        <div className="jm-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+          <OutsideJobAdding onAdded={() => refetchApplications()} />
+          <button
+            onClick={() => setShowModal(false)}
+            className="jm-btn jm-btn-ghost w-full mt-3"
+          >
+            Close
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

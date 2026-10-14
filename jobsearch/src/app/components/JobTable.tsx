@@ -7,6 +7,7 @@ import LocationSelect from "./LocationSelect";
 import Image from "next/image";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { EmptyState } from "./ui";
+import { useModalBehavior } from "./Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
@@ -98,6 +99,23 @@ function JobTable() {
   const [showmodal, setShowModal] = useState<boolean>(false);
   const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
+  const closeSheet = React.useCallback(() => setShowModal(false), []);
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  useModalBehavior(showmodal, closeSheet, sheetRef);
+
+  // Every fetch/search gets a token; a response whose token is no longer the
+  // latest is dropped (a filter change while page 2 is in flight must not
+  // append unfiltered results). The previous request is also aborted.
+  const requestIdRef = React.useRef(0);
+  const abortRef = React.useRef<AbortController | null>(null);
+  const beginRequest = () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const id = ++requestIdRef.current;
+    return { id, signal: controller.signal, isCurrent: () => id === requestIdRef.current };
+  };
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // Deep links: /?company=Google&q=react&city=Haifa&seniority=Junior
   useEffect(() => {
@@ -131,6 +149,7 @@ function JobTable() {
 
   // ✅ חיפוש בכל המאגר (פנימי + חיצוני) — לא רק במשרות שנטענו לדף
   const searchServer = async (pageNum: number) => {
+    const req = beginRequest();
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -144,9 +163,10 @@ function JobTable() {
       params.set("limit", "48");
 
       if (user) params.set("me", "1"); // personalised responses are private; a distinct URL keeps them apart from the public cached copy
-      const res = await fetch(`/api/jobs/search?${params.toString()}`);
+      const res = await fetch(`/api/jobs/search?${params.toString()}`, { signal: req.signal });
       if (!res.ok) throw new Error("Failed to search jobs");
       const data = await res.json();
+      if (!req.isCurrent()) return; // stale: a newer search/filter superseded this one
       const results: Job[] = data.jobs || [];
 
       if (pageNum === 1) {
@@ -159,9 +179,9 @@ function JobTable() {
       setJobCount(data.total ?? results.length);
       setTotalPages(data.pages || 1);
     } catch (err) {
-      console.error("❌ Search failed:", err);
+      if ((err as Error)?.name !== "AbortError") console.error("❌ Search failed:", err);
     } finally {
-      setLoading(false);
+      if (req.isCurrent()) setLoading(false);
     }
   };
 
@@ -169,6 +189,7 @@ function JobTable() {
 
   // ✅ מביא את המשרות מהשרת
   const fetchJobs = async (pageNum: number) => {
+    const req = beginRequest();
     try {
       setLoading(true);
 
@@ -176,10 +197,12 @@ function JobTable() {
       if (user) {
         try {
           const feedRes = await fetch(
-            `/api/matcher/feed?page=${pageNum}&limit=48`
+            `/api/matcher/feed?page=${pageNum}&limit=48`,
+            { signal: req.signal }
           );
           if (feedRes.ok) {
             const feedData = await feedRes.json();
+            if (!req.isCurrent()) return;
             if (
               feedData.personalized &&
               Array.isArray(feedData.jobs) &&
@@ -204,22 +227,25 @@ function JobTable() {
               return;
             }
           }
-        } catch {
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") return; // superseded
           // fall through to the normal feed
         }
       }
+      if (!req.isCurrent()) return;
 
       const internalUrl = user
         ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id ?? user.id}&page=${pageNum}&limit=50`
         : `/api/jobsDashboard/Alljobs?page=${pageNum}&limit=50`;
 
       const [resInternal, resExternal] = await Promise.all([
-        fetch(internalUrl),
-        fetch(`/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=48`),
+        fetch(internalUrl, { signal: req.signal }),
+        fetch(`/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=48`, { signal: req.signal }),
       ]);
 
       const internalData = await resInternal.json();
       const externalData = await resExternal.json();
+      if (!req.isCurrent()) return; // stale: a newer page/filter request superseded this one
 
       const internalJobs = (internalData.jobs || []).map((j: Job) => ({
         ...j,
@@ -245,9 +271,9 @@ function JobTable() {
       );
       setTotalPages(Math.max(internalData.pages || 1, externalData.pages || 1));
     } catch (err) {
-      console.error("❌ Failed to fetch jobs:", err);
+      if ((err as Error)?.name !== "AbortError") console.error("❌ Failed to fetch jobs:", err);
     } finally {
-      setLoading(false);
+      if (req.isCurrent()) setLoading(false);
     }
   };
 
@@ -507,10 +533,15 @@ function JobTable() {
       </section>
 
       {/* Mobile filter sheet */}
-      {showmodal && <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[60] lg:hidden" onClick={() => setShowModal(false)} />}
+      {showmodal && <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[60] lg:hidden" onClick={closeSheet} />}
       <div
+        ref={sheetRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Filters"
+        aria-hidden={!showmodal}
+        inert={!showmodal}
+        tabIndex={-1}
         className={`lg:hidden fixed inset-x-0 bottom-0 z-[70] bg-surface rounded-t-card shadow-card-hover
         transition-transform duration-300 ease-out ${showmodal ? "translate-y-0" : "translate-y-full"}`}
       >

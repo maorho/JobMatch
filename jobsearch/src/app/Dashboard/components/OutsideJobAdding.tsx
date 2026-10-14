@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
+import { InlineNotice } from "@/app/components/Dialog";
 
-const OutsideJobAdding = () => {
+const OutsideJobAdding = ({ onAdded }: { onAdded?: () => void }) => {
   const typemodel =["Hybrid","Remote","On Site"];
   const statuses = ['Submitted Resume','Rejected', 'HR Phone Interview', 'Technical Interview', 'Accepted','Final Interview','Recived an Offer'];
   const [job, setJob] = useState("");
@@ -9,12 +10,15 @@ const OutsideJobAdding = () => {
   // Default to the first option so the submitted value matches what the UI shows.
   const [job_type, setJobType] = useState(typemodel[0]);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
   const [status,setStatus] = useState(statuses[0]);
   const [link, setLink] = useState("");
   const [location, setLocation] = useState("");
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
     if (job.length == 0) return setError("Job title is missing");
     if (company.length == 0) return setError("Company name is missing");
@@ -29,18 +33,27 @@ const OutsideJobAdding = () => {
     formData.append("link",link);
     formData.append("status",status);
 
+    setSaving(true);
     try{
-      const res = await fetch("api/jobsDashboard/Candidate/outsideJobAddingByCandidate",{
+      const res = await fetch("/api/jobsDashboard/Candidate/outsideJobAddingByCandidate",{
         method:"POST",
         body:formData,
       });
 
       if(res.ok){
-        alert("job added succefully");
+        setSuccess("Job added to your dashboard");
+        setJob(""); setCompany(""); setLocation(""); setLink("");
+        onAdded?.(); // refresh the applications list right away
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setError(d?.message || "Job adding failed");
       }
     }
     catch{
       setError("Job adding failed");
+    }
+    finally{
+      setSaving(false);
     }
   }
 
@@ -113,13 +126,18 @@ const OutsideJobAdding = () => {
         </div>
         <button
           type="submit"
-          onSubmit={handleSubmit}
+          disabled={saving}
           className="jm-btn jm-btn-primary w-full"
         >
-          Add To My Dashboard
+          {saving ? "Adding…" : "Add To My Dashboard"}
         </button>
       </form>
-      {error && <p className="jm-alert jm-alert-err">{error}</p>}
+      {error && <p className="jm-alert jm-alert-err" role="alert">{error}</p>}
+      {success && (
+        <InlineNotice kind="ok" onDismiss={() => setSuccess("")}>
+          {success}
+        </InlineNotice>
+      )}
     </div>
   );
 };

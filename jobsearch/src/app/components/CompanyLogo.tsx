@@ -67,6 +67,10 @@ export default function CompanyLogo({
       src={src}
       alt={name}
       title={name}
+      width={40}
+      height={40}
+      loading="lazy"
+      decoding="async"
       className={`${className} object-contain rounded bg-white`}
       referrerPolicy="no-referrer"
       onError={() => setIdx((i) => i + 1)}

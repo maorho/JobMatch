@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ResumeLink from "./ResumeLink";
 
 interface ApplybuttonProps {
@@ -18,6 +19,8 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
   const [phone, setPhone] = useState("");
   const [resumefile, setResumeFile] = useState("");
   const [error, setError] = useState("");
+  const [sent, setSent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   React.useEffect(() => {
     if (user) {
@@ -31,6 +34,7 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSubmitting(true);
     try {
       const res = await fetch("/api/jobsDashboard/Candidate/application", {
         method: "POST",
@@ -38,26 +42,43 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
         body: JSON.stringify({
           status: "Submitted Resume",
           jobId: job._id,
-          candidateId: user.id,
+          candidateId: user?.id ?? user?._id,
           recruiterid: job.publisher,
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        alert(data.message || "Application sent!");
-        setShowModal(false);
-        router.push("/Dashboard");
+        // Inline confirmation (no alert()); the user picks where to go next.
+        setSent(data.message || "Application sent!");
       } else {
         setError(data.message || "Application failed");
       }
     } catch {
       setError("Something went wrong");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   const readOnlyInput = "jm-input disabled:bg-canvas disabled:text-ink-600 disabled:cursor-default";
+
+  if (sent) {
+    return (
+      <div className="space-y-4">
+        <p className="jm-alert jm-alert-ok" role="status">✓ {sent}</p>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-secondary">
+            Close
+          </button>
+          <Link href="/Dashboard" onClick={() => { setShowModal(false); router.push("/Dashboard"); }} className="jm-btn jm-btn-primary">
+            Go to my Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -88,8 +109,8 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
         <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-secondary">
           Cancel
         </button>
-        <button type="submit" className="jm-btn jm-btn-primary">
-          Apply
+        <button type="submit" disabled={submitting} className="jm-btn jm-btn-primary">
+          {submitting ? "Sending..." : "Apply"}
         </button>
       </div>
     </form>

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import { LogOut } from "lucide-react";
+import { markSignedOut } from "../lib/hooks/useCurrentUser";
 
 export default function LogoutButton({
   closeNav,
@@ -19,7 +20,8 @@ export default function LogoutButton({
     // מחיקת קוקי
     document.cookie = "token=; Max-Age=0; path=/";
 
-    // לעדכן SWR שהמשתמש התנתק
+    // לעדכן SWR שהמשתמש התנתק (ולא להציג "ההתחברות פגה" על יציאה יזומה)
+    markSignedOut();
     await mutate("/api/auth/me", null, false);
 
     if (closeNav) closeNav();

@@ -6,7 +6,7 @@ import Image from "next/image";
  */
 const HeroBackground = ({ src, alt }: { src: string; alt: string }) => (
   <div className="absolute inset-0">
-    <Image src={src} alt={alt} fill className="object-cover opacity-30" priority />
+    <Image src={src} alt={alt} fill sizes="100vw" className="object-cover opacity-30" priority />
   </div>
 );
 

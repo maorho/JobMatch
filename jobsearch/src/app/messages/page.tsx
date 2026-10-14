@@ -35,9 +35,17 @@ export default function MessagesPage() {
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const { data: list, mutate: mutateList } = useSWR(user ? "/api/messages" : null, fetcher, { refreshInterval: 10_000 });
+  // Poll only while the tab is visible (SWR also pauses polling in hidden tabs; this covers the open thread explicitly).
+  const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+
+  const { data: list, mutate: mutateList } = useSWR(user ? "/api/messages" : null, fetcher, { refreshInterval: visible ? 15_000 : 0, revalidateOnFocus: true });
   const threads: Thread[] = list?.items ?? [];
-  const { data: chat, mutate: mutateChat } = useSWR(user && active ? `/api/messages/${active}` : null, fetcher, { refreshInterval: 5_000 });
+  const { data: chat, mutate: mutateChat } = useSWR(user && active ? `/api/messages/${active}` : null, fetcher, { refreshInterval: active && visible ? 5_000 : 0, revalidateOnFocus: true });
   const messages: Msg[] = chat?.messages ?? [];
   const activeThread = threads.find((t) => t._id === active) || null;
 

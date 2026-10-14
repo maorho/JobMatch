@@ -92,6 +92,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     [sessionId]
   );
 
+
   const hangUp = useCallback(
     async (reason: "interviewer" | "candidate" | "error") => {
       if (endedRef.current) return;
@@ -108,72 +109,6 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     },
     [onEnded, sync]
   );
-
-  // ---- connect ----
-  useEffect(() => {
-    let cancelled = false;
-    const connect = async () => {
-      try {
-        const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
-        if (cancelled) return;
-        micRef.current = mic;
-        meterRef.current = new ProsodyMeter(mic);
-        try {
-          const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
-          camRef.current = cam;
-          if (videoElRef.current) videoElRef.current.srcObject = cam;
-        } catch {
-          setCamOn(false); // no camera is fine — it's only a self-view
-        }
-        const levelTick = () => {
-          if (endedRef.current) return;
-          setLevel(meterRef.current?.level ?? 0);
-          requestAnimationFrame(levelTick);
-        };
-        levelTick();
-
-        const pc = new RTCPeerConnection();
-        pcRef.current = pc;
-        pc.ontrack = (e) => {
-          if (audioElRef.current) audioElRef.current.srcObject = e.streams[0];
-        };
-        mic.getAudioTracks().forEach((t) => pc.addTrack(t, mic));
-
-        const dc = pc.createDataChannel("oai-events");
-        dcRef.current = dc;
-        dc.onmessage = (ev) => handleEvent(JSON.parse(ev.data));
-        dc.onopen = () => {
-          setStatus("live");
-          dc.send(JSON.stringify({ type: "response.create" })); // the interviewer opens the call
-        };
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        const url = endpoint === "calls" ? `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}` : `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
-        const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
-        if (!res.ok) throw new Error(`Realtime handshake failed (${res.status})`);
-        await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
-      } catch (e: any) {
-        if (cancelled) return;
-        setError(e?.name === "NotAllowedError" ? "צריך לאשר גישה למיקרופון כדי לקיים ראיון קולי." : e?.message || "החיבור נכשל");
-        hangUp("error");
-      }
-    };
-    connect();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (status !== "live") return;
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [status]);
-  useEffect(() => {
-    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
-  }, [turns.length, partial]);
 
   // ---- Realtime events (GA names first, preview names as fallback) ----
   const handleEvent = (ev: any) => {
@@ -246,6 +181,73 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         break;
     }
   };
+
+  // ---- connect ----
+  useEffect(() => {
+    let cancelled = false;
+    const connect = async () => {
+      try {
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+        if (cancelled) return;
+        micRef.current = mic;
+        meterRef.current = new ProsodyMeter(mic);
+        try {
+          const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+          camRef.current = cam;
+          if (videoElRef.current) videoElRef.current.srcObject = cam;
+        } catch {
+          setCamOn(false); // no camera is fine — it's only a self-view
+        }
+        const levelTick = () => {
+          if (endedRef.current) return;
+          setLevel(meterRef.current?.level ?? 0);
+          requestAnimationFrame(levelTick);
+        };
+        levelTick();
+
+        const pc = new RTCPeerConnection();
+        pcRef.current = pc;
+        pc.ontrack = (e) => {
+          if (audioElRef.current) audioElRef.current.srcObject = e.streams[0];
+        };
+        mic.getAudioTracks().forEach((t) => pc.addTrack(t, mic));
+
+        const dc = pc.createDataChannel("oai-events");
+        dcRef.current = dc;
+        dc.onmessage = (ev) => handleEvent(JSON.parse(ev.data));
+        dc.onopen = () => {
+          setStatus("live");
+          dc.send(JSON.stringify({ type: "response.create" })); // the interviewer opens the call
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const url = endpoint === "calls" ? `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}` : `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+        const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
+        if (!res.ok) throw new Error(`Realtime handshake failed (${res.status})`);
+        await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.name === "NotAllowedError" ? "צריך לאשר גישה למיקרופון כדי לקיים ראיון קולי." : e?.message || "החיבור נכשל");
+        hangUp("error");
+      }
+    };
+    connect();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (status !== "live") return;
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [status]);
+  useEffect(() => {
+    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
+  }, [turns.length, partial]);
+
 
   const toggleMute = () => {
     const next = !muted;

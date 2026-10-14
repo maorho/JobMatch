@@ -13,8 +13,10 @@ const OAUTH_ERRORS: Record<string, string> = {
 };
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { mutate } from "swr";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
+import { safeNextPath } from "../lib/hooks/nextPath";
 
 function LoginForm() {
   const router = useRouter();
@@ -22,13 +24,19 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Where to go after login (`?next=`); only same-origin relative paths are honoured.
+  const [next, setNext] = useState("");
 
   // Surface a social-login failure (callback redirects here with ?error=).
   // Read from window instead of useSearchParams to keep this page static.
   useEffect(() => {
-    const code = new URLSearchParams(window.location.search).get("error");
+    const sp = new URLSearchParams(window.location.search);
+    const code = sp.get("error");
     if (code) setError(OAUTH_ERRORS[code] || OAUTH_ERRORS.oauth_failed);
+    setNext(safeNextPath(sp.get("next"), ""));
   }, []);
+
+  const oauthHref = (provider: "google" | "facebook") => `/api/auth/oauth/${provider}?next=${encodeURIComponent(next || "/")}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,15 +51,11 @@ function LoginForm() {
       });
 
       const data = await res.json();
-      console.log(`data:`,data);
-      console.log(`is admin:`,data.admin);
       if (res.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        data.recruiter
-          ? router.push("/RecruiterDashboard")
-          : data.admin
-          ? router.push("/AdminDashboard")
-          : router.push("/Dashboard");
+        // Refresh the cached session so the header/pages see the user at once.
+        await mutate("/api/auth/me");
+        const dashboard = data.recruiter ? "/RecruiterDashboard" : data.admin ? "/AdminDashboard" : "/Dashboard";
+        router.push(next || dashboard);
       } else {
         setError(data.message || "Login failed");
       }
@@ -143,11 +147,11 @@ function LoginForm() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <a href="/api/auth/oauth/google?next=/" className="jm-btn jm-btn-secondary w-full">
+            <a href={oauthHref("google")} className="jm-btn jm-btn-secondary w-full">
               <FcGoogle className="h-5 w-5 shrink-0" />
               <span>Continue with Google</span>
             </a>
-            <a href="/api/auth/oauth/facebook?next=/" className="jm-btn jm-btn-secondary w-full">
+            <a href={oauthHref("facebook")} className="jm-btn jm-btn-secondary w-full">
               <FaFacebook className="h-5 w-5 shrink-0 text-sky-600" />
               <span>Continue with Facebook</span>
             </a>

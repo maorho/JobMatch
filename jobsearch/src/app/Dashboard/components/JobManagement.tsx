@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { isSelfAddedJob } from "../../../../utils/isSelfAddedJob";
 import { DeleteIcon } from "@/app/components/icons";
 import { EmptyState } from "@/app/components/ui";
+import { ConfirmInline, InlineNotice } from "@/app/components/Dialog";
 
 interface Job {
   source: string;
@@ -18,6 +19,8 @@ interface Job {
 
 interface JobManagementProps {
   jobs: any[];
+  /** Called after a successful change so the parent can revalidate its list at once. */
+  onChanged?: () => void;
 }
 
 // One chip colour per application status; anything unknown falls back to the
@@ -48,7 +51,7 @@ const ExternalLink = ({ href, children }: { href: string; children: React.ReactN
   </a>
 );
 
-const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
+const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 5;
   const totalPages = Math.ceil(jobs.length / itemsPerPage);
@@ -58,30 +61,40 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
     startIndex + itemsPerPage
   );
   const isMobile = useIsMobile();
+  // Inline replacements for confirm()/alert().
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
-  const handleDeleteSelfJob = async (jobID:string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this job?"
-    );
-    if (!confirmed) return;
-
-    const res = await fetch(`api/jobsDashboard/Candidate/deleteSelfAddedJob?jobId=${jobID}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.ok) {
-      alert("Job deleted");
-
-    } else {
-      alert("Something went wrong");
+  const handleDeleteSelfJob = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/jobsDashboard/Candidate/deleteSelfAddedJob?jobId=${encodeURIComponent(pendingDelete.id)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        setNotice({ kind: "ok", text: "Job deleted" });
+        onChanged?.(); // refresh the list now instead of waiting for the poll
+      } else {
+        setNotice({ kind: "err", text: "Something went wrong" });
+      }
+    } catch {
+      setNotice({ kind: "err", text: "Something went wrong" });
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
     }
   };
 
-  const deleteButton = (jobID: string) => (
+  const deleteButton = (jobID: string, title: string) => (
     <button
       type="button"
-      onClick={() => handleDeleteSelfJob(jobID)}
+      onClick={() => {
+        setNotice(null);
+        setPendingDelete({ id: jobID, title });
+      }}
       className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9 shrink-0"
       aria-label="Delete job"
       title="Delete job"
@@ -89,6 +102,24 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
       <DeleteIcon />
     </button>
   );
+
+  const feedback = pendingDelete ? (
+    <ConfirmInline
+      text={`Delete "${pendingDelete.title}" from your dashboard?`}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      danger
+      busy={deleting}
+      onConfirm={handleDeleteSelfJob}
+      onCancel={() => setPendingDelete(null)}
+    />
+  ) : notice ? (
+    <InlineNotice kind={notice.kind} onDismiss={() => setNotice(null)}>
+      {notice.text}
+    </InlineNotice>
+  ) : null;
+
+  const rowKey = (job: any, idx: number) => String(job?._id ?? job?.jobId?._id ?? idx);
 
   const pagination = (
     <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
@@ -107,11 +138,17 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
   );
 
   if (jobs.length === 0) {
-    return <EmptyState icon="📋" title="No jobs to show" />;
+    return (
+      <div className="space-y-4">
+        {feedback}
+        <EmptyState icon="📋" title="No jobs to show" />
+      </div>
+    );
   }
 
   return (
     <div className="jm-card p-4 sm:p-5 space-y-4">
+        {feedback}
         {!isMobile?(
           <div className="overflow-x-auto">
           <table className="jm-table">
@@ -130,11 +167,11 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
               const selfAdded = isSelfAddedJob(job);
 
               return (
-                <tr key={idx}>
+                <tr key={rowKey(job, idx)}>
                   <td className="font-semibold text-navy">
                     {selfAdded?
                       <div className="flex items-center gap-3">
-                          {deleteButton(job._id)}
+                          {deleteButton(job._id, job.jobTitle)}
                           <span>{job.jobTitle}</span>
                       </div>: <span>{selfAdded?job.jobTitle:job.jobId.job}</span>}
                   </td>
@@ -180,13 +217,13 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs }) => {
                 const selfAdded = isSelfAddedJob(job);
                 return(
                 <div
-                  key={idx}
+                  key={rowKey(job, idx)}
                   className="jm-card p-4 flex flex-col gap-2"
                 >
                   {selfAdded?
                   <div className="flex items-start justify-between gap-3">
                       <p className="text-base font-semibold text-navy">{job.jobTitle}</p>
-                      {deleteButton(job._id)}
+                      {deleteButton(job._id, job.jobTitle)}
                   </div>: <p className="text-base font-semibold text-navy">{selfAdded?job.jobTitle:job.jobId.job}</p>}
 
 

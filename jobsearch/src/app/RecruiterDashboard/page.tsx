@@ -7,12 +7,13 @@ import JobrecruiterCard from "./components/JobrecruiterCard";
 import AddNewPositionRecruiter from "./components/AddNewPositionRecruiter";
 import { RecruiterHeroImage } from "../components/HeroImages";
 import { EmptyState, Spinner } from "../components/ui";
+import { Modal } from "../components/Dialog";
 
-
+const LOGIN_HREF = "/Login?next=%2FRecruiterDashboard";
 
 const RecruiterDashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
-  const [jobs, setJobs] = useState([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [jobLength, setjobLength] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -20,7 +21,6 @@ const RecruiterDashboardPage: React.FC = () => {
   async function loadJobs() {
     setError("");
     setLoadingJobs(true); // התחלת טעינה
-    console.log("user:",user);
     try {
       const res = await fetch("/api/jobsDashboard/Company/allCompanyJobs", {
         method: "POST",
@@ -61,7 +61,7 @@ const RecruiterDashboardPage: React.FC = () => {
           icon="🔒"
           title="You are not logged in."
           action={
-            <Link href="/Login" className="jm-btn jm-btn-primary">
+            <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
               Go to Login
             </Link>
           }
@@ -150,7 +150,7 @@ const RecruiterDashboardPage: React.FC = () => {
               {jobs.map((element, ind) => {
                 return (
                   <JobrecruiterCard
-                    key={ind}
+                    key={element._id ?? element.id ?? ind}
                     job={element}
                     jobIndex={ind}
                     onSuccess={loadJobs}
@@ -165,19 +165,17 @@ const RecruiterDashboardPage: React.FC = () => {
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="jm-card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
-            <AddNewPositionRecruiter
-              onSuccess={() => {
-                setShowModal(false);
-                loadJobs();
-              }}
-              setShowModal={setShowModal}
-            />
-          </div>
+      <Modal open={showModal} onClose={() => setShowModal(false)} label="Add new position">
+        <div className="jm-card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+          <AddNewPositionRecruiter
+            onSuccess={() => {
+              setShowModal(false);
+              loadJobs();
+            }}
+            setShowModal={setShowModal}
+          />
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

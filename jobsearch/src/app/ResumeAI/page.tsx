@@ -228,7 +228,6 @@ export default function ResumeAIPage() {
     });
 
     const buildData = await buildRes.json();
-    console.log("🚀 structuredResume:", buildData.structuredResume);
     if (buildData.error) {
       appendMessage({
         role: "assistant",

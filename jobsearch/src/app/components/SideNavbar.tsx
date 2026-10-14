@@ -7,6 +7,7 @@ import { X, Sparkles, Bell, MessageCircle, LayoutDashboard, Settings } from "luc
 import LogoutButton from "./Logout";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { NAV_LINKS, dashboardHref, userInitial } from "./nav";
+import { loginHref } from "../lib/hooks/nextPath";
 
 interface SideNavbarProps {
   closeNav: () => void;
@@ -16,8 +17,9 @@ interface SideNavbarProps {
 /** Mobile navigation drawer (slides in from the end edge). */
 const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const pathname = usePathname();
-  const { user } = useCurrentUser();
+  const { user, sessionExpired } = useCurrentUser();
   const lastPathRef = useRef(pathname);
+  const signInHref = loginHref(pathname);
 
   // Close when the route changes (link tapped inside the drawer).
   useEffect(() => {
@@ -47,7 +49,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
     }`;
 
   return (
-    <div className={`lg:hidden fixed inset-0 z-[70] ${isOpen ? "" : "pointer-events-none"}`} aria-hidden={!isOpen}>
+    <div className={`lg:hidden fixed inset-0 z-[70] ${isOpen ? "" : "pointer-events-none"}`} aria-hidden={!isOpen} inert={!isOpen}>
       <div
         onClick={closeNav}
         className={`absolute inset-0 bg-navy/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}
@@ -78,9 +80,16 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <Link href="/Login" className="jm-btn jm-btn-secondary">Sign in</Link>
-              <Link href="/SignUp" className="jm-btn jm-btn-accent">Sign up</Link>
+            <div className="space-y-2">
+              {sessionExpired && (
+                <p className="jm-alert jm-alert-info" dir="rtl" role="status">
+                  ההתחברות פגה, התחבר/י שוב
+                </p>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <Link href={signInHref} className="jm-btn jm-btn-secondary">Sign in</Link>
+                <Link href="/SignUp" className="jm-btn jm-btn-accent">Sign up</Link>
+              </div>
             </div>
           )}
 

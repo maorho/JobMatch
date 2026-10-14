@@ -11,6 +11,7 @@ import relativeTime from "dayjs/plugin/relativeTime.js";
 import { CloseIcon, EditIcon, UpdateIcon } from "@/app/components/icons";
 import { DeleteIcon } from "lucide-react";
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
+import { ConfirmInline, InlineNotice, Modal } from "@/app/components/Dialog";
 
 interface TagCompProps {
   headline: string;
@@ -35,6 +36,10 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   onSuccess,
 }) => {
   const [showModal, setShowModal] = useState(false);
+  // Inline replacements for confirm()/alert(): a pending delete question and a result notice.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [totalCandidates, setTotalCandidates] = useState(0);
   const [underReview, setUnderReview] = useState(0);
   const [shortlisted, setShortlisted] = useState(0);
@@ -91,8 +96,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
       if (!res.ok) throw new Error("Failed to update candidate statuses");
 
-      const result = await res.json();
-      console.log("Update success:", result);
+      await res.json();
       const newMap = new Map();
       setUpdatedStatuses(newMap);
 
@@ -113,26 +117,51 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
     if (isPublisher) setShowModal(true);
   };
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this job?"
-    );
-    if (!confirmed) return;
-
-    const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob?jobId=${job._id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.ok) {
-      alert("Job deleted");
-      setShowModal(false);
-      if (onSuccess) onSuccess();
-    } else {
-      alert("Something went wrong");
-    }
-    setShowModal(false);
+  const askDelete = (e?: React.MouseEvent) => {
+    e?.stopPropagation(); // the card itself opens the modal on click
+    setNotice(null);
+    setConfirmingDelete(true);
   };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob?jobId=${job._id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        setNotice({ kind: "ok", text: "Job deleted" });
+        setShowModal(false);
+        if (onSuccess) onSuccess();
+      } else {
+        setNotice({ kind: "err", text: "Something went wrong" });
+      }
+    } catch {
+      setNotice({ kind: "err", text: "Something went wrong" });
+    } finally {
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  };
+
+  const deletePrompt = confirmingDelete ? (
+    <ConfirmInline
+      text={`Delete "${job.job}"? This cannot be undone.`}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      danger
+      busy={deleting}
+      onConfirm={handleDelete}
+      onCancel={() => setConfirmingDelete(false)}
+    />
+  ) : notice ? (
+    <div onClick={(e) => e.stopPropagation()}>
+      <InlineNotice kind={notice.kind} onDismiss={() => setNotice(null)}>
+        {notice.text}
+      </InlineNotice>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -175,10 +204,13 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
           <span className="jm-chip">AWS</span>
         </div>
 
+        {!showModal && deletePrompt}
+
         {/* כפתורים בתחתית */}
         <div className="grid grid-cols-2 gap-3 pt-4 mt-auto border-t border-line">
           <button
-          onClick={() => {
+          onClick={(e) => {
+                    e.stopPropagation();
                     setShowModal(false);
                     router.push(`/RecruiterDashboard/Edit/${job._id}`);
                   }}
@@ -186,7 +218,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
             Edit Position
           </button>
           <button
-            onClick={handleDelete}
+            onClick={askDelete}
            className="jm-btn jm-btn-danger jm-btn-sm">
             Delete Job
           </button>
@@ -194,8 +226,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
       </motion.div>
 
       {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <Modal open={showModal} onClose={() => setShowModal(false)} label={job.job}>
           <div className="jm-card w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* כותרת + כפתורים */}
             <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-line">
@@ -223,7 +254,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
                 </button>
                 <button
                   className="jm-btn jm-btn-danger jm-btn-icon h-9 w-9"
-                  onClick={handleDelete}
+                  onClick={askDelete}
                   aria-label="Delete job"
                 >
                   <DeleteIcon className="h-4 w-4" />
@@ -238,6 +269,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
               </div>
             </div>
             <div className="overflow-y-auto jm-scroll bg-canvas p-4 sm:p-5 space-y-5">
+              {deletePrompt}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {
                   tag_json.map((x,idx)=>(<TagComp key={idx} headline={x.headline} number={x.number} />))
@@ -257,8 +289,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
               />
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 };

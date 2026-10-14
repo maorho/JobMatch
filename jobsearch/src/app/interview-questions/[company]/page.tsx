@@ -31,22 +31,24 @@ async function signedInUserId(): Promise<string | null> {
 
 /**
  * The bank for a company slug. A company from our catalog that nobody has
- * reported on yet gets its first web harvest right here (one search, ~15s,
- * once a month); a stale harvest is refreshed after the response is sent.
+ * reported on yet gets its first web harvest kicked off in `after()` (the
+ * search takes ~15s; the request must not wait for it) and the page renders a
+ * "collecting…" state; a stale harvest is likewise refreshed after the
+ * response is sent.
  */
-async function loadBank(key: string, userId: string | null) {
-  let bank = await questionBank(key, { limit: 300, userId: userId || undefined });
+async function loadBank(key: string, userId: string | null): Promise<{ bank: Awaited<ReturnType<typeof questionBank>>; harvesting: string | null }> {
+  const bank = await questionBank(key, { limit: 300, userId: userId || undefined });
   if (bank.total === 0) {
     const name = await companyNameForKey(key);
     if (name && (await webQuestionsDue(name))) {
-      await ensureWebQuestions(name);
-      bank = await questionBank(key, { limit: 300, userId: userId || undefined });
+      after(() => ensureWebQuestions(name));
+      return { bank, harvesting: name };
     }
   } else if (await webQuestionsDue(bank.company)) {
     const name = bank.company;
     after(() => ensureWebQuestions(name));
   }
-  return bank;
+  return { bank, harvesting: null };
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -55,7 +57,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!bank || bank.total === 0) return { title: "אין עדיין שאלות לחברה הזו", robots: { index: false } };
   const title = `שאלות ראיון ב-${bank.company} — ${bank.total} שאלות אמיתיות מראיונות HR וטכניים`;
   const description = `מה שואלים בראיון ב-${bank.company}? ${bank.total} שאלות לפי שלב ונושא: ${bank.reported > 0 ? `${bank.reported} דווחו על ידי ${bank.reporters} מועמדי JobMatch אחרי ראיונות אמיתיים` : ""}${bank.reported > 0 && bank.webCount > 0 ? ", " : ""}${bank.webCount > 0 ? `${bank.webCount} נאספו מדיווחים פומביים ברשת` : ""}. חלק פתוח לכולם, המאגר המלא למשתמשי JobMatch.`;
-  return { title, description, alternates: { canonical: `/interview-questions/${company}` }, openGraph: { title, description, url: `/interview-questions/${company}`, type: "article" }, robots: { index: true, follow: true } };
+  return {
+    title,
+    description,
+    alternates: { canonical: `/interview-questions/${company}` },
+    // Per-page openGraph replaces the root one, so the image must be repeated here.
+    openGraph: { title, description, url: `/interview-questions/${company}`, type: "article", images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
+    robots: { index: true, follow: true },
+  };
 }
 
 /** Group by stage; for anonymous readers keep PUBLIC_PER_STAGE per stage and report how many are hidden. */
@@ -92,7 +101,26 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
   const { company } = await params;
   const key = decodeURIComponent(company);
   const userId = await signedInUserId();
-  const bank = await loadBank(key, userId);
+  const { bank, harvesting } = await loadBank(key, userId);
+  if (bank.total === 0 && harvesting) {
+    // First visit for a catalog company: the harvest runs after this response.
+    return (
+      <div className="jm-page" dir="rtl">
+        <Link href="/interview-questions" className="jm-btn jm-btn-ghost jm-btn-sm -ms-3.5">← כל החברות</Link>
+        <header className="mt-4 mb-6 flex items-start gap-4">
+          <CompanyLogo name={harvesting} className="w-14 h-14 flex-shrink-0 rounded-xl" />
+          <div className="min-w-0">
+            <h1 className="jm-title">שאלות ראיון ב-{harvesting}</h1>
+            <p className="jm-subtitle">אוספים שאלות מדיווחים פומביים ברשת… רענן/י את העמוד בעוד דקה.</p>
+          </div>
+        </header>
+        <section className="jm-card p-5 sm:p-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-ink-600 leading-relaxed">סוכן המחקר סורק עכשיו Glassdoor, Reddit, Blind ובלוגים, ומוסיף רק שאלות שדווחו שם במפורש. זה לוקח בערך דקה.</p>
+          <Link href={`/interview-questions/${company}`} className="jm-btn jm-btn-primary jm-btn-sm">רענון</Link>
+        </section>
+      </div>
+    );
+  }
   if (bank.total === 0) notFound();
   const groups = splitForReader(bank.questions, !!userId);
   const hidden = groups.reduce((s, g) => s + g.hidden, 0);

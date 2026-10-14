@@ -24,7 +24,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     title,
     description,
     alternates: { canonical: `/job/${source}/${id}` },
-    openGraph: { title, description, type: "article", url: `/job/${source}/${id}` },
+    // Per-page openGraph replaces the root one, so the image must be repeated here.
+    openGraph: { title, description, type: "article", url: `/job/${source}/${id}`, images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
     robots: { index: true, follow: true },
   };
 }

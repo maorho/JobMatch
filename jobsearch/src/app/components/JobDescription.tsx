@@ -4,14 +4,17 @@ import React, { useMemo, useState } from "react";
 import Applybutton from "./Applybutton";
 import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
+import { loginHref } from "../lib/hooks/nextPath";
 import CompanyLogo from "./CompanyLogo";
 import DescriptionBlocks from "./DescriptionBlocks";
 import TailorResumePanel from "./TailorResumePanel";
 import ReferralsCard from "./ReferralsCard";
 import InsidersCard from "./InsidersCard";
 import FitCard from "./FitCard";
-import { IUser } from "../models/User";
+import { InlineNotice, Modal } from "./Dialog";
+import type { IUser } from "../models/User";
 import dayjs from "dayjs";
 
 interface JobDescriptionProps {
@@ -20,13 +23,18 @@ interface JobDescriptionProps {
 
 const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const { user } = useCurrentUser();
+  const pathname = usePathname();
   const [showModal, setShowModal] = useState(false);
   const [didYouApply, setDidYouApply] = useState(false);
   const [applied, setApplied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
 
   const internal = useMemo(() => isInternalJob(job), [job]);
+  // `active === false` is set by the loader on postings that have closed; undefined = open.
+  const closed = job?.active === false;
+  const applyUrl: string = job?.finalUrl || job?.url || "";
 
   const qualifications = internal
     ? typeof job?.qualifications === "string"
@@ -66,25 +74,26 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
     : "";
 
   const handleApplyClick = () => {
-    if (!user) return; // נציג הודעת התחברות מתחת
+    if (!user || closed) return; // נציג הודעת התחברות / סגירה מתחת
+    setNotice("");
     if (internal) {
       setShowModal(true);
       return;
     }
-    // External job
-    if (job?.finalUrl) {
+    // External job: the resolved apply link, or the posting URL when it was never resolved.
+    if (applyUrl) {
       // בטוח יותר לפתוח חלון חדש בלי גישה ל-window.opener
       const newWin = window.open("", "_blank");
       if (newWin) {
         newWin.opener = null;
-        newWin.location.href = job.finalUrl;
+        newWin.location.href = applyUrl;
       } else {
         // fallback
-        window.open(job.finalUrl, "_blank", "noopener");
+        window.open(applyUrl, "_blank", "noopener");
       }
       setDidYouApply(true);
     } else {
-      alert("הקישור עדיין נטען... נסה שוב בעוד רגע");
+      setNotice("הקישור למשרה עדיין לא זמין — נסה/י שוב בעוד רגע.");
     }
   };
 
@@ -163,15 +172,27 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
           </div>
         )}
 
+        {closed && (
+          <div className="mt-5 jm-alert bg-canvas text-ink-600 border-line" role="status" dir="rtl">
+            <span className="font-semibold text-navy">המשרה נסגרה.</span> התיאור נשאר כאן לעיון; אפשר לחפש משרות דומות ב
+            <Link href={companyName ? `/?company=${encodeURIComponent(companyName)}` : "/"} className="underline underline-offset-2 ms-1">
+              {companyName || "הפיד"}
+            </Link>
+            .
+          </div>
+        )}
+
         {user && (
           <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              onClick={handleApplyClick}
-              className="jm-btn jm-btn-accent hidden lg:inline-flex"
-              disabled={submitting}
-            >
-              Apply
-            </button>
+            {!closed && (
+              <button
+                onClick={handleApplyClick}
+                className="jm-btn jm-btn-accent hidden lg:inline-flex"
+                disabled={submitting}
+              >
+                Apply
+              </button>
+            )}
             {jobKey && (
               <Link
                 href={`/interview-prep/${internal ? "internal" : "external"}/${String(job._id ?? job.id)}`}
@@ -195,9 +216,17 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         {!user && (
           <div className="mt-5 jm-alert jm-alert-err flex flex-wrap items-center justify-between gap-2">
             <span className="font-semibold">You are not logged in</span>
-            <Link href="/Login" className="font-medium underline">
+            <Link href={loginHref(pathname)} className="font-medium underline">
               Go to Login
             </Link>
+          </div>
+        )}
+
+        {notice && (
+          <div className="mt-5">
+            <InlineNotice kind="info" onDismiss={() => setNotice("")}>
+              {notice}
+            </InlineNotice>
           </div>
         )}
 
@@ -291,7 +320,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       {/* Mobile apply bar: sticky (not fixed) so it scrolls away with the page
           and never covers the footer. After an external apply it turns into
           the "Did you apply?" prompt right where the user tapped. */}
-      {user && (
+      {user && !closed && (
         <div className="sticky bottom-0 z-40 lg:hidden mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur border-t border-line">
           {applied ? (
             <div className="text-sm font-semibold text-center" dir="auto">✓ נרשם שהגשת מועמדות</div>
@@ -316,13 +345,16 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       )}
 
       {/* מודאל למשרות פנימיות */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
-          <div className="jm-card p-5 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto jm-scroll">
-            <Applybutton setShowModal={setShowModal} job={job} />
-          </div>
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        label="Apply"
+        overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4"
+      >
+        <div className="jm-card p-5 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto jm-scroll">
+          <Applybutton setShowModal={setShowModal} job={job} />
         </div>
-      )}
+      </Modal>
     </div>
   );
 };
