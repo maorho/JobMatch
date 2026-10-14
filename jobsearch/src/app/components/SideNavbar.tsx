@@ -54,11 +54,12 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
         onClick={closeNav}
         className={`absolute inset-0 bg-navy/60 backdrop-blur-sm transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
+      {/* The root is never dir="rtl" (see layout.tsx), so the panel always parks off the right edge. Tailwind 4's ltr:/rtl: variants both matched here and the rtl one won, leaving a 56px strip of the closed drawer on screen. */}
       <aside
         role="dialog"
         aria-label="Menu"
         className={`absolute top-0 end-0 h-full w-[86%] max-w-sm bg-surface text-ink shadow-card-hover flex flex-col
-          transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "ltr:translate-x-full rtl:-translate-x-full"}`}
+          transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         <div className="flex items-center justify-between px-5 h-[72px] border-b border-line">
           <Link href="/" className="flex items-center gap-2.5">
