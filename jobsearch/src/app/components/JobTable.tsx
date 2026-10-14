@@ -441,7 +441,7 @@ function JobTable() {
       </section>
 
       {/* Filters + results */}
-      <section className="mt-8 lg:mt-10 grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
+      <section className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
         <aside className="hidden lg:block lg:sticky lg:top-[88px]">{filtersPanel}</aside>
 
         <div className="min-w-0">
@@ -478,7 +478,7 @@ function JobTable() {
           )}
 
           {loading && page === 1 ? (
-            <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="jm-card p-5 space-y-4">
                   <div className="flex items-center gap-3">
@@ -512,7 +512,7 @@ function JobTable() {
             </div>
           ) : (
             <>
-              <div className="mt-6 grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 auto-rows-fr">
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 auto-rows-fr">
                 {jobs.map((job, i) => (
                   <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}

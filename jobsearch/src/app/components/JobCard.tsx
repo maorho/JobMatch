@@ -56,13 +56,13 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       role="link"
       tabIndex={0}
       aria-label={`${job.job} at ${companyName}`}
-      className="jm-card jm-card-hover p-5 flex flex-col h-full cursor-pointer"
+      className="jm-card jm-card-hover p-5 flex flex-col h-full min-w-0 cursor-pointer"
     >
       {/* Header: the title owns the row; two quiet actions on the end */}
       <div className="flex items-start gap-3">
         <CompanyLogo name={companyName} domain={job.companyDomain} logoUrl={job.logoUrl} className="h-10 w-10 shrink-0 rounded-xl border border-line p-1" />
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-navy leading-snug line-clamp-2 min-h-[2.6rem]" title={job.job}>
+          <h3 className="font-semibold text-navy leading-snug line-clamp-2 min-h-[2.6rem] [overflow-wrap:anywhere]" title={job.job}>
             {job.job}
           </h3>
           <p className="text-sm text-ink-600 truncate">{companyName}</p>
@@ -96,11 +96,11 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
 
       {/* Two lines: why it fits (reranked) or the posting's own words */}
       {why ? (
-        <p className="mt-3 text-sm text-teal-600 leading-relaxed line-clamp-2 min-h-[2.75rem]" dir="auto" title={why}>
+        <p className="mt-3 text-sm text-teal-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto" title={why}>
           ✓ {why}
         </p>
       ) : job.description ? (
-        <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem]" dir="auto">
+        <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
           {job.description}
         </p>
       ) : (
