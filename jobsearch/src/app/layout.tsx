@@ -12,7 +12,9 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl()),
+  // siteUrl() is "" in production without APP_URL (env.ts refuses to boot then, but `next build`
+  // must not crash on it): new URL("") throws and fails the whole build.
+  ...(siteUrl() ? { metadataBase: new URL(siteUrl()) } : {}),
   title: { default: "JobMatch — משרות הייטק בישראל עם התאמה אישית", template: "%s · JobMatch" },
   description: "4,000+ משרות הייטק חיות מ-120+ חברות בישראל, מותאמות לקורות החיים שלך: התאמה חכמה, הכנה לראיון, הפניות והגשה אוטומטית. חינם.",
   applicationName: "JobMatch",
