@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcrypt";
-import { signJwt, SESSION_COOKIE } from "@/app/lib/jwt";
+import { signJwt, sessionClaims, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
-import { clientIp, enforceRateLimits, HOUR_MS } from "@/app/lib/ops/rateLimit";
+import { clientIp, checkRateLimits, recordRateLimitHits, HOUR_MS } from "@/app/lib/ops/rateLimit";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import User from "@/app/models/User";
 import Company from "@/app/models/Company";
@@ -11,13 +11,15 @@ import { v4 as uuidv4 } from "uuid";
 import mongoose from "mongoose";
 import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
 
-const s3 = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
+// S3 is optional (env.ts only warns on a partial AWS config): build the client lazily and
+// let signup succeed without a stored résumé rather than crash on a missing key.
+const s3Configured = () => !!(process.env.AWS_REGION && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.S3_BUCKET_NAME);
+let s3Client: S3Client | null = null;
+const s3 = () =>
+  (s3Client ??= new S3Client({
+    region: process.env.AWS_REGION!,
+    credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID!, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY! },
+  }));
 
 const MAX_RESUME_BYTES = 8 * 1024 * 1024; // 8 MB, same as chat/upload-resume
 
@@ -30,13 +32,15 @@ async function uploadToS3(buffer: Buffer): Promise<string> {
     Body: buffer,
     ContentType: "application/pdf",
   };
-  await s3.send(new PutObjectCommand(uploadParams));
+  await s3().send(new PutObjectCommand(uploadParams));
   return key;
 }
 
 export async function POST(req: NextRequest) {
-  // 5 new accounts per hour per address.
-  const limited = await enforceRateLimits([{ key: `signup:ip:${clientIp(req)}`, max: 5, windowMs: HOUR_MS }]);
+  // 10 accounts CREATED per hour per address: checked here, counted only after
+  // a successful signup, so typos/validation errors don't eat the budget.
+  const signupLimit = [{ key: `signup:ip:${clientIp(req)}`, max: 10, windowMs: HOUR_MS }];
+  const limited = await checkRateLimits(signupLimit);
   if (limited) return limited;
 
   await connectToDatabase();
@@ -87,7 +91,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Only PDF files are supported" }, { status: 400 });
     }
     resumeBuffer = Buffer.from(await resumeFile.arrayBuffer());
-    resumeKey = await uploadToS3(resumeBuffer);
+    if (s3Configured()) resumeKey = await uploadToS3(resumeBuffer);
+    else console.warn("[signup] AWS/S3 not configured — account created without the uploaded résumé; the user can add one in ResumeAI");
   }
 
   // ✅ טיפול בחברה
@@ -122,6 +127,7 @@ export async function POST(req: NextRequest) {
 
   const newUser = new User(userData);
   await newUser.save();
+  await recordRateLimitHits(signupLimit).catch((e) => console.warn("[signup] rate-limit count skipped:", (e as Error)?.message));
   if (ref && !recruiter) await attachPartner(String(newUser._id), ref).catch((e) => console.warn("[signup] partner attach skipped:", (e as Error)?.message));
 
   // Process the résumé for the personalized feed: extract text → embedding.
@@ -139,7 +145,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ✅ יצירת טוקן
-  const token = await signJwt({ id: String(newUser._id), email, admin: false });
+  const token = await signJwt(sessionClaims(newUser));
 
   const response = NextResponse.json({ message: "Signup successful", recruiter });
   response.cookies.set({ ...SESSION_COOKIE, value: token });

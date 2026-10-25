@@ -110,9 +110,22 @@ export function redirectUri(req: NextRequest, provider: Provider): string {
   return `${appOrigin(req)}/api/auth/oauth/${provider}/callback`;
 }
 
-/** Only same-site relative paths are allowed as post-login destinations. */
+/**
+ * Only same-site relative paths are allowed as post-login destinations.
+ * Control/whitespace chars are rejected outright: the URL parser strips tabs
+ * and newlines, so "/\t/evil.com" would otherwise become "//evil.com". The
+ * final parse against a sentinel origin catches anything else that resolves
+ * off-site.
+ */
+const SENTINEL_ORIGIN = "https://x.invalid";
 export function safeNext(next: string | null | undefined): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return "/";
+  if (!next || typeof next !== "string") return "/";
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\") || /[\s\x00-\x1f\x7f]/.test(next)) return "/";
+  try {
+    if (new URL(next, SENTINEL_ORIGIN).origin !== SENTINEL_ORIGIN) return "/";
+  } catch {
+    return "/";
+  }
   return next;
 }
 

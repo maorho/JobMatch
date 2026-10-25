@@ -18,7 +18,11 @@ import { ARTICLES, getArticle } from "@/app/content/articles";
 setupTestDb();
 
 const O = "http://localhost";
-const cookie = async (id: string) => ({ cookie: `token=${await signJwt({ id })}`, "Content-Type": "application/json" });
+// Signs with the user's current tokenVersion: a password change revokes older sessions.
+const cookie = async (id: string) => {
+  const tv = ((await User.findById(id).select("tokenVersion").lean()) as any)?.tokenVersion || 0;
+  return { cookie: `token=${await signJwt({ id, tv })}`, "Content-Type": "application/json" };
+};
 const j = async (res: Response) => ({ status: res.status, body: await res.json() });
 let me = "";
 

@@ -23,6 +23,9 @@ import Referrer from "@/app/models/Referrer";
 import ReferralRequest from "@/app/models/ReferralRequest";
 import UsageCounter from "@/app/models/UsageCounter";
 import RateLimit from "@/app/models/RateLimit";
+import AddedJobs from "@/app/models/AddedJobs";
+import InterviewQuestion from "@/app/models/InterviewQuestion";
+import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { signJwt, verifyJwt, JWT_TTL_SEC } from "@/app/lib/jwt";
 import { rateLimit } from "@/app/lib/ops/rateLimit";
 import { requireCron } from "@/app/lib/cron/requireCron";
@@ -62,25 +65,34 @@ beforeAll(async () => {
 });
 
 describe("login: no enumeration, brute-force lock-out, 7-day sliding sessions", () => {
-  it("answers the same 401 for an unknown address and a wrong password, then 429 after 10 tries", async () => {
+  it("answers the same 401 for an unknown address and a wrong password; only failures count toward the lock-out", async () => {
     const ip = "203.0.113.7";
-    const attempt = (email: string, password: string) => loginPOST(json("/api/auth/login", { email, password }, { "x-forwarded-for": ip }));
+    const attempt = (email: string, password: string, from = ip) => loginPOST(json("/api/auth/login", { email, password }, { "x-forwarded-for": from }));
     const unknown = await attempt("nobody@test.dev", "whatever");
-    const wrong = await attempt("dana@test.dev", "wrong-password");
+    const wrong = await attempt("approved@acme.com", "wrong-password");
     expect(unknown.status).toBe(401);
     expect(wrong.status).toBe(401);
     expect(await unknown.json()).toEqual(await wrong.json()); // identical body: "אימייל או סיסמה שגויים"
-    const ok = await attempt("dana@test.dev", "correct-horse-1");
-    expect(ok.status).toBe(200);
-    expect(ok.headers.get("set-cookie")).toMatch(/token=/);
-    for (let i = 3; i < 10; i++) await attempt("x@test.dev", "nope");
-    const locked = await attempt("dana@test.dev", "correct-horse-1"); // 11th from this IP: refused even with the right password
+
+    // Successful logins never add to the counters: no self-inflicted lock-out.
+    for (let i = 0; i < 12; i++) {
+      const ok = await attempt("dana@test.dev", "correct-horse-1");
+      expect(ok.status).toBe(200);
+      expect(ok.headers.get("set-cookie")).toMatch(/token=/);
+    }
+
+    // Per account: 10 failures (spread over IPs) lock the address for the window,
+    // even for the right password from a fresh IP.
+    for (let i = 0; i < 10; i++) expect((await attempt("dana@test.dev", "nope", `198.51.100.${i}`)).status).toBe(401);
+    const locked = await attempt("dana@test.dev", "correct-horse-1", "198.51.100.200");
     expect(locked.status).toBe(429);
     expect(locked.headers.get("retry-after")).toMatch(/^\d+$/);
     expect((await locked.json()).message).toMatch(/יותר מדי ניסיונות/);
-    // Another IP, same account: the per-email counter is separate but also 10.
-    for (let i = 0; i < 10; i++) await loginPOST(json("/api/auth/login", { email: "dana@test.dev", password: "nope" }, { "x-forwarded-for": "198.51.100.9" }));
-    expect((await loginPOST(json("/api/auth/login", { email: "dana@test.dev", password: "correct-horse-1" }, { "x-forwarded-for": "198.51.100.10" }))).status).toBe(429);
+    expect((await attempt("approved@acme.com", "correct-horse-1", "198.51.100.200")).status).toBe(200); // other accounts unaffected
+
+    // Per IP: 50 failures (2 already above) — different addresses so the per-email limit never trips.
+    for (let i = 2; i < 50; i++) expect((await attempt(`x${i}@test.dev`, "nope")).status).toBe(401);
+    expect((await attempt("approved@acme.com", "correct-horse-1")).status).toBe(429);
   });
 
   it("the password hash never leaves the DB unless asked for", async () => {
@@ -106,7 +118,7 @@ describe("login: no enumeration, brute-force lock-out, 7-day sliding sessions", 
     expect(cookie).toMatch(/SameSite=lax/i);
     expect(cookie).toMatch(new RegExp(`Max-Age=${JWT_TTL_SEC}`, "i"));
     const reissued = await verifyJwt<{ id: string; email: string; admin: boolean; exp: number }>(/token=([^;]+)/.exec(cookie)![1]);
-    expect(reissued).toMatchObject({ id: dana, email: "dana@test.dev", admin: false });
+    expect(reissued).toMatchObject({ id: dana, email: "dana@test.dev", admin: false, tv: 0 }); // a pre-`tv` token survives and is upgraded
     expect(reissued!.exp - Math.floor(Date.now() / 1000)).toBeGreaterThan(JWT_TTL_SEC - 60);
   });
 });
@@ -232,6 +244,19 @@ describe("account deletion", () => {
     await UsageCounter.collection.insertOne({ userId: uid, day: "2026-01-01", key: "k", n: 1 });
     const other = new mongoose.Types.ObjectId();
     await Notification.collection.insertOne({ userId: other, title: "keep" });
+    // As an insider: one open and one finished request from another candidate.
+    await ReferralRequest.collection.insertOne({ candidateId: other, referrerUserId: uid, jobId: new mongoose.Types.ObjectId(), status: "accepted" });
+    await ReferralRequest.collection.insertOne({ candidateId: other, referrerUserId: uid, jobId: new mongoose.Types.ObjectId(), status: "submitted" });
+    await AddedJobs.collection.insertOne({ candidateId: uid, jobTitle: "t", company: "c" });
+    // Interview questions: a private one, and two shareable reports of the same question from two applications.
+    await InterviewQuestion.syncIndexes(); // the unique (userId, applicationId, key) index is part of what's tested
+    const q = { userId: uid, company: "Wix", companyKey: "wix", question: "Why us?", key: "why us", note: "my secret note" };
+    await InterviewQuestion.collection.insertOne({ ...q, shareable: false, key: "private" });
+    await InterviewQuestion.collection.insertOne({ ...q, shareable: true, applicationId: new mongoose.Types.ObjectId() });
+    await InterviewQuestion.collection.insertOne({ ...q, shareable: true, applicationId: new mongoose.Types.ObjectId() });
+    await InterviewQuestion.collection.insertOne({ ...q, shareable: true, key: "salary" });
+    const danaReq = (token: string) => new NextRequest(`${O}/api/auth/me`, { headers: { cookie: `token=${token}` } } as any);
+    expect((await meGET(danaReq(tokens.dana))).status).toBe(200);
 
     expect((await accountDELETE(authed("dana", "/api/settings/account", { method: "DELETE", body: JSON.stringify({ confirm: "nope" }) }))).status).toBe(400);
     const res = await accountDELETE(authed("dana", "/api/settings/account", { method: "DELETE", body: JSON.stringify({ confirm: "DELETE" }) }));
@@ -242,5 +267,20 @@ describe("account deletion", () => {
     expect(await ReferralRequest.countDocuments({ candidateId: uid })).toBe(0);
     expect(await Notification.countDocuments({ userId: other })).toBe(1);
     expect(s3Calls.at(-1)).toEqual({ Bucket: "test-bucket", Key: "resumes/abc.pdf" });
+    // Requests to them as an insider: open → expired (frees the candidate's quota), history kept.
+    expect((await ReferralRequest.find({ referrerUserId: uid }).lean()).map((r: any) => r.status).sort()).toEqual(["expired", "submitted"]);
+    expect(await AddedJobs.countDocuments({ candidateId: uid })).toBe(0);
+    // Questions: nothing left under their id; the bank keeps the shareable text, anonymized and de-duplicated.
+    expect(await InterviewQuestion.countDocuments({ userId: uid })).toBe(0);
+    const kept: any[] = await InterviewQuestion.find({ companyKey: "wix" }).lean();
+    expect(kept.map((r) => r.key).sort()).toEqual(["salary", "why us"]);
+    expect(new Set(kept.map((r) => String(r.userId))).size).toBe(1); // still one reporter
+    for (const r of kept) {
+      expect(r.note).toBe("");
+      expect(r.applicationId).toBeUndefined();
+    }
+    // The session dies with the account.
+    expect((await meGET(danaReq(tokens.dana))).status).toBe(401);
+    expect(await getUserIdFromRequest(danaReq(tokens.dana))).toBeNull();
   });
 });

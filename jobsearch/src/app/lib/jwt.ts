@@ -6,6 +6,22 @@ export interface AppJwtPayload extends JWTPayload {
   email: string;
   fullname: string;
   admin: boolean;
+  /** User.tokenVersion at signing time; a mismatch means the session was revoked. Missing = 0 (pre-revocation tokens). */
+  tv?: number;
+}
+
+/**
+ * The claims every session token carries (login, signup, OAuth, /me refresh).
+ * Always sign through this so `tv` is never forgotten.
+ */
+export function sessionClaims(user: { _id: unknown; email: string; admin?: boolean; tokenVersion?: number }): JWTPayload {
+  return { id: String(user._id), email: user.email, admin: !!user.admin, tv: Number(user.tokenVersion || 0) };
+}
+
+/** True when the token's `tv` claim still matches the user's current tokenVersion. */
+export function tokenVersionMatches(payload: { tv?: unknown }, userTokenVersion: unknown): boolean {
+  const claimed = typeof payload.tv === "number" ? payload.tv : 0;
+  return claimed === Number(userTokenVersion || 0);
 }
 
 // Fail closed: never fall back to a public default secret. If JWT_SECRET is

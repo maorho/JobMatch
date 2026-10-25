@@ -6,6 +6,7 @@ export interface IUser extends Document {
   password: string;
   resetTokenHash?: string;
   resetTokenExpires?: Date;
+  tokenVersion?: number;
   channels?: { whatsapp?: { id?: string; label?: string; linkedAt?: Date }; telegram?: { id?: string; label?: string; linkedAt?: Date } };
   channelPrefs?: { matches?: boolean; updates?: boolean };
   channelLinkCode?: string;
@@ -79,6 +80,9 @@ const UserSchema = new Schema<IUser>(
     // Email password reset (lib/auth/passwordReset.ts): sha256 of a single-use token + its expiry.
     resetTokenHash: { type: String, select: false, index: true },
     resetTokenExpires: { type: Date },
+    // Session generation: every JWT carries it as `tv`; bumping it ($inc) on a
+    // password change/reset revokes every session issued before.
+    tokenVersion: { type: Number, default: 0 },
     // Messaging channels (lib/messaging/channels.ts): linked WhatsApp / Telegram identities + what to push there.
     channels: {
       whatsapp: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode, fetchProfile, isProvider, redirectUri, safeNext } from "@/app/lib/oauth/providers";
 import { findOrCreateOAuthUser } from "@/app/lib/oauth/users";
 import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
-import { signJwt, SESSION_COOKIE } from "@/app/lib/jwt";
+import { signJwt, sessionClaims, SESSION_COOKIE } from "@/app/lib/jwt";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,10 +45,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     const ref = req.cookies.get(REF_COOKIE)?.value || "";
     if (created && ref) await attachPartner(String(user._id), ref).catch(() => null);
 
-    const token = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
+    const token = await signJwt(sessionClaims(user));
     // New social accounts start with onboarding (résumé → contacts → auto-apply).
     const dest = created && next === "/" ? "/onboarding" : next;
-    const res = NextResponse.redirect(new URL(dest, req.nextUrl.origin));
+    // Belt and braces on top of safeNext: never redirect off our own origin.
+    let target = new URL(dest, req.nextUrl.origin);
+    if (target.origin !== req.nextUrl.origin) target = new URL("/", req.nextUrl.origin);
+    const res = NextResponse.redirect(target);
     res.cookies.set({ ...SESSION_COOKIE, value: token });
     res.cookies.delete(STATE_COOKIE);
     if (ref) res.cookies.delete(REF_COOKIE);

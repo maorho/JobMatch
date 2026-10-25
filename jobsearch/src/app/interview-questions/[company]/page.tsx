@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { after } from "next/server";
 import { questionBank, type BankQuestion } from "@/app/lib/outcomes/questions";
-import { ensureWebQuestions, webQuestionsDue, companyNameForKey } from "@/app/lib/interview/webQuestions";
-import { verifyJwt } from "@/app/lib/jwt";
+import { ensureWebQuestions, webQuestionsStatus, webQuestionsAvailable, claimWebQuestionsHarvest, companyNameForKey } from "@/app/lib/interview/webQuestions";
+import { getUserIdFromToken } from "@/app/lib/getUserIdFromRequest";
 import { breadcrumbJsonLd, faqJsonLd } from "@/app/lib/seo/jsonld";
 import CompanyLogo from "@/app/components/CompanyLogo";
 
@@ -20,10 +20,8 @@ const STAGE_ORDER = ["hr", "technical", "final", "other"];
 
 async function signedInUserId(): Promise<string | null> {
   try {
-    const token = (await cookies()).get("token")?.value;
-    if (!token) return null;
-    const p = await verifyJwt<{ id?: string }>(token);
-    return p?.id || null;
+    // Revocation-aware (deleted user / changed password), not just a signature check.
+    return await getUserIdFromToken((await cookies()).get("token")?.value);
   } catch {
     return null;
   }
@@ -35,20 +33,26 @@ async function signedInUserId(): Promise<string | null> {
  * search takes ~15s; the request must not wait for it) and the page renders a
  * "collecting…" state; a stale harvest is likewise refreshed after the
  * response is sent.
+ *
+ * "collecting…" is shown only while a harvest is actually running (we just
+ * claimed it, or another visit claimed it < 2 min ago). With no research
+ * client, after a harvest that found nothing, or while a failed attempt is
+ * backing off, an empty company falls through to notFound() — so crawlers
+ * don't re-queue a paid search on every visit.
  */
 async function loadBank(key: string, userId: string | null): Promise<{ bank: Awaited<ReturnType<typeof questionBank>>; harvesting: string | null }> {
   const bank = await questionBank(key, { limit: 300, userId: userId || undefined });
-  if (bank.total === 0) {
-    const name = await companyNameForKey(key);
-    if (name && (await webQuestionsDue(name))) {
-      after(() => ensureWebQuestions(name));
-      return { bank, harvesting: name };
-    }
-  } else if (await webQuestionsDue(bank.company)) {
-    const name = bank.company;
-    after(() => ensureWebQuestions(name));
+  const name = bank.total === 0 ? await companyNameForKey(key) : bank.company;
+  if (!name || !webQuestionsAvailable()) return { bank, harvesting: null };
+  const st = await webQuestionsStatus(name);
+  let running = st.inFlight;
+  if (st.due) {
+    // Claim before the response goes out so concurrent visits don't stack
+    // searches; losing the claim means another visit just started one.
+    running = true;
+    if (await claimWebQuestionsHarvest(name)) after(() => ensureWebQuestions(name, { claimed: true }));
   }
-  return { bank, harvesting: null };
+  return { bank, harvesting: bank.total === 0 && running ? name : null };
 }
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {

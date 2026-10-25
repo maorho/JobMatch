@@ -22,6 +22,35 @@ export async function rateLimit(key: string, max: number, windowMs: number, opts
   return { ok: row.count <= max, retryAfterSec };
 }
 
+/**
+ * Read-only look at a fixed-window counter (same window alignment as
+ * rateLimit). For "count failures only" limits: peek first, and call
+ * rateLimit() to record a hit only when the attempt actually failed.
+ */
+export async function peekRateLimit(key: string, max: number, windowMs: number): Promise<{ ok: boolean; count: number; retryAfterSec: number }> {
+  await connectToDatabase();
+  const now = Date.now();
+  const windowStart = new Date(Math.floor(now / windowMs) * windowMs);
+  const row: any = await RateLimit.findOne({ key, windowStart }).select("count").lean();
+  const count = Number(row?.count || 0);
+  const retryAfterSec = Math.max(1, Math.ceil((windowStart.getTime() + windowMs - now) / 1000));
+  return { ok: count < max, count, retryAfterSec };
+}
+
+/** Peek every key without counting; the 429 for the first one already at its limit, otherwise null. */
+export async function checkRateLimits(limits: { key: string; max: number; windowMs: number }[]): Promise<NextResponse | null> {
+  for (const l of limits) {
+    const r = await peekRateLimit(l.key, l.max, l.windowMs);
+    if (!r.ok) return rateLimitResponse(r.retryAfterSec);
+  }
+  return null;
+}
+
+/** Record one hit on each key (no verdict): the "a failure happened" half of check-then-count limits. */
+export async function recordRateLimitHits(limits: { key: string; max: number; windowMs: number }[]): Promise<void> {
+  for (const l of limits) await rateLimit(l.key, l.max, l.windowMs);
+}
+
 /** The caller's IP as the proxy reports it (first x-forwarded-for hop, then x-real-ip). */
 export function clientIp(req: NextRequest): string {
   const fwd = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();

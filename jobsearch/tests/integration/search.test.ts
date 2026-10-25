@@ -10,7 +10,7 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
 import User from "@/app/models/User";
 import mongoose from "mongoose";
-import { signJwt } from "@/app/lib/jwt";
+import { signJwt, sessionClaims } from "@/app/lib/jwt";
 import { embedPendingJobs } from "@/app/lib/matcher/embedJobs";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import { GET as searchGET } from "@/app/api/jobs/search/route";
@@ -174,7 +174,9 @@ describe("GET /api/jobs/facets", () => {
     const j = body.jobs.find((x: any) => x.job === "Snippet Test Engineer");
     expect(j.description.length).toBeLessThan(500);
     expect(j.description.endsWith("…")).toBe(true);
-    const mine = await searchGET(new NextRequest(`${O}/api/jobs/search?q=snippet&me=1`, { headers: { cookie: `token=${await signJwt({ id: String(new mongoose.Types.ObjectId()) })}` } }));
+    // Sessions are revocation-checked (the user must exist), so sign for a real user.
+    const viewer = await User.create({ username: "snipviewer", email: "snipviewer@test.dev", password: "x", fullname: "Snip Viewer", phone: "0" } as any);
+    const mine = await searchGET(new NextRequest(`${O}/api/jobs/search?q=snippet&me=1`, { headers: { cookie: `token=${await signJwt(sessionClaims(viewer as any))}` } }));
     expect(mine.headers.get("cache-control")).toMatch(/private/);
   });
 });

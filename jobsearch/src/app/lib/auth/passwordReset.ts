@@ -79,6 +79,8 @@ export async function resetPassword(token: string, newPassword: string): Promise
     return { ok: false, error: "expired" };
   }
   const hashed = await bcrypt.hash(newPassword, 10);
-  await User.updateOne({ _id: user._id }, { $set: { password: hashed }, $unset: { resetTokenHash: 1, resetTokenExpires: 1 } });
+  // Bumping tokenVersion signs out every existing session: a reset is what
+  // you do when someone else may have your password.
+  await User.updateOne({ _id: user._id }, { $set: { password: hashed }, $unset: { resetTokenHash: 1, resetTokenExpires: 1 }, $inc: { tokenVersion: 1 } });
   return { ok: true, email: user.email };
 }

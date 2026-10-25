@@ -9,6 +9,9 @@ import { requestPasswordReset, resetPassword, hashToken, resetEmail, RESET_TTL_M
 import { POST as forgotPOST } from "@/app/api/auth/password/forgot/route";
 import { POST as resetPOST } from "@/app/api/auth/password/reset/route";
 import { POST as loginPOST } from "@/app/api/auth/login/route";
+import { GET as meGET } from "@/app/api/auth/me/route";
+import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+import { verifyJwt } from "@/app/lib/jwt";
 
 setupTestDb();
 
@@ -51,6 +54,11 @@ describe("password reset by email", () => {
 
   it("resets the password with a fresh token once; the old token and the old password stop working", async () => {
     const [, token] = linkOf(outbox[0].text);
+    // A session from before the reset (e.g. the attacker's) …
+    const before = await loginPOST(json("/api/auth/login", { email: "dana@test.dev", password: "old-password-1" }));
+    const oldSession = /token=([^;]+)/.exec(before.headers.get("set-cookie") || "")![1];
+    const withCookie = (t: string) => new NextRequest("http://localhost/api/auth/me", { headers: { cookie: `token=${t}` } } as any);
+    expect(await getUserIdFromRequest(withCookie(oldSession))).toBeTruthy();
     expect(await resetPassword(decodeURIComponent(token), "short")).toEqual({ ok: false, error: "weak_password" });
     expect(await resetPassword("not-a-real-token-at-all", "new-password-123")).toEqual({ ok: false, error: "invalid_token" });
     const r = await resetPassword(decodeURIComponent(token), "new-password-123");
@@ -64,6 +72,13 @@ describe("password reset by email", () => {
     expect(login.status).toBe(200);
     const old = await loginPOST(json("/api/auth/login", { email: "dana@test.dev", password: "old-password-1" }));
     expect(old.status).not.toBe(200);
+
+    // … is revoked by the reset (tokenVersion bumped); the new login's session works.
+    expect(await getUserIdFromRequest(withCookie(oldSession))).toBeNull();
+    expect((await meGET(withCookie(oldSession))).status).toBe(401);
+    const fresh = /token=([^;]+)/.exec(login.headers.get("set-cookie") || "")![1];
+    expect(await verifyJwt(fresh)).toMatchObject({ tv: 1 });
+    expect((await meGET(withCookie(fresh))).status).toBe(200);
   });
 
   it("an expired token is refused (410) and cleared", async () => {

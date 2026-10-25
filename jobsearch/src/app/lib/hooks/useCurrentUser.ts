@@ -3,10 +3,15 @@
 import { useEffect } from "react";
 import useSWR from "swr";
 
-/** `null` = not signed in (401/404); the fetcher never throws for those so SWR keeps `user` stable. */
+/**
+ * `null` = not signed in (401/404). Any other failure (5xx, network) THROWS:
+ * SWR then keeps the previous `user` and sets `error`, so a server hiccup
+ * never looks like an expired session.
+ */
 const fetcher = async (url: string) => {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
+  if (res.status === 401 || res.status === 404) return null;
+  if (!res.ok) throw new Error(`/api/auth/me answered ${res.status}`);
   return res.json();
 };
 

@@ -14,7 +14,10 @@ import InterviewSession from "@/app/models/InterviewSession";
 import AutoApplication from "@/app/models/AutoApplication";
 import PracticeAttempt from "@/app/models/PracticeAttempt";
 import Referrer from "@/app/models/Referrer";
-import ReferralRequest from "@/app/models/ReferralRequest";
+import ReferralRequest, { OPEN_STATUSES } from "@/app/models/ReferralRequest";
+import AddedJobs from "@/app/models/AddedJobs";
+import InterviewQuestion from "@/app/models/InterviewQuestion";
+import mongoose from "mongoose";
 import MatchCache from "@/app/models/MatchCache";
 import JobSignal from "@/app/models/JobSignal";
 import ContactMessage from "@/app/models/ContactMessage";
@@ -39,12 +42,39 @@ async function deleteResumeObject(key: string): Promise<void> {
 }
 
 /**
+ * Interview questions the person reported. Private (non-shareable) ones are
+ * deleted. Shareable ones feed the public per-company question bank, so they
+ * are kept but cut loose from the person: the personal note and application
+ * link are dropped, and userId is swapped for ONE fresh anonymous id rather
+ * than $unset — userId is required, the bank counts distinct reporters by it,
+ * and the unique (userId, applicationId, key) index would make unset rows
+ * collide. A row that still collides (same question reported for two
+ * applications) is a duplicate and is deleted.
+ */
+async function anonymizeInterviewQuestions(userId: string): Promise<void> {
+  await InterviewQuestion.deleteMany({ userId, shareable: { $ne: true } });
+  const rows = await InterviewQuestion.find({ userId }).select("_id").lean();
+  const anon = new mongoose.Types.ObjectId();
+  for (const r of rows as any[]) {
+    try {
+      await InterviewQuestion.updateOne({ _id: r._id }, { $set: { userId: anon, note: "" }, $unset: { applicationId: 1 } });
+    } catch (e: any) {
+      if (e?.code === 11000) await InterviewQuestion.deleteOne({ _id: r._id });
+      else throw e;
+    }
+  }
+}
+
+/**
  * DELETE /api/settings/account { confirm: "DELETE" }
  * Deletes the account and every row keyed to the person: applications and
  * their outcomes/events, notifications, interview plans and sessions,
- * practice, messages, contacts, referrals (as insider and as requester),
- * match caches, signals, usage counters, and the résumé file in S3. Jobs a
- * recruiter published are kept.
+ * practice, messages, contacts, referrals (as insider and as requester; open
+ * requests sent to them as an insider are expired), manually added jobs,
+ * private interview questions (shareable ones are anonymized), match caches,
+ * signals, usage counters, and the résumé file in S3. Jobs a recruiter
+ * published are kept. Deleting the User row also revokes every session
+ * (getUserIdFromRequest requires the user to exist).
  */
 export async function DELETE(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
@@ -71,6 +101,12 @@ export async function DELETE(req: NextRequest) {
     PracticeAttempt.deleteMany({ userId }),
     Referrer.deleteMany({ userId }),
     ReferralRequest.deleteMany({ candidateId: userId }),
+    // Requests other candidates sent to this person as an insider: their
+    // history is theirs, so expire the open ones ("expired" is outside
+    // OPEN_STATUSES, so the candidates' open-request counts drop) instead of deleting.
+    ReferralRequest.updateMany({ referrerUserId: userId, status: { $in: OPEN_STATUSES } }, { $set: { status: "expired", respondedAt: new Date() } }),
+    AddedJobs.deleteMany({ candidateId: userId }),
+    anonymizeInterviewQuestions(userId),
     MatchCache.deleteMany({ userId }),
     JobSignal.deleteMany({ userId }),
     ContactMessage.deleteMany({ userId }),

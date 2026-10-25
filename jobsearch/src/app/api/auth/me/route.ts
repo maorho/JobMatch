@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyJwt, signJwt, JWT_REFRESH_BELOW_SEC, SESSION_COOKIE } from "@/app/lib/jwt";
+import mongoose from "mongoose";
+import { verifyJwt, signJwt, sessionClaims, tokenVersionMatches, JWT_REFRESH_BELOW_SEC, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 
@@ -12,21 +13,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
   }
 
+  // 401 only for a missing/invalid/revoked session; anything else (DB down) is
+  // a 500 so the client keeps its user instead of showing "session expired".
+  const decoded = await verifyJwt<{ id: string; exp?: number; tv?: number }>(token).catch(() => null);
+  if (!decoded || !decoded.id || !mongoose.isValidObjectId(decoded.id)) {
+    return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
+  }
+
   try {
-    const decoded = await verifyJwt<{ id: string; exp?: number }>(token);
-
-    if (!decoded || !decoded.id) {
-      return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
-    }
-
     // Always read fresh from the DB: a role/approval change must take effect
     // immediately (the old 60s in-memory cache served stale data and grew
     // unbounded on a long-lived server).
     await connectToDatabase();
     const user = await User.findById(decoded.id).select("-password");
 
-    if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    // A deleted account or a bumped tokenVersion (password change/reset) revokes the session.
+    if (!user || !tokenVersionMatches(decoded, user.tokenVersion)) {
+      const res = NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
+      res.cookies.set({ ...SESSION_COOKIE, value: "", maxAge: 0 });
+      return res;
     }
 
     const userData = {
@@ -48,12 +53,12 @@ export async function GET(req: NextRequest) {
     // logged out mid-session.
     const remaining = (decoded.exp || 0) - Math.floor(Date.now() / 1000);
     if (remaining < JWT_REFRESH_BELOW_SEC) {
-      const fresh = await signJwt({ id: String(user._id), email: user.email, admin: !!user.admin });
+      const fresh = await signJwt(sessionClaims(user));
       res.cookies.set({ ...SESSION_COOKIE, value: fresh });
     }
     return res;
   } catch (err) {
-    console.error("❌ Error verifying token:", err);
-    return NextResponse.json({ message: "Invalid or expired token" }, { status: 401 });
+    console.error("❌ /api/auth/me failed:", err);
+    return NextResponse.json({ message: "Server error" }, { status: 500, headers: { "Cache-Control": "private, no-store" } });
   }
 }

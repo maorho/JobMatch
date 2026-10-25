@@ -120,5 +120,19 @@ describe("social login", () => {
     expect(safeNext("https://evil.com")).toBe("/");
     expect(safeNext("//evil.com")).toBe("/");
     expect(safeNext(null)).toBe("/");
+    // The URL parser strips tab/CR/LF, so "/\t/evil.com" would resolve to //evil.com.
+    for (const evil of ["/\t/evil.com", "/\n/evil.com", "/\r/evil.com", "/\\evil.com", "\\\\evil.com", "/ /evil.com", "/\u0000/evil.com", "javascript:alert(1)", decodeURIComponent("/%09/evil.com")]) {
+      expect(safeNext(evil), JSON.stringify(evil)).toBe("/");
+    }
+    expect(safeNext("/jobs?q=a%20b#top")).toBe("/jobs?q=a%20b#top");
+  });
+
+  it("a crafted ?next never redirects off-site after the callback", async () => {
+    const { cb } = await login("google", { sub: "g-evil", email: "evilnext@example.com", email_verified: true, name: "E" }, "/\t/evil.com");
+    const loc = new URL(cb.headers.get("location") || "", ORIGIN);
+    expect(loc.origin).toBe(ORIGIN);
+    expect(loc.pathname).toBe("/onboarding"); // fell back to "/" → new account → onboarding
+    const token = cookieHeader(cb, "token");
+    expect(await verifyJwt(token)).toMatchObject({ email: "evilnext@example.com", tv: 0 });
   });
 });

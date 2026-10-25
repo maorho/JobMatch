@@ -5,6 +5,9 @@ import Link from "next/link";
 import { BadgeCheck, Mail } from "lucide-react";
 
 type Profile = { _id: string; company: string; title: string; workEmail: string; verified: boolean; active: boolean; capacity: number; note: string; open: number; stats: { requests: number; accepted: number; submitted: number; declined: number } };
+// Must match makeCode in lib/referrals/insiders.ts (8 chars from A-HJ-NP-Z2-9);
+// hardcoded because that module is server-only.
+const INSIDER_CODE_LENGTH = 8;
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
 /** Settings: register as an insider at your company (verified by a code sent to your work email) and manage capacity. */
@@ -64,8 +67,8 @@ export default function InsiderCard() {
           </div>
           {!p.verified ? (
             <div className="flex flex-wrap items-center gap-2">
-              <input value={codes[p._id] || ""} onChange={(e) => setCodes({ ...codes, [p._id]: e.target.value })} inputMode="numeric" maxLength={6} placeholder="קוד בן 6 ספרות" className="jm-input w-40 font-mono tracking-widest" dir="ltr" />
-              <button onClick={() => verify(p)} disabled={busy === p._id || (codes[p._id] || "").length !== 6} className="jm-btn jm-btn-primary jm-btn-sm">אמת</button>
+              <input value={codes[p._id] || ""} onChange={(e) => setCodes({ ...codes, [p._id]: e.target.value.toUpperCase() })} autoCapitalize="characters" autoComplete="one-time-code" spellCheck={false} maxLength={INSIDER_CODE_LENGTH} placeholder={`קוד בן ${INSIDER_CODE_LENGTH} תווים`} className="jm-input w-40 font-mono tracking-widest" dir="ltr" />
+              <button onClick={() => verify(p)} disabled={busy === p._id || (codes[p._id] || "").trim().length !== INSIDER_CODE_LENGTH} className="jm-btn jm-btn-primary jm-btn-sm">אמת</button>
               <button onClick={() => { setForm({ company: p.company, title: p.title, workEmail: p.workEmail, note: p.note }); }} className="jm-btn jm-btn-ghost jm-btn-sm">שלח קוד חדש</button>
             </div>
           ) : (
