@@ -37,7 +37,11 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
     if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeNav();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return; // a modal on top may have taken it
+      e.preventDefault();
+      closeNav();
+    };
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;

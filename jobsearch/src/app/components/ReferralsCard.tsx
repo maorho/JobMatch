@@ -37,7 +37,7 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
     try {
       const r = await fetch("/api/contacts/outreach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c._id, jobId, source, channel: ch, language: lang, url: jobUrl }) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error || "הניסוח נכשל");
+      if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "הניסוח נכשל"));
       setDraft({ subject: d.subject, message: d.message, angle: d.angle });
     } catch (e: any) {
       setErr(e?.message || "הניסוח נכשל");

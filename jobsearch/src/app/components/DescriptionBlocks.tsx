@@ -77,7 +77,7 @@ export default function DescriptionBlocks({ text, className = "" }: { text: stri
       {blocks.map((b, i) => {
         if (b.type === "heading") {
           return (
-            <h4 key={i} dir="auto" className="jm-h2 mt-6 first:mt-0">
+            <h4 key={i} dir="auto" className="jm-h2 mt-6 first:mt-0 break-words [overflow-wrap:anywhere]">
               {b.text}
             </h4>
           );
@@ -86,7 +86,7 @@ export default function DescriptionBlocks({ text, className = "" }: { text: stri
           return (
             <ul key={i} className="list-disc ps-5 space-y-1 text-ink-600 leading-relaxed marker:text-teal">
               {b.items.map((it, j) => (
-                <li key={j} dir="auto" className="break-words">
+                <li key={j} dir="auto" className="break-words [overflow-wrap:anywhere]">
                   {it}
                 </li>
               ))}
@@ -94,7 +94,7 @@ export default function DescriptionBlocks({ text, className = "" }: { text: stri
           );
         }
         return (
-          <p key={i} dir="auto" className="text-ink-600 leading-relaxed break-words">
+          <p key={i} dir="auto" className="text-ink-600 leading-relaxed break-words [overflow-wrap:anywhere]">
             {b.text}
           </p>
         );

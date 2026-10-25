@@ -35,7 +35,13 @@ const WebQuestionHarvestSchema = new mongoose.Schema(
   {
     companyKey: { type: String, required: true, unique: true },
     company: { type: String, required: true },
-    harvestedAt: { type: Date, default: Date.now },
+    // Set only when a harvest completes (no default: a failed attempt's upsert
+    // must not look like a fresh harvest).
+    harvestedAt: { type: Date },
+    /** Last attempt of any outcome; with `error` set it drives the retry back-off. */
+    attemptedAt: { type: Date },
+    /** In-flight marker: concurrent visits don't stack paid searches (cleared when the attempt ends). */
+    harvestStartedAt: { type: Date, default: null },
     found: { type: Number, default: 0 },
     created: { type: Number, default: 0 },
     searched: { type: Boolean, default: false },

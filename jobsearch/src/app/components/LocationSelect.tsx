@@ -29,7 +29,13 @@ export default function LocationSelect({ jobs, cities, selectedCities, setSelect
   useEffect(() => {
     if (!isOpen) return;
     const onClick = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setIsOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setIsOpen(false);
+    // preventDefault marks Escape as consumed, so an enclosing modal (see
+    // Dialog.tsx's modal stack) doesn't close too.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.preventDefault();
+      setIsOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
     return () => {

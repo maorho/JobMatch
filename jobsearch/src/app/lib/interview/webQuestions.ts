@@ -7,6 +7,7 @@ import { companyKey } from "@/app/lib/outcomes/companyKey";
 import { questionKey } from "@/app/lib/outcomes/questions";
 import { callWithSearch, repairJsonAs, researchClient, safeJson, RESEARCH_MODEL, type ResearchClient } from "./companyResearch";
 import { memo, ttl } from "@/app/lib/cache";
+import { harvestState, WEB_QUESTIONS_INFLIGHT_MS, type HarvestState } from "./harvestState";
 
 /**
  * Web-questions harvest: what candidates report *publicly* about a company's
@@ -16,7 +17,7 @@ import { memo, ttl } from "@/app/lib/cache";
  * question (WebInterviewQuestion). The bank merges these with what our own
  * candidates reported, always labelled by provenance.
  */
-export const WEB_QUESTIONS_TTL_DAYS = 30;
+export { WEB_QUESTIONS_TTL_DAYS, WEB_QUESTIONS_RETRY_MS, WEB_QUESTIONS_INFLIGHT_MS } from "./harvestState";
 export const WEB_QUESTIONS_MODEL = process.env.WEB_QUESTIONS_MODEL || RESEARCH_MODEL;
 
 const str = z.preprocess((v) => (v == null ? "" : typeof v === "string" ? v : String(v)), z.string());
@@ -53,19 +54,72 @@ Return STRICT JSON only: ${SHAPE}`;
 
 export type HarvestResult = { company: string; companyKey: string; found: number; created: number; searched: boolean; cached: boolean; processNotes: string };
 
-/** Harvest once per company per WEB_QUESTIONS_TTL_DAYS. Returns null when no client is available (no key / tests). */
-export async function harvestWebQuestions(company: string, opts: { domain?: string; sampleTitles?: string[]; client?: ResearchClient; force?: boolean } = {}): Promise<HarvestResult | null> {
+/** Record a failed attempt (keeps any earlier successful harvest's data) and clear the in-flight marker. */
+async function recordFailedAttempt(key: string, name: string, error: string) {
+  await WebQuestionHarvest.findOneAndUpdate(
+    { companyKey: key },
+    { $set: { attemptedAt: new Date(), harvestStartedAt: null, error: error.slice(0, 300) }, $setOnInsert: { companyKey: key, company: name } },
+    { upsert: true }
+  ).catch((e: any) => console.warn("[webQuestions] could not record attempt:", e?.message));
+}
+
+/**
+ * Atomically mark a harvest as started, unless one started less than
+ * WEB_QUESTIONS_INFLIGHT_MS ago. Returns false when someone else holds it.
+ */
+export async function claimWebQuestionsHarvest(company: string): Promise<boolean> {
+  const name = (company || "").trim();
+  if (!name) return false;
+  await connectToDatabase();
+  const key = companyKey(name);
+  try {
+    const row = await WebQuestionHarvest.findOneAndUpdate(
+      { companyKey: key, $or: [{ harvestStartedAt: null }, { harvestStartedAt: { $lt: new Date(Date.now() - WEB_QUESTIONS_INFLIGHT_MS) } }] },
+      { $set: { harvestStartedAt: new Date() }, $setOnInsert: { company: name } },
+      { upsert: true, new: true }
+    ).lean();
+    return !!row;
+  } catch (e: any) {
+    if (e?.code === 11000) return false; // the row exists with a fresh marker: another visit claimed it
+    throw e;
+  }
+}
+
+/**
+ * Harvest once per company per WEB_QUESTIONS_TTL_DAYS. Returns null when no
+ * client is available (no key / tests), when a recent attempt failed (back-off),
+ * or when another harvest for the company is already running. Every attempt is
+ * recorded, so a failure doesn't make the company "due" on every call.
+ * `claimed`: the caller already took the in-flight marker (claimWebQuestionsHarvest).
+ */
+export async function harvestWebQuestions(company: string, opts: { domain?: string; sampleTitles?: string[]; client?: ResearchClient; force?: boolean; claimed?: boolean } = {}): Promise<HarvestResult | null> {
   const name = (company || "").trim();
   if (!name) return null;
   await connectToDatabase();
   const key = companyKey(name);
   if (!opts.force) {
-    const prev: any = await WebQuestionHarvest.findOne({ companyKey: key, harvestedAt: { $gt: new Date(Date.now() - WEB_QUESTIONS_TTL_DAYS * 864e5) } }).lean();
-    if (prev) return { company: prev.company, companyKey: key, found: prev.found, created: 0, searched: !!prev.searched, cached: true, processNotes: prev.processNotes || "" };
+    const prev: any = await WebQuestionHarvest.findOne({ companyKey: key }).lean();
+    const st = harvestState(prev);
+    if (prev && st.fresh) return { company: prev.company, companyKey: key, found: prev.found, created: 0, searched: !!prev.searched, cached: true, processNotes: prev.processNotes || "" };
+    if (st.backingOff) return null;
+    if (st.inFlight && !opts.claimed) return null;
   }
   const client = opts.client || researchClient();
-  if (!client) return null;
+  if (!client) {
+    await recordFailedAttempt(key, name, "no research client");
+    return null;
+  }
+  if (!opts.claimed && !opts.force && !(await claimWebQuestionsHarvest(name))) return null;
 
+  try {
+    return await runHarvest(client, name, key, opts);
+  } catch (e) {
+    await recordFailedAttempt(key, name, `search failed: ${(e as Error)?.message || String(e)}`);
+    throw e;
+  }
+}
+
+async function runHarvest(client: ResearchClient, name: string, key: string, opts: { domain?: string; sampleTitles?: string[] }): Promise<HarvestResult> {
   const { text, searched } = await callWithSearch(client, buildWebQuestionsPrompt(name, { domain: opts.domain, sampleTitles: opts.sampleTitles }), { model: WEB_QUESTIONS_MODEL, maxTokens: 4000 });
   let parsed = outSchema.safeParse(safeJson(text));
   if (!parsed.success) {
@@ -73,7 +127,7 @@ export async function harvestWebQuestions(company: string, opts: { domain?: stri
     parsed = outSchema.safeParse(safeJson(repaired));
   }
   if (!parsed.success) {
-    await WebQuestionHarvest.findOneAndUpdate({ companyKey: key }, { $set: { companyKey: key, company: name, harvestedAt: new Date(), found: 0, created: 0, searched, model: WEB_QUESTIONS_MODEL, error: `invalid output: ${String(text).slice(0, 200).replace(/\s+/g, " ")}` } }, { upsert: true });
+    await WebQuestionHarvest.findOneAndUpdate({ companyKey: key }, { $set: { companyKey: key, company: name, harvestedAt: new Date(), attemptedAt: new Date(), harvestStartedAt: null, found: 0, created: 0, searched, model: WEB_QUESTIONS_MODEL, error: `invalid output: ${String(text).slice(0, 200).replace(/\s+/g, " ")}` } }, { upsert: true });
     return { company: name, companyKey: key, found: 0, created: 0, searched, cached: false, processNotes: "" };
   }
 
@@ -94,12 +148,12 @@ export async function harvestWebQuestions(company: string, opts: { domain?: stri
     if (r.upsertedCount) created++;
   }
   const found = seen.size;
-  await WebQuestionHarvest.findOneAndUpdate({ companyKey: key }, { $set: { companyKey: key, company: name, harvestedAt: new Date(), found, created, searched, model: WEB_QUESTIONS_MODEL, processNotes: parsed.data.processNotes, error: "" } }, { upsert: true });
+  await WebQuestionHarvest.findOneAndUpdate({ companyKey: key }, { $set: { companyKey: key, company: name, harvestedAt: new Date(), attemptedAt: new Date(), harvestStartedAt: null, found, created, searched, model: WEB_QUESTIONS_MODEL, processNotes: parsed.data.processNotes, error: "" } }, { upsert: true });
   return { company: name, companyKey: key, found, created, searched, cached: false, processNotes: parsed.data.processNotes };
 }
 
 /** Never throws: harvest if due, otherwise return quickly. Safe to call from prep flows and pages. */
-export async function ensureWebQuestions(company: string, opts: { domain?: string; sampleTitles?: string[]; client?: ResearchClient } = {}): Promise<HarvestResult | null> {
+export async function ensureWebQuestions(company: string, opts: { domain?: string; sampleTitles?: string[]; client?: ResearchClient; claimed?: boolean } = {}): Promise<HarvestResult | null> {
   try {
     return await harvestWebQuestions(company, opts);
   } catch (e) {
@@ -108,11 +162,24 @@ export async function ensureWebQuestions(company: string, opts: { domain?: strin
   }
 }
 
-/** Is a harvest due (never run, or older than the TTL)? Cheap check for pages that refresh in the background. */
-export async function webQuestionsDue(company: string): Promise<boolean> {
+/** Harvest scheduling state for a company (fresh / in flight / backing off / due). */
+export async function webQuestionsStatus(company: string): Promise<HarvestState> {
   await connectToDatabase();
-  const prev: any = await WebQuestionHarvest.findOne({ companyKey: companyKey(company) }).select("harvestedAt").lean();
-  return !prev || new Date(prev.harvestedAt).getTime() < Date.now() - WEB_QUESTIONS_TTL_DAYS * 864e5;
+  const prev: any = await WebQuestionHarvest.findOne({ companyKey: companyKey(company) }).select("harvestedAt attemptedAt harvestStartedAt error").lean();
+  return harvestState(prev);
+}
+
+/**
+ * Is a harvest due (never run or older than the TTL, nothing running, and no
+ * recent failed attempt)? Cheap check for pages that refresh in the background.
+ */
+export async function webQuestionsDue(company: string): Promise<boolean> {
+  return (await webQuestionsStatus(company)).due;
+}
+
+/** Can a harvest run at all here (a research client is configured)? */
+export function webQuestionsAvailable(): boolean {
+  return !!researchClient();
 }
 
 /** The catalog's display name for a company slug (the bank pages are addressed by companyKey). */

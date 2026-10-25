@@ -71,7 +71,7 @@ export default function InterviewPrepPage() {
     try {
       const res = await fetch("/api/interview/prep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId, source, force, language: "he" }) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "ההכנה נכשלה");
+      if (!res.ok) throw new Error(data?.message || data?.error || (res.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "ההכנה נכשלה"));
       setPrep(data);
       setStageKey(data.plan.stages[0]?.key || "");
       setState("ready");
@@ -157,7 +157,7 @@ export default function InterviewPrepPage() {
   const call = async (url: string, method: string, body: object) => {
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d?.error || "משהו השתבש");
+    if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "משהו השתבש"));
     return d;
   };
 
