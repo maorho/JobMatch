@@ -6,7 +6,7 @@ import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
-import { autoApplyCandidatesSince } from "@/app/lib/apply/autoApply";
+import { autoApplyCandidatesSince, usersWithDueDeferrals } from "@/app/lib/apply/autoApply";
 
 const TOP_N = 5;
 const MIN_SCORE = 60;
@@ -28,6 +28,7 @@ export const matcherAgent = registerAgent({
           const r = await embedPendingJobs(EMBED_BATCH);
           embedded += r.processed;
           remaining = r.remaining;
+          await ctx.heartbeat(); // each batch is an embeddings call: renew the lease between them
           if (remaining === 0 || r.processed === 0) break;
         }
         // `created`/`company` ride along so the Notifier can skip the digest when there is nothing new
@@ -40,11 +41,18 @@ export const matcherAgent = registerAgent({
             : `${embedded} postings now have vectors${remaining ? ` (${remaining} left for the next tick)` : ""}. Notifier — tell people about their new matches.`
         );
         // Opted-in candidates: anything new that clears their bar goes to the Applier.
-        const picks = p.created === 0 ? new Map<string, never[]>() : await autoApplyCandidatesSince(new Date(p.since));
+        // One reranked vector search per opted-in user: renew the lease after each.
+        const picks = p.created === 0 ? new Map<string, never[]>() : await autoApplyCandidatesSince(new Date(p.since), { heartbeat: ctx.heartbeat });
         for (const [userId, jobs] of picks) {
           await ctx.send("apply.request", { userId, jobs, trigger: "new_postings" }, `Applier — ${jobs.length} new posting${jobs.length === 1 ? "" : "s"} clear this candidate's auto-apply bar (best ${jobs[0].score}%).`);
         }
-        return `Embedded ${embedded} postings, ${remaining} remaining${picks.size ? `; ${picks.size} candidate${picks.size === 1 ? "" : "s"} have auto-apply matches` : ""}.`;
+        // Deferred auto-applies whose backoff elapsed: the Applier's pass picks them up itself (the
+        // users above get theirs with the new postings), so the rest get an empty "retry" request.
+        const retryUsers = (await usersWithDueDeferrals()).filter((u) => !picks.has(u));
+        for (const userId of retryUsers) {
+          await ctx.send("apply.request", { userId, jobs: [], trigger: "retry" }, "Applier — this candidate has deferred applications that are due for another try.");
+        }
+        return `Embedded ${embedded} postings, ${remaining} remaining${picks.size ? `; ${picks.size} candidate${picks.size === 1 ? "" : "s"} have auto-apply matches` : ""}${retryUsers.length ? `; ${retryUsers.length} with deferred applications to retry` : ""}.`;
       }
 
       case "resume.updated": {

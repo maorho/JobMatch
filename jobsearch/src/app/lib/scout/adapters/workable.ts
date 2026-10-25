@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
+import { ListAdapter, NormalizedPosting, fetchJson, htmlToText } from "../types";
 
 /**
  * Workable public widget API (no key).
@@ -12,11 +12,10 @@ const BASE = "https://apply.workable.com/api/v1/widget/accounts";
 const MAX_DETAIL = 80;
 const HEADERS = { "User-Agent": "Mozilla/5.0 JobMatchScout", Accept: "application/json" };
 
-export const workable: Adapter = async (identifier) => {
+export const workable: ListAdapter = async (identifier) => {
   const slug = encodeURIComponent(identifier);
-  const res = await fetchWithTimeout(`${BASE}/${slug}`, { headers: HEADERS, cache: "no-store" });
-  if (!res.ok) throw new Error(`Workable ${identifier}: HTTP ${res.status}`);
-  const data = await res.json();
+  const { ok, status, data } = await fetchJson(`${BASE}/${slug}`, { headers: HEADERS, cache: "no-store" });
+  if (!ok) throw new Error(`Workable ${identifier}: HTTP ${status}`);
   const jobs: any[] = Array.isArray(data?.jobs) ? data.jobs : [];
   const company = data?.name || identifier;
 
@@ -34,9 +33,9 @@ export const workable: Adapter = async (identifier) => {
 
   for (const p of out.slice(0, MAX_DETAIL)) {
     try {
-      const d = await fetchWithTimeout(`${BASE}/${slug}/jobs/${encodeURIComponent(p.sourceJobId)}`, { headers: HEADERS, cache: "no-store" });
+      const d = await fetchJson(`${BASE}/${slug}/jobs/${encodeURIComponent(p.sourceJobId)}`, { headers: HEADERS, cache: "no-store" });
       if (!d.ok) continue;
-      const job = await d.json();
+      const job = d.data;
       p.description = [job.description, job.requirements ? `<h3>Requirements</h3>${job.requirements}` : "", job.benefits ? `<h3>Benefits</h3>${job.benefits}` : ""].filter(Boolean).map((h) => htmlToText(String(h))).join("\n\n");
       await new Promise((r) => setTimeout(r, 150));
     } catch {

@@ -1,7 +1,7 @@
 import {
-  Adapter,
+  ListAdapter,
   NormalizedPosting,
-  fetchWithTimeout,
+  fetchJson,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -11,16 +11,15 @@ import {
  * Docs: https://developers.greenhouse.io/job-board.html
  * GET https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true
  */
-export const greenhouse: Adapter = async (identifier) => {
+export const greenhouse: ListAdapter = async (identifier) => {
   const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(
     identifier
   )}/jobs?content=true`;
 
-  const res = await fetchWithTimeout(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Greenhouse ${identifier}: HTTP ${res.status}`);
+  const { ok, status, data } = await fetchJson(url, { cache: "no-store" });
+  if (!ok) {
+    throw new Error(`Greenhouse ${identifier}: HTTP ${status}`);
   }
-  const data = await res.json();
   const jobs: any[] = Array.isArray(data?.jobs) ? data.jobs : [];
 
   return jobs.map((j): NormalizedPosting => {

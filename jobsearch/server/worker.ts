@@ -17,6 +17,8 @@ dotenv.config({ path: path.join(__dirname, "..", ".env.local") });
 dotenv.config();
 import { validateEnv } from "../src/app/lib/env";
 import { processQueue } from "../src/app/lib/agents";
+import { FEATURES } from "../src/app/lib/flags";
+import type { MessageType } from "../src/app/lib/agents/types";
 
 /**
  * One pass = one `processQueue` call with this budget. The bus stops claiming
@@ -35,9 +37,18 @@ process.on("SIGINT", () => (stopping = true));
   validateEnv(); // throws in production on a bad env; logs elsewhere
   console.log(`[worker] up — budget ${BUDGET_MS / 1000}s per pass, idle ${IDLE_MS / 1000}s`);
   let failures = 0;
+  let warnedNoApply = false;
   while (!stopping) {
     try {
-      const r = await processQueue({ budgetMs: BUDGET_MS });
+      // Without an apply server here, apply requests must stay queued for a runtime that has
+      // one (the Vercel tick): claiming them would only park every posting as deferred.
+      // Read every pass: FEATURES is lazy, so a flipped env applies without a restart.
+      const skipTypes: MessageType[] = FEATURES.autoApply ? [] : ["apply.request"];
+      if (skipTypes.length && !warnedNoApply) {
+        warnedNoApply = true;
+        console.warn("[worker] auto-apply is OFF in this worker's env (FEATURE_AUTO_APPLY / PUPPETEER_SERVER_URL unset) — leaving apply.request messages queued for a runtime that has the apply server");
+      }
+      const r = await processQueue({ budgetMs: BUDGET_MS, skipTypes });
       failures = 0;
       if (r.handled || r.failed) console.log(`[worker] handled ${r.handled}, failed ${r.failed}, remaining ${r.remaining}`);
       if (!r.remaining) await new Promise((res) => setTimeout(res, IDLE_MS));

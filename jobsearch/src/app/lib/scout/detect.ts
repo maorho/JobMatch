@@ -1,4 +1,4 @@
-import { AtsType, fetchWithTimeout } from "./types";
+import { AtsType, fetchJson, fetchText } from "./types";
 import { applyServerBase, applyServerToken } from "@/app/lib/apply/server";
 
 export type DetectedSource = {
@@ -84,13 +84,12 @@ export function detectFromUrl(raw: string): DetectedSource | null {
 
 async function scanHtml(raw: string): Promise<DetectedSource | null> {
   try {
-    const res = await fetchWithTimeout(raw, {
+    const res = await fetchText(raw, {
       headers: { "User-Agent": "Mozilla/5.0" },
       cache: "no-store",
     });
     if (!res.ok) return null;
-    const html = await res.text();
-    const m = matchAts(html);
+    const m = matchAts(res.text);
     return m ? { ...m, careersUrl: raw } : null;
   } catch {
     return null;
@@ -105,14 +104,13 @@ async function detectViaRenderer(raw: string): Promise<DetectedSource | null> {
   const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
   try {
     // The renderer loads the page and waits a few seconds itself: allow more than an API call.
-    const res = await fetchWithTimeout(
+    const res = await fetchJson(
       `${base}/api/detect-ats?url=${encodeURIComponent(raw)}${tokenParam}`,
       { cache: "no-store" },
       45_000
     );
     if (!res.ok) return null;
-    const data = await res.json();
-    const candidates: string[] = data?.requests ?? [];
+    const candidates: string[] = res.data?.requests ?? [];
     for (const u of candidates) {
       const m = matchAts(u);
       if (m) return { ...m, careersUrl: raw };

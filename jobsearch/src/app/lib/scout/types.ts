@@ -31,23 +31,50 @@ export type AtsType =
   | "generic";
 
 /**
- * An adapter turns a company's ATS identifier into normalized postings.
- * Contract: the list it resolves with is the COMPLETE current board. An
- * adapter that cannot deliver that (a later page failed, a hard cap was hit
- * before the reported total) must throw, so the source is recorded as errored
- * and nothing is reconciled against a partial list.
+ * A list the adapter could not finish (a page after the first failed, a cap
+ * was hit before the reported total, the total was not reached). The postings
+ * are real and get ingested; the list is just not the whole board, so runScout
+ * must not soft-close anything against it.
  */
+export type PartialPostings = { postings: NormalizedPosting[]; complete: boolean; reason?: string };
+
+/**
+ * What an adapter resolves with. A plain array means "this is the COMPLETE
+ * current board" (every single-call adapter returns one). Paginating adapters
+ * return `{ postings, complete: false, reason }` when they could not deliver
+ * the whole board, instead of throwing — throwing is reserved for "nothing
+ * usable" (the very first page failed), so a big board still ingests.
+ */
+export type AdapterResult = NormalizedPosting[] | PartialPostings;
+
 export type Adapter = (
+  identifier: string,
+  secondaryIdentifier?: string
+) => Promise<AdapterResult>;
+
+/** Adapters that make one call and always return the whole board (narrower type, so callers can index the array). */
+export type ListAdapter = (
   identifier: string,
   secondaryIdentifier?: string
 ) => Promise<NormalizedPosting[]>;
 
+/** Arrays are complete; objects say so themselves. */
+export function toPartialPostings(r: AdapterResult): PartialPostings {
+  if (Array.isArray(r)) return { postings: r, complete: true };
+  return { postings: Array.isArray(r?.postings) ? r.postings : [], complete: r?.complete === true, reason: r?.reason };
+}
+
+/** Build the result of a paginating adapter: the plain array when complete, the partial shape otherwise. */
+export function adapterResult(postings: NormalizedPosting[], incompleteReason: string | null): AdapterResult {
+  return incompleteReason ? { postings, complete: false, reason: incompleteReason } : postings;
+}
+
 export const DEFAULT_FETCH_TIMEOUT_MS = 20_000;
 
 /**
- * `fetch` with a hard timeout. Every outbound call the Scout makes goes through
- * here: an ATS that stops answering must cost one timeout, not a whole cron
- * budget. Looks up `fetch` at call time so tests can stub the global.
+ * `fetch` with a hard timeout on the HEADERS only. Prefer fetchJson/fetchText:
+ * this one returns as soon as headers arrive, so a body that stalls afterwards
+ * is not covered. Kept for callers that only look at the status.
  */
 export async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
@@ -60,6 +87,75 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}, ms =
   } finally {
     clearTimeout(timer);
   }
+}
+
+type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * One timer for headers AND body: the abort signal cancels a stalled body read
+ * on real fetch, and the race rejects even when a (stubbed) body ignores it.
+ * Looks up `fetch` at call time so tests can stub the global.
+ */
+async function timedFetch<T>(url: string, init: RequestInit, ms: number, read: (res: Response) => Promise<T>, fetchImpl?: FetchImpl): Promise<T> {
+  const ctrl = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutError = () => new Error(`timed out after ${Math.round(ms / 1000)}s: ${url}`);
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      ctrl.abort();
+      reject(timeoutError());
+    }, ms);
+  });
+  const work = (async () => {
+    const res = await (fetchImpl || fetch)(url, { ...init, signal: ctrl.signal });
+    return read(res);
+  })();
+  try {
+    return await Promise.race([work, timeout]);
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw timeoutError();
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Don't hold a socket open for an error body nobody reads. */
+const discardBody = (res: Response) => {
+  try {
+    void res.body?.cancel().catch(() => {});
+  } catch {
+    /* stubs have no stream */
+  }
+};
+
+export type JsonReply<T = any> = { ok: boolean; status: number; data: T | null };
+export type TextReply = { ok: boolean; status: number; text: string };
+
+/**
+ * GET/POST and parse JSON, with the timeout covering the whole body. `data` is
+ * parsed only for a 2xx; a 2xx that is not JSON throws (callers that expect
+ * HTML past the last page catch it).
+ */
+export async function fetchJson<T = any>(url: string, init: RequestInit = {}, ms = DEFAULT_FETCH_TIMEOUT_MS, fetchImpl?: FetchImpl): Promise<JsonReply<T>> {
+  return timedFetch(url, init, ms, async (res) => {
+    if (!res.ok) {
+      discardBody(res);
+      return { ok: false, status: res.status, data: null };
+    }
+    return { ok: true, status: res.status, data: (await res.json()) as T };
+  }, fetchImpl);
+}
+
+/** Same as fetchJson for HTML/text bodies. */
+export async function fetchText(url: string, init: RequestInit = {}, ms = DEFAULT_FETCH_TIMEOUT_MS, fetchImpl?: FetchImpl): Promise<TextReply> {
+  return timedFetch(url, init, ms, async (res) => {
+    if (!res.ok) {
+      discardBody(res);
+      return { ok: false, status: res.status, text: "" };
+    }
+    return { ok: true, status: res.status, text: await res.text() };
+  }, fetchImpl);
 }
 
 function decodeEntities(s: string): string {

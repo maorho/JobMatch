@@ -62,7 +62,7 @@ import AgentRun from "@/app/models/AgentRun";
 import { signJwt } from "@/app/lib/jwt";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import { embedPendingJobs } from "@/app/lib/matcher/embedJobs";
-import { autoApplyForUser, UNKNOWN_OUTCOME_REASON } from "@/app/lib/apply/autoApply";
+import { autoApplyForUser, UNKNOWN_OUTCOME_REASON, MAX_DEFERRALS, retryDelayMs } from "@/app/lib/apply/autoApply";
 import { splitName } from "@/app/lib/apply/submit";
 import { startFlow, processQueue, readRun } from "@/app/lib/agents";
 import { GET as settingsGET, PUT as settingsPUT } from "@/app/api/settings/auto-apply/route";
@@ -270,20 +270,42 @@ describe("exactly-once submission (intent-then-confirm)", () => {
     expect(submit.mock.calls.length).toBe(calls);
   });
 
-  it("a server-side failure BEFORE any click (unreachable / busy / timed out on the dry run) is deferred, not failed: no row, retried next pass", async () => {
-    for (const reason of ["apply server unreachable", "apply server returned 503", "apply server timed out"]) {
-      const submit = vi.fn(async () => ({ status: "failed", ats: "", transient: true, reason }));
+  /** Pretend the backoff elapsed. */
+  const makeDue = (jobId: string) => AutoApplication.updateOne({ userId: eli, jobId, status: "deferred" }, { $set: { retryAfter: new Date(Date.now() - 1000) } });
+
+  it("a server-side failure BEFORE any click (unreachable / busy / timed out on the dry run) is deferred with a backoff, then retried once due", async () => {
+    const reasons = ["apply server unreachable", "apply server returned 503", "apply server timed out"];
+    for (let i = 0; i < reasons.length; i++) {
+      const submit = vi.fn(async () => ({ status: "failed", ats: "", transient: true, reason: reasons[i] }));
       const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
       expect(r.failed).toBe(0);
       expect(r.deferred).toBe(1);
       expect(r.needsUser).toEqual([]);
-      expect(await AutoApplication.countDocuments({ userId: eli, jobId: j4 })).toBe(0); // nothing recorded → eligible again
+      const row: any = await AutoApplication.findOne({ userId: eli, jobId: j4 }).lean();
+      expect(row.status).toBe("deferred");
+      expect(row.attempts).toBe(i + 1);
+      // Exponential backoff: 1h, 2h, 4h.
+      const wait = new Date(row.retryAfter).getTime() - Date.now();
+      expect(wait).toBeGreaterThan((2 ** i - 0.1) * 3600_000);
+      expect(wait).toBeLessThanOrEqual(2 ** i * 3600_000);
+      expect(row.note).toContain(reasons[i]);
+
+      // Not due yet: a pass leaves it alone (no form call, not counted as deferred again).
+      const early = vi.fn(async () => ({ status: "submitted", ats: "greenhouse" }));
+      const skip = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: early as any });
+      expect(skip).toMatchObject({ skipped: 1, deferred: 0 });
+      expect(early).not.toHaveBeenCalled();
+      await makeDue(j4);
     }
     expect(await AutoApplication.countDocuments({ userId: eli, status: "submitting" })).toBe(0); // no claim without a click
-    // Once the server is back, the same posting goes through.
+    // Once the server is back, the same posting goes through — the claim is taken from the deferred row.
     const submit = vi.fn(async (input: any) => (input.dryRun ? { status: "ready", ats: "greenhouse" } : { status: "submitted", ats: "greenhouse" }));
     const r = await autoApplyForUser(eli, [cand(j4, "React Dev D")], { submit: submit as any });
     expect(r.submitted.map((x) => x.jobId)).toEqual([j4]);
+    const row: any = await AutoApplication.findOne({ userId: eli, jobId: j4 }).lean();
+    expect(row.status).toBe("submitted");
+    expect(row.retryAfter).toBeUndefined();
+    expect(await AutoApplication.countDocuments({ userId: eli, jobId: j4 })).toBe(1);
   });
 
   it("an unhealthy apply server defers the whole pass before any tailoring or form call", async () => {
@@ -295,7 +317,36 @@ describe("exactly-once submission (intent-then-confirm)", () => {
     expect(r).toMatchObject({ deferred: 1, failed: 0, submitted: [] });
     expect(submit).not.toHaveBeenCalled();
     expect(tailor).not.toHaveBeenCalled();
-    expect(await AutoApplication.countDocuments({ userId: eli, jobId: j5 })).toBe(0);
+    expect(((await AutoApplication.findOne({ userId: eli, jobId: j5 }).lean()) as any)).toMatchObject({ status: "deferred", attempts: 1 });
+  });
+
+  it("a due deferral is retried by the next pass for that user even with no new postings, reusing the tailored résumé", async () => {
+    const jobs = await ExternalJobs.create([mkJob("c7", "React Dev G", "React", "https://boards.greenhouse.io/acme/jobs/107")] as any);
+    const j7 = String(jobs[0]._id);
+    const tailor = vi.fn(async () => ({ tailoredResume: [...RESUME, { heading: "Tailored", items: [{ title: "for G" }] }] }));
+    const busy = vi.fn(async () => ({ status: "failed", ats: "", transient: true, reason: "apply server returned 503" }));
+    expect((await autoApplyForUser(eli, [cand(j7, "React Dev G")], { submit: busy as any, tailor: tailor as any })).deferred).toBe(1);
+    expect(tailor).toHaveBeenCalledTimes(1);
+    await makeDue(j7);
+    const ok = vi.fn(async (input: any) => (input.dryRun ? { status: "ready", ats: "greenhouse" } : { status: "submitted", ats: "greenhouse" }));
+    // Empty candidate list = the Matcher's "retry" request: the pass pulls the due row itself.
+    const r = await autoApplyForUser(eli, [], { submit: ok as any, tailor: tailor as any });
+    expect(r.submitted.map((x) => x.jobId)).toEqual([j7]);
+    expect(tailor).toHaveBeenCalledTimes(1); // not paid twice
+  });
+
+  it("gives up after MAX_DEFERRALS server-side deferrals: failed, with the reason", async () => {
+    const jobs = await ExternalJobs.create([mkJob("c8", "React Dev H", "React", "https://boards.greenhouse.io/acme/jobs/108")] as any);
+    const j8 = String(jobs[0]._id);
+    await AutoApplication.create({ userId: eli, jobId: j8, jobModel: "ExternalJobs", jobTitle: "React Dev H", company: "Acme", score: 90, status: "deferred", attempts: MAX_DEFERRALS - 1, retryAfter: new Date(Date.now() - 1000) });
+    const r = await autoApplyForUser(eli, [], { health: async () => ({ ok: false, reason: "apply server unreachable" }) });
+    expect(r).toMatchObject({ failed: 1, deferred: 0 });
+    const row: any = await AutoApplication.findOne({ userId: eli, jobId: j8 }).lean();
+    expect(row.status).toBe("failed");
+    expect(row.attempts).toBe(MAX_DEFERRALS);
+    expect(row.note).toMatch(/Gave up after 5 tries: apply server unreachable/);
+    expect(retryDelayMs(1)).toBe(3600_000);
+    expect(retryDelayMs(10)).toBe(24 * 3600_000);
   });
 
   it("a plain form failure (no form found) is still a terminal failure", async () => {
@@ -307,16 +358,36 @@ describe("exactly-once submission (intent-then-confirm)", () => {
     expect(((await AutoApplication.findOne({ userId: eli, jobId: j6 }).lean()) as any).status).toBe("failed");
   });
 
-  it("does nothing when the feature flag is off", async () => {
+  it("with the feature flag off: external postings are parked as deferred (not dropped), internal ones still apply", async () => {
+    const jobs = await ExternalJobs.create([mkJob("c9", "React Dev I", "React", "https://boards.greenhouse.io/acme/jobs/109")] as any);
+    const j9 = String(jobs[0]._id);
+    const co = await Company.create({ companyName: "Acme Internal" } as any);
+    const internal2 = String((await Job.create({ job: "Internal Frontend II", company: co._id, type: "On Site", city: "TLV", country: "Israel", publisher } as any))._id);
     process.env.FEATURE_AUTO_APPLY = "0";
     try {
       const submit = vi.fn(async () => ({ status: "submitted", ats: "greenhouse" }));
-      const r = await autoApplyForUser(eli, [cand(j1, "React Dev A")], { submit: submit as any });
-      expect(r.disabled).toBe(true);
+      const r = await autoApplyForUser(eli, [cand(j9, "React Dev I"), { jobId: internal2, jobModel: "Job", score: 90, title: "Internal Frontend II", company: "Acme Internal" }], { submit: submit as any });
+      expect(r.disabled).toBeUndefined();
+      expect(r.featureOff).toBe(true);
       expect(submit).not.toHaveBeenCalled();
+      expect(r.submitted.map((x) => x.jobId)).toEqual([internal2]); // the gate is the apply server's, not the internal apply's
+      expect(r.held).toBe(1);
+      expect(r.deferred).toBe(0); // not a server failure: nothing for the person to hear about
+      const row: any = await AutoApplication.findOne({ userId: eli, jobId: j9 }).lean();
+      expect(row).toMatchObject({ status: "deferred", attempts: 0 });
+      expect(new Date(row.retryAfter).getTime()).toBeGreaterThan(Date.now());
+      // An explicit apply to an internal posting works with the flag off too.
+      const internal3 = String((await Job.create({ job: "Internal Frontend III", company: co._id, type: "On Site", city: "TLV", country: "Israel", publisher } as any))._id);
+      const ex = await autoApplyForUser(eli, [{ jobId: internal3, jobModel: "Job", score: 10, title: "Internal Frontend III", company: "Acme Internal" }], { explicit: true });
+      expect(ex.submitted.map((x) => x.jobId)).toEqual([internal3]);
     } finally {
       process.env.FEATURE_AUTO_APPLY = "1";
     }
+    // Back in a runtime that has it: once due, the parked posting goes through.
+    await makeDue(j9);
+    const ok = vi.fn(async (input: any) => (input.dryRun ? { status: "ready", ats: "greenhouse" } : { status: "submitted", ats: "greenhouse" }));
+    const r = await autoApplyForUser(eli, [], { submit: ok as any });
+    expect(r.submitted.map((x) => x.jobId)).toEqual([j9]);
   });
 });
 

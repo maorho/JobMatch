@@ -6,6 +6,8 @@ import AgentMessage from "@/app/models/AgentMessage";
 
 /** How long one chunk may poll before handing the rest back to the queue. */
 const CHUNK_BUDGET_MS = 60_000;
+/** Kept free before the dispatcher's deadline for the hand-off messages and the bus bookkeeping. */
+const DEADLINE_MARGIN_MS = 10_000;
 
 export const scoutAgent = registerAgent({
   name: "scout",
@@ -24,7 +26,16 @@ export const scoutAgent = registerAgent({
     }
 
     const p = msg.payload as Payloads["catalog.refresh"];
-    const res = await runScout({ offset: p.offset ?? 0, company: p.company, timeBudgetMs: CHUNK_BUDGET_MS, heartbeat: ctx.heartbeat });
+    // The chunk lives inside the dispatcher's budget: never plan past ctx.deadline, and let
+    // runScout refuse to start a source whose own deadline would not fit before it.
+    const hardEnd = ctx.deadline - DEADLINE_MARGIN_MS;
+    const res = await runScout({
+      offset: p.offset ?? 0,
+      company: p.company,
+      timeBudgetMs: Math.max(0, Math.min(CHUNK_BUDGET_MS, hardEnd - Date.now())),
+      deadlineAt: hardEnd,
+      heartbeat: ctx.heartbeat,
+    });
     const acc = {
       created: (p.acc?.created ?? 0) + res.created,
       removed: (p.acc?.removed ?? 0) + res.removed,
@@ -32,14 +43,18 @@ export const scoutAgent = registerAgent({
     };
     const errors = res.results.filter((r) => r.error);
     for (const e of errors.slice(0, 5)) ctx.log(`⚠ ${e.company} (${e.atsType}): ${e.error}`);
+    const partial = res.results.filter((r) => r.partial);
+    for (const e of partial.slice(0, 5)) ctx.log(`◐ ${e.company} (${e.atsType}): partial list, nothing closed${e.partialReason ? ` — ${e.partialReason}` : ""}`);
+
+    // A retry of this message must not fork the walk. Its follow-up (next chunk or the
+    // hand-off) is parented to this message by ctx.send, so "already sent" is keyed on
+    // parentId — the offset can differ between attempts (the time budget varies).
+    const alreadySent = (type: "catalog.refresh" | "jobs.ingested") => AgentMessage.exists({ runId: msg.runId, type, parentId: msg._id });
 
     if (res.nextOffset !== null) {
       ctx.log(`Progress: sources ${p.offset ?? 0}–${res.nextOffset - 1} of ${res.totalSources} polled.`);
-      // A retry of this message must not fork the walk: if the next chunk was already queued
-      // by an earlier attempt, leave it be.
-      const queued = await AgentMessage.exists({ runId: msg.runId, type: "catalog.refresh", "payload.offset": res.nextOffset });
-      if (queued) {
-        ctx.log(`Chunk at offset ${res.nextOffset} is already queued (earlier attempt) — not sending it again.`);
+      if (await alreadySent("catalog.refresh")) {
+        ctx.log(`The next chunk was already queued by an earlier attempt of this message — not sending it again.`);
       } else {
         await ctx.send(
           "catalog.refresh",
@@ -50,6 +65,10 @@ export const scoutAgent = registerAgent({
       return `Chunk done: sources ${p.offset ?? 0}–${res.nextOffset - 1} of ${res.totalSources}, +${res.created} new, −${res.removed} closed.`;
     }
 
+    if (await alreadySent("jobs.ingested")) {
+      ctx.log("The hand-off was already sent by an earlier attempt of this message — not sending it again.");
+      return `Finished ${p.company ? p.company : "the catalog"} (hand-off already sent).`;
+    }
     await ctx.send(
       "jobs.ingested",
       { since: p.since, created: acc.created, removed: acc.removed, sources: acc.sources, ...(p.company ? { company: p.company } : {}) },

@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
+import { ListAdapter, NormalizedPosting, fetchJson, htmlToText } from "../types";
 
 /**
  * Comeet careers API (the dominant Israeli ATS).
@@ -6,7 +6,7 @@ import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../typ
  *   identifier          = company uid (e.g. "06.004")
  *   secondaryIdentifier = public token (from the company's career-page embed)
  */
-export const comeet: Adapter = async (identifier, secondaryIdentifier) => {
+export const comeet: ListAdapter = async (identifier, secondaryIdentifier) => {
   if (!secondaryIdentifier) {
     throw new Error("Comeet needs a token (secondaryIdentifier)");
   }
@@ -14,12 +14,11 @@ export const comeet: Adapter = async (identifier, secondaryIdentifier) => {
     identifier
   )}/positions?token=${encodeURIComponent(secondaryIdentifier)}&details=true`;
 
-  const res = await fetchWithTimeout(url, {
+  const { ok, status, data } = await fetchJson(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Comeet ${identifier}: HTTP ${res.status}`);
-  const data = await res.json();
+  if (!ok) throw new Error(`Comeet ${identifier}: HTTP ${status}`);
   const positions: any[] = Array.isArray(data) ? data : data?.positions ?? [];
 
   return positions.map((p): NormalizedPosting => {

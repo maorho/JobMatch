@@ -7,6 +7,7 @@ import Referrer from "@/app/models/Referrer";
 import { companyKey } from "@/app/lib/outcomes/companyKey";
 import { detectFromUrl, detectFromCareersPage, type DetectedSource } from "./detect";
 import { normalizeDomain } from "./logo";
+import { fetchJson } from "./types";
 import { researchClient, callWithSearch, safeJson, type ResearchClient } from "@/app/lib/interview/companyResearch";
 
 /**
@@ -77,17 +78,13 @@ const PROBES: Probe[] = [
   { atsType: "workable", url: (s) => `https://apply.workable.com/api/v1/widget/accounts/${s}`, board: (s) => `https://apply.workable.com/${s}`, count: (j) => (Array.isArray(j?.jobs) ? j.jobs.length : 0) },
 ];
 
+/** One probe GET; the 8s timeout covers the body too (fetchJson), so a stalled board can't hang discovery. */
 async function getJson(fetchImpl: Fetch, url: string): Promise<any | null> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetchImpl(url, { headers: { "User-Agent": "Mozilla/5.0 JobMatchScout", Accept: "application/json" }, signal: ctrl.signal, cache: "no-store" } as any);
-    if (!res.ok) return null;
-    return await res.json();
+    const res = await fetchJson(url, { headers: { "User-Agent": "Mozilla/5.0 JobMatchScout", Accept: "application/json" }, cache: "no-store" }, 8000, fetchImpl);
+    return res.ok ? res.data : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(t);
   }
 }
 

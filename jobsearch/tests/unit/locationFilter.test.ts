@@ -60,4 +60,23 @@ describe("isIsraelOrRemote", () => {
     expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Not remote-only: hybrid, remote 3 days a week" })).toBe(true);
     expect(isIsraelOrRemote({ city: "Remote", country: "Germany" })).toBe(true);
   });
+
+  it("does not read 'acre' / 'Arad' in free text or abroad as Israel, but keeps them as a short Israeli location", () => {
+    expect(isIsraelOrRemote({ city: "Austin", country: "US", description: "Our 175-acre campus has a gym." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Arad", country: "Romania" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "", country: "", title: "Engineer", description: "Offices in Arad, Romania" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Arad", country: "" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Acre", country: "Unknown" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Acre", country: "IL" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Akko", country: "" })).toBe(true); // the unambiguous spelling still matches anywhere
+  });
+
+  it("treats a remote mention negated after the word as not remote", () => {
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Remote work is not available for this role." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Remote isn't possible here." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "WFH is not offered. Office in Mitte." })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Remote options are currently unavailable" })).toBe(false);
+    // A negation in another sentence does not cancel a real remote signal.
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Fully remote. Relocation is not available." })).toBe(true);
+  });
 });

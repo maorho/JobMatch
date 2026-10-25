@@ -104,6 +104,21 @@ jobs:
             if [ "$next" = "last" ]; then echo "scout: catalog fully covered"; covered=1; break; fi
             offset=$next
           done
+          # The server announces jobs.ingested on the last successful chunk. If
+          # the walk ended any other way (the final chunk failed, skip-ahead ran
+          # past the end, or the loop cap was hit), make one closing call so the
+          # agents still hear about everything ingested since $since.
+          if [ "$covered" != 1 ]; then
+            echo "scout: walk ended without a successful last chunk — finalizing (announce since $since)"
+            if ! curl -sS --fail-with-body --max-time 120 -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
+              -H "${{ env.AUTH }}" \
+              --data-urlencode "finalize=1" \
+              --data-urlencode "since=$since"; then
+              failures=$((failures+1))
+              echo "::warning::scout finalize call failed: the agents were not told about this walk"
+            fi
+            echo
+          fi
           if [ "$failures" -gt 0 ]; then
             note=""; [ "$covered" = 1 ] && note=" (the rest of the catalog was still covered)"
             echo "::error::$failures scout chunk(s) failed$note"

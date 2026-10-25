@@ -3,8 +3,13 @@ import { setupTestDb, resetDb } from "../setup/mongo";
 import CompanySource from "@/app/models/CompanySource";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import Candidates from "@/app/models/Candidates";
-import { runScout } from "@/app/lib/scout/runScout";
+import { runScout, sourceDeadlineFor } from "@/app/lib/scout/runScout";
 import { sweepStaleExternalJobs } from "@/app/lib/staleJobsSweep";
+import { adapters } from "@/app/lib/scout/adapters";
+import type { AdapterResult } from "@/app/lib/scout/types";
+import AgentMessage from "@/app/models/AgentMessage";
+import { NextRequest } from "next/server";
+import { GET as scoutRunGET } from "@/app/api/scout/run/route";
 
 setupTestDb();
 
@@ -205,5 +210,85 @@ describe("sweepStaleExternalJobs (backstop)", () => {
     expect(await ExternalJobs.countDocuments({ job: { $in: ["Backend Engineer", "Frontend Developer"] }, active: { $ne: false } })).toBe(2);
     // Idempotent: a second pass finds nothing open to close.
     expect((await sweepStaleExternalJobs(14)).closed).toBe(0);
+  });
+});
+
+describe("partial lists (AdapterResult contract)", () => {
+  const appleJob = (id: string, title: string) => ({ sourceJobId: id, title, company: "Apple", city: "Herzliya", country: "Israel", description: "", applyUrl: `https://jobs.apple.com/${id}` });
+  let appleReply: AdapterResult = [];
+  const realApple = adapters.apple;
+  beforeEach(async () => {
+    adapters.apple = async () => appleReply;
+    await CompanySource.create({ companyName: "Apple", atsType: "apple", identifier: "israel-ISR", domain: "apple.com", enabled: true } as any);
+  });
+  afterEach(() => {
+    adapters.apple = realApple;
+  });
+
+  it("ingests new postings from a partial list but closes nothing; a complete list reconciles again", async () => {
+    appleReply = [appleJob("a1", "SoC Engineer"), appleJob("a2", "Firmware Engineer")];
+    await runScout({ company: "Apple" });
+    expect(await ExternalJobs.countDocuments({ company: "Apple", active: { $ne: false } })).toBe(2);
+
+    // Page 2 failed: a1 is missing from the list, a3 is new.
+    appleReply = { postings: [appleJob("a2", "Firmware Engineer"), appleJob("a3", "ML Engineer")], complete: false, reason: "page 2 failed" };
+    const r = await runScout({ company: "Apple" });
+    const res = r.results[0];
+    expect(res).toMatchObject({ partial: true, partialReason: "page 2 failed", created: 1, removed: 0 });
+    expect(res.error).toBeUndefined();
+    expect(((await ExternalJobs.findOne({ sourceJobId: "a1" }).lean()) as any).active).not.toBe(false); // live job not closed
+    expect(await ExternalJobs.countDocuments({ sourceJobId: "a3" })).toBe(1);
+    // Dry run of a partial list predicts no closures either.
+    expect((await runScout({ company: "Apple", dry: true })).results[0].removed).toBe(0);
+
+    // The next complete list does close what really left.
+    appleReply = [appleJob("a2", "Firmware Engineer"), appleJob("a3", "ML Engineer")];
+    const full = await runScout({ company: "Apple" });
+    expect(full.results[0].removed).toBe(1);
+    expect(full.results[0].partial).toBeUndefined();
+    expect(((await ExternalJobs.findOne({ sourceJobId: "a1" }).lean()) as any).active).toBe(false);
+  });
+});
+
+describe("hard deadline (chunk vs function limit)", () => {
+  it("does not start a source whose deadline no longer fits before deadlineAt; the first one always runs", async () => {
+    const r = await runScout({ deadlineAt: Date.now() + 1_000 }); // far less than 90s + margin
+    expect(r.processed).toBe(1);
+    expect(r.nextOffset).toBe(1);
+    expect(r.results[0].error).toBeUndefined();
+    const roomy = await runScout({ deadlineAt: Date.now() + 10 * 60_000 });
+    expect(roomy.processed).toBe(2);
+    expect(roomy.nextOffset).toBeNull();
+  });
+
+  it("per-ATS deadlines: Eightfold gets more than the 90s default; tests can override", () => {
+    expect(sourceDeadlineFor("greenhouse")).toBe(90_000);
+    expect(sourceDeadlineFor("eightfold")).toBe(120_000);
+    expect(sourceDeadlineFor("eightfold", 50)).toBe(50);
+  });
+});
+
+describe("scout/run route: finalize", () => {
+  const auth = { authorization: "Bearer test-cron-secret" };
+  beforeEach(() => {
+    process.env.CRON_SECRET = "test-cron-secret";
+  });
+
+  it("finalize=1 polls nothing and announces everything ingested since `since`", async () => {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    await runScout(); // a walk whose last chunk "failed" (never announced)
+    const fetchCalls = (globalThis.fetch as any).mock.calls.length;
+    const res = await scoutRunGET(new NextRequest(`http://localhost/api/scout/run?finalize=1&since=${encodeURIComponent(since)}`, { headers: auth }));
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({ ok: true, finalized: true, nextOffset: null, created: 3 });
+    expect((globalThis.fetch as any).mock.calls.length).toBe(fetchCalls); // no source polled
+    const msg: any = await AgentMessage.findOne({ type: "jobs.ingested" }).lean();
+    expect(msg.payload).toMatchObject({ since: new Date(since).toISOString(), created: 3, sources: 2 });
+  });
+
+  it("is guarded like the rest of the route", async () => {
+    const res = await scoutRunGET(new NextRequest("http://localhost/api/scout/run?finalize=1"));
+    expect(res.status).toBe(401);
   });
 });

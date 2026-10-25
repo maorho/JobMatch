@@ -4,7 +4,7 @@ import CompanySource from "@/app/models/CompanySource";
 import { getAdapter } from "./adapters";
 import { getLogoUrl, resolveLogoDomain } from "./logo";
 import { isIsraelOrRemote } from "./locationFilter";
-import { NormalizedPosting } from "./types";
+import { NormalizedPosting, toPartialPostings } from "./types";
 import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
 
 /**
@@ -23,11 +23,13 @@ function locationFields(p: NormalizedPosting) {
 }
 
 /**
- * ATS types whose adapter returns a company's COMPLETE current board in one
- * pass (or throws — see the Adapter contract in types.ts). For these we can
- * reconcile immediately: a stored job that is no longer in the feed has been
- * filled/closed and is soft-closed on the spot (`active:false`, `closedAt`),
- * keeping the row and its applications; it is reopened if it reappears.
+ * ATS types whose adapter can return a company's COMPLETE current board. For
+ * these we reconcile immediately — but only when the adapter says the list is
+ * complete (a plain array, or `complete: true`; see AdapterResult in types.ts):
+ * a stored job that is no longer in the feed has been filled/closed and is
+ * soft-closed on the spot (`active:false`, `closedAt`), keeping the row and
+ * its applications; it is reopened if it reappears. A partial list still
+ * ingests new postings and refreshes lastSeenAt, it just never closes anything.
  * Excluded: "workday" (adapter caps detail enrichment at ~80 postings, so its
  * list can be partial) and "serpapi" (an aggregator — one source maps to many
  * companies), which both rely on the time-based staleness sweep instead.
@@ -40,9 +42,9 @@ const COMPLETE_FEED_ATS = new Set([
   "recruitee",
   "smartrecruiters",
   "amazon",
-  "google", // paginates to exhaustion, so the list is complete
-  "apple", // same: pages until totalRecords is reached
-  "eightfold", // pages until the reported count is reached
+  "google", // paginates to exhaustion; partial when a later page fails or the page cap is hit
+  "apple", // pages until totalRecords is reached (partial otherwise)
+  "eightfold", // pages until the reported count is reached (partial otherwise)
 ]);
 
 export type ScoutSourceResult = {
@@ -54,11 +56,30 @@ export type ScoutSourceResult = {
   removed: number;
   /** Previously closed postings that came back. */
   reopened?: number;
+  /** The adapter could not deliver the whole board: new postings were ingested, nothing was soft-closed. */
+  partial?: boolean;
+  partialReason?: string;
   error?: string;
 };
 
 /** One source may not eat the chunk: past this, it is recorded as errored and nothing is reconciled. */
 const SOURCE_DEADLINE_MS = 90_000;
+/**
+ * Per-ATS overrides for boards that legitimately need longer. Eightfold pages
+ * ten at a time with rate-limit backoff and time-boxes itself (list 60s,
+ * details until 85s), so it gets a little headroom over the default.
+ */
+const SOURCE_DEADLINE_BY_ATS: Partial<Record<string, number>> = {
+  eightfold: 120_000,
+};
+/** Slack between a source's deadline and the hard end of the call (bookkeeping, DB writes, response). */
+const START_MARGIN_MS = 10_000;
+/** The always-polled first source never gets less than this, even when the caller is nearly out of time. */
+const MIN_FIRST_SOURCE_MS = 20_000;
+
+export function sourceDeadlineFor(atsType: string, override?: number): number {
+  return override ?? SOURCE_DEADLINE_BY_ATS[atsType] ?? SOURCE_DEADLINE_MS;
+}
 
 function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout;
@@ -91,6 +112,13 @@ export type RunOptions = {
   offset?: number;
   limit?: number;
   timeBudgetMs?: number;
+  /**
+   * Absolute time (ms since epoch) the whole call must be finished by — the
+   * platform limit or the bus deadline. A source is only started when its
+   * full per-source deadline (+ margin) still fits before it, so a big board
+   * started near the end can never overrun the function.
+   */
+  deadlineAt?: number;
   /**
    * Also rewrite title/description/location/postedAt of postings we already
    * have (normally only new postings are written). Used after parser or
@@ -133,7 +161,15 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
   for (const src of sources) {
     // Out of time: leave the rest for the next chunk rather than get killed.
     // Always poll at least one source so every call makes progress.
-    if (processed > 0 && Date.now() - startedAt > timeBudgetMs) break;
+    let deadlineMs = sourceDeadlineFor(src.atsType, opts.sourceDeadlineMs);
+    if (processed > 0) {
+      if (Date.now() - startedAt > timeBudgetMs) break;
+      // Not enough room left for this source's worst case: the next chunk starts it.
+      if (opts.deadlineAt && opts.deadlineAt - Date.now() < deadlineMs + START_MARGIN_MS) break;
+    } else if (opts.deadlineAt) {
+      // The first source always runs, but never past the hard end of the call.
+      deadlineMs = Math.min(deadlineMs, Math.max(MIN_FIRST_SOURCE_MS, opts.deadlineAt - Date.now() - START_MARGIN_MS));
+    }
     processed++;
     const result: ScoutSourceResult = {
       company: src.companyName,
@@ -147,8 +183,16 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       const adapter = getAdapter(src.atsType);
       if (!adapter) throw new Error(`No adapter for atsType "${src.atsType}"`);
 
-      const postings = await withDeadline(adapter(src.identifier, src.secondaryIdentifier), opts.sourceDeadlineMs ?? SOURCE_DEADLINE_MS, src.companyName);
+      const fetched = toPartialPostings(await withDeadline(adapter(src.identifier, src.secondaryIdentifier), deadlineMs, src.companyName));
+      const postings = fetched.postings;
       result.fetched = postings.length;
+      if (!fetched.complete) {
+        result.partial = true;
+        if (fetched.reason) result.partialReason = fetched.reason;
+        console.warn(`[scout] ${src.companyName}: partial list (${postings.length} postings) — ingesting, not reconciling${fetched.reason ? `: ${fetched.reason}` : ""}`);
+      }
+      // Only a complete board may close jobs; a partial one would close live postings it never reached.
+      const reconcile = COMPLETE_FEED_ATS.has(src.atsType) && fetched.complete && postings.length > 0;
 
       // Which of these do we already have? Dedup per company source so two
       // companies on the same ATS with a colliding sourceJobId stay independent.
@@ -279,9 +323,8 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
         // a stored job no longer in the feed has been filled/closed — soft-close
         // it (the row and its applications stay; readers filter active:false).
         // Guarded by postings.length > 0 so a transient empty fetch can't close
-        // a company's jobs; an adapter that could not finish its pages threw
-        // above, so we never get here with a partial list.
-        if (COMPLETE_FEED_ATS.has(src.atsType) && postings.length > 0) {
+        // a company's jobs, and by `fetched.complete` so a partial list never does.
+        if (reconcile) {
           const gone = await ExternalJobs.updateMany(
             { companySource: src._id, sourceJobId: { $type: "string", $nin: keepIds }, active: { $ne: false } },
             { $set: { active: false, closedAt: new Date() } }
@@ -290,7 +333,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
         }
       } else {
         result.created = fresh.length; // would-create count
-        if (COMPLETE_FEED_ATS.has(src.atsType) && postings.length > 0) {
+        if (reconcile) {
           result.removed = await ExternalJobs.countDocuments({
             companySource: src._id,
             sourceJobId: { $type: "string", $nin: keepIds },

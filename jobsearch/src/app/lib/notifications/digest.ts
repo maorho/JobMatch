@@ -21,7 +21,7 @@ export type DigestResult = { users: number; newJobs: number; notified: number; s
  * digest was actually sent — so a 30-minute scout cadence can never turn
  * into a notification storm, and a quiet day never "uses up" the window.
  */
-export async function runJobMatchDigest(opts: { dry?: boolean } = {}): Promise<DigestResult> {
+export async function runJobMatchDigest(opts: { dry?: boolean; heartbeat?: () => Promise<void> } = {}): Promise<DigestResult> {
   const dry = !!opts.dry;
   await connectToDatabase();
   const now = new Date();
@@ -41,6 +41,8 @@ export async function runJobMatchDigest(opts: { dry?: boolean } = {}): Promise<D
       skippedRecent++;
       continue;
     }
+    // Bus lease renewal when run by the Notifier (each user is a vector search); never fatal.
+    await opts.heartbeat?.().catch(() => {});
     const since = u.lastMatchDigestAt ? new Date(Math.max(new Date(u.lastMatchDigestAt).getTime(), horizon.getTime())) : horizon;
     // Vector search scoped to the postings that are new for this user; level-aware score.
     const profile = (await loadCandidateProfile(String(u._id), { light: true }).catch(() => null)) || { vector: u.embedding, level: u.level || inferCandidateLevel(u.resumeText || "", u.currentJob || ""), resumeSummary: "", resumeVersion: 0 };

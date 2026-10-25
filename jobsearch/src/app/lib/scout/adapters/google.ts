@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, fetchWithTimeout, htmlToText } from "../types";
+import { Adapter, NormalizedPosting, adapterResult, fetchText, htmlToText } from "../types";
 
 /**
  * Google Careers (verified 2026-10-07).
@@ -70,17 +70,23 @@ export const google: Adapter = async (identifier, secondaryIdentifier) => {
   const extra = secondaryIdentifier ? `&${secondaryIdentifier.replace(/^[?&]/, "")}` : "";
   const out: NormalizedPosting[] = [];
   const seen = new Set<string>();
+  let incomplete: string | null = null;
 
   let page = 1;
   for (; page <= MAX_PAGES; page++) {
     const url = `${BASE}?location=${encodeURIComponent(location)}&page=${page}${extra}`;
-    const res = await fetchWithTimeout(url, {
-      headers: { "User-Agent": UA, Accept: "text/html" },
-      cache: "no-store",
-    });
-    // Complete-feed contract: a failed page (first or later) means a partial list → throw.
-    if (!res.ok) throw new Error(`Google careers: HTTP ${res.status} on page ${page}`);
-    const rows = extractRows(await res.text());
+    let body: string;
+    try {
+      const r = await fetchText(url, { headers: { "User-Agent": UA, Accept: "text/html" }, cache: "no-store" });
+      if (!r.ok) throw new Error(`Google careers: HTTP ${r.status} on page ${page}`);
+      body = r.text;
+    } catch (e) {
+      // Nothing usable without the first page; a later failure just makes the list partial.
+      if (page === 1) throw e;
+      incomplete = `page ${page} failed: ${(e as Error).message}`;
+      break;
+    }
+    const rows = extractRows(body);
     if (rows.length === 0) break;
 
     for (const r of rows) {
@@ -126,10 +132,8 @@ export const google: Adapter = async (identifier, secondaryIdentifier) => {
     if (rows.length < PAGE_SIZE) break;
     await new Promise((r) => setTimeout(r, 300)); // be polite
   }
-  // Google reports no total: a full last page at the cap means there is more.
-  if (page > MAX_PAGES) {
-    throw new Error(`Google careers: more than ${MAX_PAGES} pages for "${location}" — list would be partial`);
-  }
+  // Google reports no total: a full last page at the cap means there may be more.
+  if (!incomplete && page > MAX_PAGES) incomplete = `stopped at the ${MAX_PAGES}-page cap for "${location}"`;
 
-  return out;
+  return adapterResult(out, incomplete && `Google careers: ${incomplete}`);
 };

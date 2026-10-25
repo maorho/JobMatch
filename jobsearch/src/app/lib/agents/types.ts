@@ -57,8 +57,8 @@ export type Payloads = {
   "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
   /** Janitor: delete postings no source has reported for a while. */
   "catalog.sweep": { staleDays?: number };
-  /** Matcher → Applier: postings that cleared the user's auto-apply bar. */
-  "apply.request": { userId: string; jobs: { jobId: string; jobModel: "Job" | "ExternalJobs"; score: number; title: string; company: string }[]; trigger: "new_postings" | "resume_updated" | "manual" };
+  /** Matcher → Applier: postings that cleared the user's auto-apply bar. Trigger "retry" carries no jobs: the Applier pulls the user's due deferred rows itself. */
+  "apply.request": { userId: string; jobs: { jobId: string; jobModel: "Job" | "ExternalJobs"; score: number; title: string; company: string }[]; trigger: "new_postings" | "resume_updated" | "manual" | "retry" };
   /** Writer: pick `count` timely topics and write them. */
   "content.plan": { count: number; publish?: boolean };
   /** Writer: write one article. */

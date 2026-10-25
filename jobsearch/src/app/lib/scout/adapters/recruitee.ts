@@ -1,7 +1,7 @@
 import {
-  Adapter,
+  ListAdapter,
   NormalizedPosting,
-  fetchWithTimeout,
+  fetchJson,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -10,11 +10,10 @@ import {
  * Recruitee public offers API.
  * GET https://{company}.recruitee.com/api/offers/
  */
-export const recruitee: Adapter = async (identifier) => {
+export const recruitee: ListAdapter = async (identifier) => {
   const url = `https://${encodeURIComponent(identifier)}.recruitee.com/api/offers/`;
-  const res = await fetchWithTimeout(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Recruitee ${identifier}: HTTP ${res.status}`);
-  const data = await res.json();
+  const { ok, status, data } = await fetchJson(url, { cache: "no-store" });
+  if (!ok) throw new Error(`Recruitee ${identifier}: HTTP ${status}`);
   const offers: any[] = Array.isArray(data?.offers) ? data.offers : [];
 
   return offers.map((o): NormalizedPosting => {

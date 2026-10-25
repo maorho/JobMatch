@@ -1,7 +1,7 @@
 import {
-  Adapter,
+  ListAdapter,
   NormalizedPosting,
-  fetchWithTimeout,
+  fetchJson,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -10,14 +10,13 @@ import {
  * Ashby job board API (public, no key).
  * GET https://api.ashbyhq.com/posting-api/job-board/{org}?includeCompensation=true
  */
-export const ashby: Adapter = async (identifier) => {
+export const ashby: ListAdapter = async (identifier) => {
   const url = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(
     identifier
   )}?includeCompensation=true`;
 
-  const res = await fetchWithTimeout(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Ashby ${identifier}: HTTP ${res.status}`);
-  const data = await res.json();
+  const { ok, status, data } = await fetchJson(url, { cache: "no-store" });
+  if (!ok) throw new Error(`Ashby ${identifier}: HTTP ${status}`);
   const jobs: any[] = Array.isArray(data?.jobs) ? data.jobs : [];
 
   return jobs.map((j): NormalizedPosting => {

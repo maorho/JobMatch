@@ -15,7 +15,7 @@ export const notifierAgent = registerAgent({
   title: "Notifier",
   description: "The only agent that talks to people: turns what the others found into in-app notifications.",
   handles: ["jobs.embedded", "candidate.matched", "prep.ready", "apply.report", "content.ready", "outcome.prompt", "practice.graded"],
-  async handle(msg) {
+  async handle(msg, ctx) {
     switch (msg.type) {
       case "practice.graded": {
         const p = msg.payload as Payloads["practice.graded"];
@@ -104,7 +104,8 @@ export const notifierAgent = registerAgent({
         // refresh (discovery) is too small for a digest and must not fan out to every user.
         if (p.created === 0) return "Nothing new was ingested — digest skipped.";
         if (p.company) return `Company-scoped refresh (${p.company}) — digest left to the next full catalog run.`;
-        const r = await runJobMatchDigest();
+        // One vector search + notification per user: renew the lease as the loop goes.
+        const r = await runJobMatchDigest({ heartbeat: ctx.heartbeat });
         return `Digest: ${r.newJobs} new postings vs ${r.users} candidates → ${r.notified} people notified${r.skippedRecent ? ` (${r.skippedRecent} heard from us in the last ${r.minHours}h)` : ""}.`;
       }
       case "candidate.matched": {

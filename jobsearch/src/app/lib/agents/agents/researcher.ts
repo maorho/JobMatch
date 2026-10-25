@@ -24,7 +24,8 @@ export const researcherAgent = registerAgent({
         limit: take,
         log: (line) => {
           ctx.log(line);
-          void ctx.heartbeat();
+          // Fire-and-forget renewal: a failed lease write must never become an unhandled rejection.
+          ctx.heartbeat().catch(() => {});
         },
       });
       return `Company profiles: ${r.described} written${r.skipped ? `, ${r.skipped} without enough to say` : ""}${r.failed ? `, ${r.failed} failed` : ""}; ${Math.max(0, r.due - r.described - r.skipped - r.failed)} of ${r.considered} still waiting.`;

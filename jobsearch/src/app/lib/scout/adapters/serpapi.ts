@@ -1,7 +1,7 @@
 import {
-  Adapter,
+  ListAdapter,
   NormalizedPosting,
-  fetchWithTimeout,
+  fetchJson,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -13,7 +13,7 @@ import {
  *   secondaryIdentifier = optional location (e.g. "Israel")
  * Docs: https://serpapi.com/google-jobs-api
  */
-export const serpapi: Adapter = async (identifier, secondaryIdentifier) => {
+export const serpapi: ListAdapter = async (identifier, secondaryIdentifier) => {
   const key = process.env.SERPAPI_KEY;
   if (!key) {
     throw new Error("SERPAPI_KEY is not configured");
@@ -27,13 +27,12 @@ export const serpapi: Adapter = async (identifier, secondaryIdentifier) => {
   });
   if (secondaryIdentifier) params.set("location", secondaryIdentifier);
 
-  const res = await fetchWithTimeout(`https://serpapi.com/search.json?${params.toString()}`, {
+  const { ok, status, data } = await fetchJson(`https://serpapi.com/search.json?${params.toString()}`, {
     cache: "no-store",
   });
-  if (!res.ok) {
-    throw new Error(`SerpApi: HTTP ${res.status}`);
+  if (!ok) {
+    throw new Error(`SerpApi: HTTP ${status}`);
   }
-  const data = await res.json();
   const results: any[] = Array.isArray(data?.jobs_results)
     ? data.jobs_results
     : [];

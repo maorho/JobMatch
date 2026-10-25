@@ -1,7 +1,7 @@
 import {
-  Adapter,
+  ListAdapter,
   NormalizedPosting,
-  fetchWithTimeout,
+  fetchJson,
   htmlToText,
   parseLocation,
 } from "../types";
@@ -10,16 +10,15 @@ import {
  * Lever postings API (public, no key).
  * GET https://api.lever.co/v0/postings/{handle}?mode=json
  */
-export const lever: Adapter = async (identifier) => {
+export const lever: ListAdapter = async (identifier) => {
   const url = `https://api.lever.co/v0/postings/${encodeURIComponent(
     identifier
   )}?mode=json`;
 
-  const res = await fetchWithTimeout(url, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Lever ${identifier}: HTTP ${res.status}`);
+  const { ok, status, data } = await fetchJson(url, { cache: "no-store" });
+  if (!ok) {
+    throw new Error(`Lever ${identifier}: HTTP ${status}`);
   }
-  const data = await res.json();
   const jobs: any[] = Array.isArray(data) ? data : [];
 
   return jobs.map((j): NormalizedPosting => {

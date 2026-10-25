@@ -56,7 +56,9 @@ const ISRAEL_LATIN_RE = new RegExp(
       "sderot",
       "kiryat ?(?:shmona|motzkin|bialik|yam|ata|malachi|tivon)",
       "beit ?shemesh|bet ?shemesh",
-      "afula|tiberias|safed|tzfat|acre|akko|nahariya|dimona|arad|ofakim",
+      // Not "acre"/"arad": English words / a Romanian city in free text ("175-acre campus",
+      // "Arad, Romania"). They are matched only as a short location field (AMBIGUOUS_CITY_RE).
+      "afula|tiberias|safed|tzfat|akko|nahariya|dimona|ofakim",
     ].join("|") +
     ")\\b",
   "i"
@@ -75,6 +77,10 @@ const latin = (s: string) =>
 const ISRAEL_HEBREW_RE =
   /(ישראל|תל[\s-]?אביב|הרצליה|חיפה|ירושלים|רמת[\s-]?גן|באר[\s-]?שבע|נתניה|פתח[\s-]?תקוו?ה|רעננה|רחובות|כפר[\s-]?סבא|חולון|אשדוד|אשקלון|יוקנעם|מודיעין|ראש[\s-]?העין|הוד[\s-]?השרון|קרית[\s-]?אונו|בני[\s-]?ברק|אור[\s-]?יהודה|נס[\s-]?ציונה|יבנה|נצרת|כרמיאל|מגדל[\s-]?העמק|קיסריה|בנימינה|קרית[\s-]?גת|לוד|רמלה|ראשון[\s-]?לציון|בת[\s-]?ים|גבעתיים|חדרה|טירת[\s-]?הכרמל|נשר|אילת|שדרות|מרכז|שפלה|שרון|צפון|דרום)/;
 
+/** Israeli city names that are also common words / foreign places: trusted only in a short location field. */
+const AMBIGUOUS_CITY_RE = /\b(acre|arad)\b/;
+const SHORT_LOCATION_MAX = 40;
+
 const REMOTE_RE = /\b(remote|anywhere|work ?from ?home|wfh)\b|מרחוק|מהבית/i;
 /**
  * "not remote", "no remote work", "non-remote", "isn't a remote role",
@@ -82,6 +88,12 @@ const REMOTE_RE = /\b(remote|anywhere|work ?from ?home|wfh)\b|מרחוק|מהב�
  * These phrases are removed before REMOTE_RE runs; "on-site only" never
  * matched in the first place.
  */
+/**
+ * Negation AFTER the word: "Remote work is not available", "remote isn't
+ * possible for this role", "WFH not offered". Runs on latin() text (so
+ * "isn't" is "isnt"); stays inside one clause and ~40 chars.
+ */
+const REMOTE_NEGATED_AFTER_RE = /\b(?:remote|wfh|work ?from ?home)\b[^.;!?\n]{0,40}?\b(?:(?:is |are |was )?not|isnt|arent|no longer|never)\s+(?:(?:currently|really|yet)\s+)?(?:available|possible|offered|an option|supported|allowed|permitted)\b|\b(?:remote|wfh|work ?from ?home)\b[^.;!?\n]{0,40}?\bunavailable\b/gi;
 const NOT_REMOTE_RE = /\b(?:not|no|non|never|isnt|is not|without|zero)\s*(?:a |an |fully |100% |any )?(?:remote(?: work| option| position| role)?|wfh|work ?from ?home)\b|(?:לא|ללא|אין)\s*(?:עבודה\s*)?(?:מרחוק|מהבית)/gi;
 
 export function isIsraelOrRemote(j: {
@@ -101,5 +113,19 @@ export function isIsraelOrRemote(j: {
   ).slice(0, 600)}`;
   const flat = latin(hay);
 
-  return ISRAEL_LATIN_RE.test(flat) || ISRAEL_HEBREW_RE.test(hay) || REMOTE_RE.test(flat.replace(NOT_REMOTE_RE, " "));
+  if (ISRAEL_LATIN_RE.test(flat) || ISRAEL_HEBREW_RE.test(hay)) return true;
+  if (ambiguousIsraeliCity(j.city, j.country)) return true;
+  return REMOTE_RE.test(flat.replace(NOT_REMOTE_RE, " ").replace(REMOTE_NEGATED_AFTER_RE, " "));
+}
+
+/**
+ * "Acre" / "Arad" count only as a short location field that is exactly the
+ * city ("Arad", "Acre") or names Israel ("Acre, IL"). "Arad, Romania" and a
+ * description's "175-acre campus" never get here as Israel.
+ */
+function ambiguousIsraeliCity(city?: string, country?: string): boolean {
+  const c = (country || "").trim();
+  const loc = latin([city || "", /^unknown$/i.test(c) ? "" : c].filter((x) => x.trim()).join(", ")).trim();
+  if (!loc || loc.length > SHORT_LOCATION_MAX || !AMBIGUOUS_CITY_RE.test(loc)) return false;
+  return /^(acre|arad)$/.test(loc) || /\b(israel|il|isr)\b/.test(loc);
 }

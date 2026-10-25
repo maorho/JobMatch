@@ -1,4 +1,4 @@
-import { Adapter, NormalizedPosting, fetchWithTimeout } from "../types";
+import { Adapter, NormalizedPosting, adapterResult, fetchText } from "../types";
 
 /**
  * Apple Jobs (verified 2026-10-07).
@@ -64,18 +64,24 @@ export const apple: Adapter = async (identifier, secondaryIdentifier) => {
     : "";
   const out: NormalizedPosting[] = [];
   const seen = new Set<string>();
-  let total = Infinity;
+  let total: number | null = null;
+  let incomplete: string | null = null;
 
   let page = 1;
-  for (; page <= MAX_PAGES && out.length < total; page++) {
+  for (; page <= MAX_PAGES && (total === null || out.length < total); page++) {
     const url = `${BASE}?location=${encodeURIComponent(location)}&page=${page}${extra}`;
-    const res = await fetchWithTimeout(url, {
-      headers: { "User-Agent": UA, Accept: "text/html" },
-      cache: "no-store",
-    });
-    // Any failed page makes the list partial — complete-feed contract: throw.
-    if (!res.ok) throw new Error(`Apple jobs: HTTP ${res.status} on page ${page}`);
-    const { results, total: t } = extract(await res.text());
+    let body: string;
+    try {
+      const r = await fetchText(url, { headers: { "User-Agent": UA, Accept: "text/html" }, cache: "no-store" });
+      if (!r.ok) throw new Error(`Apple jobs: HTTP ${r.status} on page ${page}`);
+      body = r.text;
+    } catch (e) {
+      // Nothing usable without the first page; a later failure just makes the list partial.
+      if (page === 1) throw e;
+      incomplete = `page ${page} failed: ${(e as Error).message}`;
+      break;
+    }
+    const { results, total: t } = extract(body);
     if (t) total = t;
     if (results.length === 0) break;
 
@@ -109,9 +115,13 @@ export const apple: Adapter = async (identifier, secondaryIdentifier) => {
     if (results.length < PAGE_SIZE) break;
     await new Promise((r) => setTimeout(r, 300)); // be polite
   }
-  if (page > MAX_PAGES && out.length < total) {
-    throw new Error(`Apple jobs: ${total} postings exceed the ${MAX_PAGES}-page cap — list would be partial`);
+  // Apple repeats a posting across pages now and then (we dedupe by id), so a
+  // couple short of totalRecords is still the whole board.
+  if (!incomplete && total !== null && out.length < total - dedupeTolerance(total)) {
+    incomplete = page > MAX_PAGES ? `stopped at the ${MAX_PAGES}-page cap with ${out.length} of ${total}` : `got ${out.length} of ${total} reported postings`;
   }
-
-  return out;
+  return adapterResult(out, incomplete && `Apple jobs: ${incomplete}`);
 };
+
+/** How many postings short of the reported total still counts as complete (dedupe slack). */
+export const dedupeTolerance = (total: number) => Math.max(2, Math.ceil(total * 0.02));

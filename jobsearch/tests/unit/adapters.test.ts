@@ -4,6 +4,14 @@ import { apple } from "@/app/lib/scout/adapters/apple";
 import { html } from "@/app/lib/scout/adapters/html";
 import { comeet } from "@/app/lib/scout/adapters/comeet";
 import { greenhouse } from "@/app/lib/scout/adapters/greenhouse";
+import { toPartialPostings, type AdapterResult, type NormalizedPosting } from "@/app/lib/scout/types";
+
+/** A paginating adapter that reached the whole board returns the plain array (see AdapterResult). */
+async function complete(p: Promise<AdapterResult>): Promise<NormalizedPosting[]> {
+  const r = await p;
+  expect(Array.isArray(r), `expected a complete list, got ${JSON.stringify(!Array.isArray(r) && r.reason)}`).toBe(true);
+  return r as NormalizedPosting[];
+}
 
 /**
  * Adapter parsers against inline fixtures, with global fetch stubbed per URL.
@@ -54,7 +62,7 @@ function googlePage(rows: any[]) {
 describe("google adapter", () => {
   it("maps embedded rows and stops when a page is short", async () => {
     const { calls } = stubFetch({ "jobs/results": { body: googlePage([googleRow("127122114053317318", "Senior Edge-AI Engineer")]) } });
-    const out = await google("Israel");
+    const out = await complete(google("Israel"));
     expect(calls).toHaveLength(1); // 1 row < page size → no page 2
     expect(out).toHaveLength(1);
     const j = out[0];
@@ -74,7 +82,7 @@ describe("google adapter", () => {
     const row = googleRow("222222222222222222", "SRE");
     row[9] = [["Dublin, Ireland", ["a"], "Dublin", null, "", "IE"], ["Haifa, Israel", ["b"], "Haifa", null, "", "IL"]];
     stubFetch({ "jobs/results": { body: googlePage([row]) } });
-    const [j] = await google("Israel");
+    const [j] = await complete(google("Israel"));
     expect(j.city).toBe("Haifa");
     expect(j.country).toBe("IL");
   });
@@ -86,7 +94,7 @@ describe("google adapter", () => {
 
   it("returns nothing when the page has no data blob", async () => {
     stubFetch({ "jobs/results": { body: "<html>no data</html>" } });
-    expect(await google("Israel")).toEqual([]);
+    expect(await complete(google("Israel"))).toEqual([]);
   });
 });
 
@@ -100,7 +108,7 @@ function applePage(results: object[], total = results.length) {
 describe("apple adapter", () => {
   it("parses hydration data and builds public job URLs", async () => {
     stubFetch({ "jobs.apple.com": { body: applePage([{ id: "200687696-0881", positionId: "200687696", postingTitle: "Wireless SoC Engineer", jobSummary: "Design SoCs", locations: [{ name: "Herzliya" }], postDateInGMT: "2026-10-07T00:00:00.000Z", transformedPostingTitle: "wireless-soc-engineer", homeOffice: false }]) } });
-    const out = await apple("israel-ISR");
+    const out = await complete(apple("israel-ISR"));
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ sourceJobId: "200687696-0881", title: "Wireless SoC Engineer", company: "Apple", city: "Herzliya", country: "Israel", description: "Design SoCs" });
     expect(out[0].applyUrl).toBe("https://jobs.apple.com/en-il/details/200687696/wireless-soc-engineer");
@@ -109,7 +117,7 @@ describe("apple adapter", () => {
 
   it("blanks the city for country-level postings and flags home office", async () => {
     stubFetch({ "jobs.apple.com": { body: applePage([{ id: "1", positionId: "1", postingTitle: "X", locations: [{ name: "Israel" }], homeOffice: true }]) } });
-    const [j] = await apple("israel-ISR");
+    const [j] = await complete(apple("israel-ISR"));
     expect(j.city).toBe("Remote");
     expect(j.country).toBe("Israel");
   });
@@ -117,7 +125,7 @@ describe("apple adapter", () => {
   it("paginates until totalRecords is reached", async () => {
     const page = (n: number) => applePage(Array.from({ length: 20 }, (_, i) => ({ id: `p${n}-${i}`, positionId: `${n}${i}`, postingTitle: `Job ${n}-${i}`, locations: [{ name: "Haifa" }] })), 40);
     const { calls } = stubFetch({ "page=1": { body: page(1) }, "page=2": { body: page(2) } });
-    const out = await apple("israel-ISR");
+    const out = await complete(apple("israel-ISR"));
     expect(out).toHaveLength(40);
     expect(calls).toHaveLength(2);
   });
@@ -227,7 +235,7 @@ describe("eightfold adapter", () => {
       },
       "api/apply/v2/jobs/200": { body: { id: 200, job_description: "<b>Overview</b><p>Build <i>AI</i> systems.</p>" } },
     });
-    const out = await eightfold("apply.careers.microsoft.com", "microsoft.com");
+    const out = await complete(eightfold("apply.careers.microsoft.com", "microsoft.com"));
     expect(out).toHaveLength(12);
     expect(calls.filter((c) => c.includes("api/pcsx/search"))).toHaveLength(2); // stopped at the count, no third page
     expect(calls[0]).toContain("https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query=&location=Israel&start=0&num=10");
@@ -248,9 +256,128 @@ describe("eightfold adapter", () => {
     });
     const pending = eightfold("apply.careers.microsoft.com", "microsoft.com");
     await vi.runAllTimersAsync();
-    const out = await pending;
+    const out = await complete(pending);
     expect(out).toHaveLength(1);
     expect(calls.filter((c) => c.includes("api/pcsx/search"))).toHaveLength(2); // 429, then the retry
     vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------- partial lists (AdapterResult contract)
+describe("paginating adapters: partial lists are returned, not thrown", () => {
+  it("google: a later page failing returns what was read, marked incomplete; the cap is incomplete too", async () => {
+    const full = (p: number) => googlePage(Array.from({ length: 20 }, (_, i) => googleRow(`1${String(p).padStart(3, "0")}${String(i).padStart(14, "0")}`, `Job ${p}-${i}`)));
+    stubFetch({ "page=1": { body: full(1) }, "page=2": { status: 503, body: "" } });
+    const r = toPartialPostings(await google("Israel"));
+    expect(r.complete).toBe(false);
+    expect(r.postings).toHaveLength(20);
+    expect(r.reason).toMatch(/page 2 failed/);
+
+    stubFetch({ "jobs/results": (url) => ({ body: full(Number(new URL(url).searchParams.get("page"))) }) });
+    const capped = toPartialPostings(await google("Israel"));
+    expect(capped.complete).toBe(false);
+    expect(capped.postings.length).toBe(15 * 20);
+    expect(capped.reason).toMatch(/cap/);
+  });
+
+  it("apple: an empty page short of totalRecords is partial; a couple short (dedupe) is still complete", async () => {
+    const rows = (n: number, from = 0) => Array.from({ length: n }, (_, i) => ({ id: `a${from + i}`, positionId: `${from + i}`, postingTitle: `Job ${from + i}`, locations: [{ name: "Haifa" }] }));
+    stubFetch({ "page=1": { body: applePage(rows(20), 100) }, "page=2": { body: applePage([], 100) } });
+    const r = toPartialPostings(await apple("israel-ISR"));
+    expect(r.complete).toBe(false);
+    expect(r.postings).toHaveLength(20);
+    expect(r.reason).toMatch(/20 of 100/);
+
+    // 21 reported, page 2 repeats one id → 20 unique: within the dedupe tolerance.
+    stubFetch({ "page=1": { body: applePage(rows(20), 21) }, "page=2": { body: applePage(rows(1, 19), 21) } });
+    expect(await complete(apple("israel-ISR"))).toHaveLength(20);
+
+    // A later page failing is partial, the first page failing still throws.
+    stubFetch({ "page=1": { body: applePage(rows(20), 40) }, "page=2": { status: 500, body: "" } });
+    expect(toPartialPostings(await apple("israel-ISR")).complete).toBe(false);
+    stubFetch({ "page=1": { status: 500, body: "" } });
+    await expect(apple("israel-ISR")).rejects.toThrow(/HTTP 500/);
+  });
+
+  it("eightfold: an empty page before the reported count is partial", async () => {
+    const { eightfold } = await import("@/app/lib/scout/adapters/eightfold");
+    stubFetch({
+      "api/pcsx/search": (url) => {
+        const start = Number(new URL(url).searchParams.get("start"));
+        if (start === 0) return { body: { data: { count: 30, positions: Array.from({ length: 10 }, (_, i) => ({ id: 300 + i, name: `E${i}` })) } } };
+        return { body: { data: { count: 30, positions: [] } } };
+      },
+    });
+    const r = toPartialPostings(await eightfold("apply.careers.microsoft.com", "microsoft.com"));
+    expect(r.complete).toBe(false);
+    expect(r.postings).toHaveLength(10);
+    expect(r.reason).toMatch(/10 of 30/);
+  });
+
+  it("amazon: missing `hits` never yields Infinity; a short list vs hits is partial; a later failed page is partial", async () => {
+    const { amazon } = await import("@/app/lib/scout/adapters/amazon");
+    const job = (i: number) => ({ title: `A${i}`, job_path: `/en/jobs/${1000 + i}/x`, city: "Tel Aviv" });
+    stubFetch({ "search.json": { body: { jobs: [job(1), job(2)] } } }); // no hits, short page
+    expect(await complete(amazon(""))).toHaveLength(2);
+
+    stubFetch({ "search.json": { body: { hits: 5, jobs: [job(1), job(2)] } } });
+    const short = toPartialPostings(await amazon(""));
+    expect(short.complete).toBe(false);
+    expect(short.reason).toMatch(/2 of 5/);
+    expect(short.reason).not.toMatch(/Infinity/);
+
+    stubFetch({ "search.json": (url) => (url.includes("offset=0") ? { body: { jobs: Array.from({ length: 100 }, (_, i) => job(i)) } } : { status: 502, body: "" }) });
+    const later = toPartialPostings(await amazon(""));
+    expect(later.complete).toBe(false);
+    expect(later.postings).toHaveLength(100);
+    expect(later.reason).not.toMatch(/Infinity/);
+  });
+
+  it("smartrecruiters: lists the whole board but fetches details only for Israel/remote postings", async () => {
+    const { smartrecruiters } = await import("@/app/lib/scout/adapters/smartrecruiters");
+    const content = [
+      { id: "il1", name: "Engineer TLV", location: { city: "Tel Aviv", country: "il" } },
+      { id: "us1", name: "Engineer NYC", location: { city: "New York", country: "us" } },
+      { id: "rm1", name: "Remote Dev", location: { city: "Berlin", country: "de", remote: true } },
+    ];
+    const { calls } = stubFetch({
+      "postings?limit": { body: { totalFound: 3, content } },
+      "postings/il1": { body: { jobAd: { sections: { jobDescription: { text: "<p>Build</p>" } } } } },
+      "postings/rm1": { body: { jobAd: { sections: { jobDescription: { text: "<p>Remote</p>" } } } } },
+    });
+    const out = await complete(smartrecruiters("acme"));
+    expect(out.map((p) => p.sourceJobId)).toEqual(["il1", "us1", "rm1"]); // full list → honest reconciliation
+    expect(calls.some((c) => c.includes("postings/us1"))).toBe(false); // no detail call for a posting we drop
+    expect(out.find((p) => p.sourceJobId === "il1")!.description).toBe("Build");
+    expect(out.find((p) => p.sourceJobId === "rm1")!.description).toBe("Remote");
+  });
+
+  it("workday: a cap or a later failed page never throws", async () => {
+    const { workday } = await import("@/app/lib/scout/adapters/workday");
+    const post = (i: number) => ({ title: `W${i}`, externalPath: `/job/Israel-Tel-Aviv/W_${i}_JR${1000 + i}`, locationsText: "Israel, Tel Aviv" });
+    stubFetch({
+      "/jobs": (url) => ({ body: { total: 1000, jobPostings: Array.from({ length: 20 }, (_, i) => post(i)) } }),
+      "/job/": { body: { jobPostingInfo: { title: "W", location: "Tel Aviv, Israel", jobDescription: "<p>x</p>" } } },
+    });
+    const r = toPartialPostings(await workday("acme.wd5.myworkdayjobs.com", "acme/Careers"));
+    expect(r.complete).toBe(false);
+    expect(r.postings.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------- fetch helpers
+describe("fetchJson / fetchText", () => {
+  it("keep the timeout armed until the body is read (a stalled body times out)", async () => {
+    vi.useRealTimers();
+    const { fetchJson, fetchText } = await import("@/app/lib/scout/types");
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: () => new Promise(() => {}), text: () => new Promise(() => {}) }) as any));
+    await expect(fetchJson("https://slow.example/a", {}, 50)).rejects.toThrow(/timed out/);
+    await expect(fetchText("https://slow.example/b", {}, 50)).rejects.toThrow(/timed out/);
+  });
+
+  it("return the status without reading the body on a non-2xx", async () => {
+    const { fetchJson } = await import("@/app/lib/scout/types");
+    stubFetch({ "x.example": { status: 404, body: "nope" } });
+    expect(await fetchJson("https://x.example/")).toEqual({ ok: false, status: 404, data: null });
   });
 });
