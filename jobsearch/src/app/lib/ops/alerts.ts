@@ -19,12 +19,21 @@ async function claimAlert(key: string, title: string): Promise<boolean> {
   const now = new Date();
   const cutoff = new Date(now.getTime() - ALERT_DEDUP_MS);
   try {
-    // Upsert only matches a stale (or missing) row; a fresh one makes the upsert collide on the unique key → deduped.
-    const r = await OpsAlert.findOneAndUpdate({ key, lastSentAt: { $lt: cutoff } }, { $set: { lastSentAt: now, title }, $setOnInsert: { key } }, { upsert: true, new: true }).lean();
+    // Matches only a stale (or missing) row; a fresh one makes the upsert try
+    // to insert a second `_id: key` → 11000 on the _id index → deduped.
+    const r = await OpsAlert.findOneAndUpdate(
+      { _id: key, $or: [{ lastSentAt: { $lt: cutoff } }, { lastSentAt: { $exists: false } }] },
+      { $set: { lastSentAt: now, title } },
+      { upsert: true, new: true }
+    ).lean();
     return !!r;
   } catch (e: any) {
-    if (e?.code === 11000) return false;
-    throw e;
+    if (e?.code !== 11000) throw e;
+    // A collision on _id means a fresh row exists. Anything else is the legacy
+    // `key_1` unique index (pre-_id rows) colliding until sync-indexes drops
+    // it — fail open rather than silence alerts.
+    const fresh = await OpsAlert.exists({ _id: key, lastSentAt: { $gte: cutoff } });
+    return !fresh;
   }
 }
 

@@ -141,5 +141,11 @@ ExternalJobSchema.index({ lastSeenAt: 1 });
 // over documents that carry a 1536-float embedding exceeds Mongo's 32MB limit.
 ExternalJobSchema.index({ firstSeenAt: -1 });
 ExternalJobSchema.index({ remote: 1 });
+// Facet dropdowns: distinct(field, OPEN_JOBS) can't use the single-field
+// indexes above (the filter is on `active`); these let it walk the index only.
+// Built in production by the sync-indexes route.
+ExternalJobSchema.index({ active: 1, company: 1 });
+ExternalJobSchema.index({ active: 1, city: 1 });
+ExternalJobSchema.index({ active: 1, country: 1 });
 
 export default mongoose.models.ExternalJobs || mongoose.model('ExternalJobs',ExternalJobSchema);

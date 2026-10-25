@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import CompanyProfile from "@/app/models/CompanyProfile";
-import ExternalJobs from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { companyKey } from "@/app/lib/outcomes/companyKey";
 import { callWithSearch, repairJsonAs, researchClient, safeJson, type ResearchClient } from "@/app/lib/interview/companyResearch";
 
@@ -96,7 +96,8 @@ export async function describeCompany(name: string, opts: CompanyHints & { clien
 export async function catalogCompanies(limit = 2000): Promise<{ name: string; jobs: number; domain: string; atsDescription: string; sampleTitles: string[] }[]> {
   await connectToDatabase();
   const rows: any[] = await ExternalJobs.aggregate([
-    { $match: { company: { $nin: ["", null] } } },
+    // Open roles only: a company whose postings all closed shouldn't be profiled (or ranked) on stale counts.
+    { $match: { ...OPEN_JOBS, company: { $nin: ["", null] } } },
     { $group: { _id: "$company", jobs: { $sum: 1 }, domain: { $max: "$companyDomain" }, desc: { $max: "$company_description" }, titles: { $push: "$job" } } },
     { $sort: { jobs: -1, _id: 1 } },
     { $limit: limit },

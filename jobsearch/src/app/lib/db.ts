@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
 
 /**
- * Cached connection for Next.js (survives hot-reload via globalThis). We key off
- * the live connection state rather than a boolean that latches forever, so a
- * dropped connection reconnects instead of short-circuiting on a dead socket.
- * A cached in-flight promise de-dupes concurrent first-time callers.
+ * Cached connection for Next.js (survives hot-reload via globalThis). One
+ * MongoClient per process: a transient drop is left to the driver's own
+ * recovery, and only an explicit close (or a failed initial connect) leads to
+ * a fresh connect(). A cached in-flight promise de-dupes concurrent callers.
  *
  * Serverless sizing: every warm lambda holds its own pool, so a small pool per
  * instance keeps the Atlas connection count sane. Buffering is off so a query
@@ -14,6 +14,8 @@ import mongoose from "mongoose";
 type MongooseCache = {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
+  /** The 'close' listener is registered once per process (survives hot-reload). */
+  listening?: boolean;
 };
 
 const globalWithMongoose = globalThis as unknown as {
@@ -37,9 +39,46 @@ const CONNECT_OPTIONS: mongoose.ConnectOptions = {
   socketTimeoutMS: 45000,
 };
 
+// 'close' fires only on an explicit close()/disconnect(), never on a transient
+// drop (Atlas primary election → readyState 0 → 'disconnected'), so it is the
+// one signal that the client is really gone and a new connect() is required.
+if (!cache.listening) {
+  cache.listening = true;
+  mongoose.connection.on("close", () => {
+    cache.conn = null;
+    cache.promise = null;
+  });
+}
+
+/** Wait up to `ms` for the driver to re-establish a dropped connection. */
+function waitForReconnect(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      mongoose.connection.off("connected", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    mongoose.connection.once("connected", done);
+  });
+}
+
 export async function connectToDatabase() {
   // 1 = connected. If we're already connected, reuse it.
   if (mongoose.connection.readyState === 1 && cache.conn) {
+    return cache.conn;
+  }
+
+  // A client exists and was never closed, so it is only temporarily
+  // disconnected: the driver reconnects on its own. Calling connect() again
+  // here would build a second MongoClient and leak the first one's pool.
+  // Give it up to serverSelectionTimeoutMS, then hand the connection back
+  // anyway: queries go through driver server selection, which either finds
+  // the new primary or fails with a clear error.
+  if (cache.conn) {
+    if (mongoose.connection.readyState !== 1) {
+      await waitForReconnect(CONNECT_OPTIONS.serverSelectionTimeoutMS ?? 5000);
+    }
     return cache.conn;
   }
 
@@ -48,18 +87,15 @@ export async function connectToDatabase() {
     throw new Error("Please define the MONGO_URI environment variable");
   }
 
-  // A cached promise whose connection has since dropped (0 = disconnected,
-  // 3 = disconnecting) is dead: forget it so we reconnect instead of handing
-  // back a mongoose instance with a closed socket. 2 = connecting → reuse.
-  if (cache.promise && mongoose.connection.readyState !== 2) {
-    cache.promise = null;
-    cache.conn = null;
-  }
-
-  // Reuse an in-flight connect; otherwise start one.
+  // Reuse an in-flight connect; otherwise start one (first connect, or the
+  // previous client was explicitly closed / its initial connect failed).
   if (!cache.promise) {
-    cache.promise = mongoose
-      .connect(MONGO_URI, CONNECT_OPTIONS)
+    cache.promise = (async () => {
+      // A half-open client (e.g. disconnecting) must be torn down first, or
+      // its pool leaks alongside the new one.
+      if (mongoose.connection.readyState !== 0) await mongoose.disconnect().catch(() => undefined);
+      return mongoose.connect(MONGO_URI, CONNECT_OPTIONS);
+    })()
       .then((m) => {
         console.log("MongoDB connected");
         return m;

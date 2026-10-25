@@ -45,6 +45,9 @@ async function computeFacets() {
 
     const [extCompanies, extCities, extCountries, internal] = await Promise.all([
       // Only open postings: a closed company shouldn't stay in the dropdown with zero results.
+      // Served by the {active, field} compound indexes on ExternalJobs. Kept as
+      // $ne:false (not active:true): it's the same OPEN_JOBS every reader uses,
+      // and a doc written without the field (a raw/legacy insert) stays visible.
       ExternalJobs.distinct("company", OPEN_JOBS),
       ExternalJobs.distinct("city", OPEN_JOBS),
       ExternalJobs.distinct("country", OPEN_JOBS),

@@ -40,10 +40,11 @@ export async function catalogFacts(): Promise<CatalogFacts> {
     ExternalJobs.countDocuments({ ...OPEN_JOBS, postedAt: { $gte: week } }),
     ExternalJobs.countDocuments({ ...OPEN_JOBS, job: JUNIOR_RE }),
     ExternalJobs.countDocuments({ ...OPEN_JOBS, $or: [{ remote: true }, { country: "Remote" }] }),
-    ExternalJobs.aggregate([{ $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
-    ExternalJobs.aggregate([{ $match: { job: JUNIOR_RE } }, { $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
-    ExternalJobs.aggregate([{ $match: { city: { $nin: ["", "Unknown", null] } } }, { $group: { _id: "$city", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 8 }, { $project: { _id: 0, city: "$_id", jobs: 1 } }]),
-    ExternalJobs.find({}).sort({ firstSeenAt: -1 }).limit(400).select("job description").lean(),
+    // Closed postings stay in the collection (soft close) — every number here is about open ones.
+    ExternalJobs.aggregate([{ $match: { ...OPEN_JOBS } }, { $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
+    ExternalJobs.aggregate([{ $match: { ...OPEN_JOBS, job: JUNIOR_RE } }, { $group: { _id: "$company", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 10 }, { $project: { _id: 0, company: "$_id", jobs: 1 } }]),
+    ExternalJobs.aggregate([{ $match: { ...OPEN_JOBS, city: { $nin: ["", "Unknown", null] } } }, { $group: { _id: "$city", jobs: { $sum: 1 } } }, { $sort: { jobs: -1 } }, { $limit: 8 }, { $project: { _id: 0, city: "$_id", jobs: 1 } }]),
+    ExternalJobs.find({ ...OPEN_JOBS }).sort({ firstSeenAt: -1 }).limit(400).select("job description").lean(),
   ]);
   return {
     totalJobs,

@@ -1,8 +1,11 @@
 /**
  * One-off, idempotent: remove duplicate applications so the unique index
- * { candidateId: 1, jobId: 1 } on Candidates can build. Keeps the OLDEST row
- * per (candidateId, jobId) — it is the one ApplicationOutcome / events point
- * at — and deletes the rest. Prints counts; `--dry` only prints.
+ * { candidateId: 1, jobId: 1 } on Candidates can build. Per (candidateId,
+ * jobId) it keeps the row with the furthest status (tie → the one an
+ * ApplicationOutcome points at → oldest), re-points ApplicationOutcome /
+ * ApplicationEvent / ReferralRequest / InterviewQuestion references from the
+ * dropped rows to the keeper, then deletes the rest. Logic lives in
+ * lib/ops/dedupeCandidates.ts. `--dry` only prints the plan.
  *
  *   npx tsx src/scripts/dedupe-candidates.ts [--dry]
  *
@@ -12,6 +15,7 @@
 import path from "node:path";
 import { config } from "dotenv";
 import mongoose from "mongoose";
+import { dedupeCandidates } from "../app/lib/ops/dedupeCandidates";
 
 config({ path: path.resolve(process.cwd(), ".env.local") });
 config();
@@ -22,29 +26,19 @@ async function main() {
   const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGO_URI is not set (.env.local)");
   await mongoose.connect(uri, { bufferCommands: false, maxPoolSize: 2 });
-  const col = mongoose.connection.db!.collection("candidates");
+  const db = mongoose.connection.db!;
 
-  // Groups with more than one row, oldest first so ids[0] is the keeper.
-  const groups = (await col
-    .aggregate([
-      { $sort: { createdAt: 1, _id: 1 } },
-      { $group: { _id: { candidateId: "$candidateId", jobId: "$jobId" }, ids: { $push: "$_id" }, n: { $sum: 1 } } },
-      { $match: { n: { $gt: 1 } } },
-    ])
-    .toArray()) as { _id: { candidateId: unknown; jobId: unknown }; ids: mongoose.Types.ObjectId[]; n: number }[];
-
-  const toDelete = groups.flatMap((g) => g.ids.slice(1));
-  console.log(`candidates: ${await col.estimatedDocumentCount()} rows, ${groups.length} duplicated (candidateId, jobId) pairs, ${toDelete.length} rows to delete`);
-  if (!DRY && toDelete.length) {
-    // Batches: a single $in with tens of thousands of ids is fine for Mongo but not for the oplog readers.
-    let deleted = 0;
-    for (let i = 0; i < toDelete.length; i += 1000) {
-      const r = await col.deleteMany({ _id: { $in: toDelete.slice(i, i + 1000) } });
-      deleted += r.deletedCount ?? 0;
-    }
-    console.log(`deleted ${deleted} duplicate rows`);
-  } else if (DRY) {
-    console.log("dry run: nothing deleted");
+  const r = await dedupeCandidates(db, { dry: DRY });
+  console.log(`candidates: ${await db.collection("candidates").estimatedDocumentCount()} rows, ${r.groups} duplicated (candidateId, jobId) pairs, ${r.rowsToDelete} rows to delete`);
+  // The plan, so a dry run shows exactly which row survives each group.
+  for (const p of r.plans.slice(0, 200)) console.log(`  candidate ${p.candidateId} job ${p.jobId}: keep ${p.keep}, drop ${p.drop.join(", ")}`);
+  if (r.plans.length > 200) console.log(`  … and ${r.plans.length - 200} more groups`);
+  if (DRY) {
+    console.log("dry run: nothing changed");
+  } else {
+    console.log(
+      `deleted ${r.deleted} duplicate rows; outcomes re-pointed ${r.outcomesRepointed} / deleted ${r.outcomesDeleted}; events re-pointed ${r.eventsRepointed}; referrals re-pointed ${r.referralsRepointed}; questions re-pointed ${r.questionsRepointed} / deleted ${r.questionsDeleted}`
+    );
   }
   await mongoose.disconnect();
 }

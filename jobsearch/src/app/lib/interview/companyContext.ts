@@ -66,15 +66,21 @@ async function fetchWebsiteExcerpt(domain: string): Promise<string | undefined> 
 
 export async function gatherCompanyContext(company: string, opts: { fetchWebsite?: boolean } = {}): Promise<CompanyContext> {
   await connectToDatabase();
-  const [jobs, source]: [any[], any] = await Promise.all([
+  const [openJobs, source]: [any[], any] = await Promise.all([
     ExternalJobs.find({ company, ...OPEN_JOBS }).select("job description companyDomain").limit(40).lean(),
     CompanySource.findOne({ companyName: company }).select("domain careersUrl").lean(),
   ]);
+  // By interview time the posting is often closed (and maybe every other one
+  // at the company): fall back to closed postings so the tech signals and
+  // titles survive. openRoles still reports only what is open.
+  const jobs: any[] = openJobs.length
+    ? openJobs
+    : await ExternalJobs.find({ company, active: false }).sort({ closedAt: -1 }).select("job description companyDomain").limit(40).lean();
   const domain = (source?.domain || jobs.find((j) => j.companyDomain)?.companyDomain || "").replace(/^www\./, "") || undefined;
   const ctx: CompanyContext = {
     company,
     domain,
-    openRoles: jobs.length,
+    openRoles: openJobs.length,
     techSignals: mineTechSignals(jobs.map((j) => `${j.job}\n${j.description || ""}`)),
     sampleTitles: jobs.slice(0, 8).map((j) => j.job),
   };

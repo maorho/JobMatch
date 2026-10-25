@@ -43,6 +43,9 @@ Return STRICT JSON: {"results":[{"id","fit","why","gaps":[...]}]} with every id 
 
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
 
+/** Whether a cache miss would actually call the LLM (the explain route charges quota only then). */
+export const llmRerankEnabled = () => !!(process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
+
 /** Rerank with an LLM (cached). `useLLM: false` returns only cached verdicts. */
 export async function rerankForUser(opts: { userId: string; resumeVersion: number; resumeSummary: string; level: string; jobs: RerankCandidate[]; language?: "he" | "en"; useLLM?: boolean }): Promise<Map<string, RerankVerdict>> {
   await connectToDatabase();
@@ -50,7 +53,7 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
   if (!opts.jobs.length) return out;
   const cached: any[] = await MatchCache.find({ userId: opts.userId, resumeVersion: opts.resumeVersion, jobId: { $in: opts.jobs.map((j) => j._id) } }).lean();
   for (const c of cached) out.set(String(c.jobId), { _id: String(c.jobId), fit: c.fit, why: c.why, gaps: c.gaps || [], cached: true });
-  const useLLM = opts.useLLM ?? !!(process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
+  const useLLM = opts.useLLM ?? llmRerankEnabled();
   const pending = opts.jobs.filter((j) => !out.has(j._id));
   if (!useLLM || !pending.length) return out;
 

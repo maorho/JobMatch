@@ -21,14 +21,26 @@ export type TrackedApplication = { _id: string; status: string; company: string;
 
 const norm = (s: string) => (s || "").toLowerCase().replace(/\b(ltd|inc|llc|corp|technologies|technology|labs|group|the)\b/g, "").replace(/[^a-z0-9֐-׿]+/g, " ").trim();
 
-/** Emails older than this can't be about a live application; keeps the working set small. */
+/** A finished application (terminal status) untouched for this long can't get new news; keeps the working set small. */
 const TRACK_WINDOW_DAYS = 90;
+/** Candidates statuses after which nothing more is expected. */
+const TERMINAL_STATUSES = ["Rejected", "Accepted"];
 
 /** The user's recent applications with company/title resolved for both job models (two `$in` reads, not one per row). */
 export async function loadApplications(userId: string): Promise<TrackedApplication[]> {
   await connectToDatabase();
   const since = new Date(Date.now() - TRACK_WINDOW_DAYS * 86_400_000);
-  const apps: any[] = await Candidates.find({ candidateId: userId, createdAt: { $gte: since } }).select("status jobModel jobId").sort({ createdAt: -1 }).limit(500).lean();
+  // A long hiring process can outlive any window on createdAt, so: every
+  // application still in play regardless of age, plus anything that moved in
+  // the window, plus legacy rows without timestamps (can't tell — keep them).
+  const apps: any[] = await Candidates.find({
+    candidateId: userId,
+    $or: [{ status: { $nin: TERMINAL_STATUSES } }, { updatedAt: { $gte: since } }, { updatedAt: { $exists: false } }],
+  })
+    .select("status jobModel jobId")
+    .sort({ updatedAt: -1, _id: -1 })
+    .limit(500)
+    .lean();
   const extIds = apps.filter((a) => a.jobModel === "ExternalJobs").map((a) => a.jobId);
   const intIds = apps.filter((a) => a.jobModel === "Job").map((a) => a.jobId);
   const [ext, int]: [any[], any[]] = await Promise.all([

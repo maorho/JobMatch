@@ -86,13 +86,24 @@ describe("admin alerts and health", () => {
     expect(await Notification.countDocuments({ userId: admin })).toBe(1);
     expect(await Notification.countDocuments({ userId: dana })).toBe(0);
     // The dedup is a row, not module memory: another key sends, and a stale row sends again.
-    const row: any = await OpsAlert.findOne({ key: "agents_failed" }).lean();
+    const row: any = await OpsAlert.findById("agents_failed").lean();
     expect(row.lastSentAt).toBeInstanceOf(Date);
     expect(await alertAdmins("scout_stalled", "no source polled", "x")).toMatchObject({ deduped: false });
-    await OpsAlert.updateOne({ key: "agents_failed" }, { $set: { lastSentAt: new Date(Date.now() - 2 * 3600_000) } });
+    await OpsAlert.updateOne({ _id: "agents_failed" }, { $set: { lastSentAt: new Date(Date.now() - 2 * 3600_000) } });
     expect(await alertAdmins("agents_failed", "an hour later", "x")).toMatchObject({ notified: 1, deduped: false });
     expect(await Notification.countDocuments({ userId: admin })).toBe(3);
     expect(await OpsAlert.countDocuments()).toBe(2);
+  });
+
+  it("dedups on the _id index alone — no secondary index needed (fresh prod DB before sync-indexes)", async () => {
+    await resetAlertDedup();
+    await OpsAlert.collection.dropIndexes().catch(() => undefined); // leaves only _id_
+    expect((await OpsAlert.collection.indexes()).map((i: any) => i.name)).toEqual(["_id_"]);
+    const before = await Notification.countDocuments({ userId: admin });
+    const [a, b] = await Promise.all([alertAdmins("no_index", "t", "x"), alertAdmins("no_index", "t", "x")]);
+    expect([a.deduped, b.deduped].sort()).toEqual([false, true]); // concurrent lambdas: exactly one sends
+    expect(await alertAdmins("no_index", "t", "x")).toMatchObject({ deduped: true });
+    expect(await Notification.countDocuments({ userId: admin })).toBe(before + 1);
   });
 
   it("the health endpoint reports db / catalogue / agents / config and is admin- or cron-secret-only", async () => {

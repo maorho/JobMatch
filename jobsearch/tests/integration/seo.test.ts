@@ -8,7 +8,8 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
-import { jobPostingJsonLd, articleJsonLd, breadcrumbJsonLd } from "@/app/lib/seo/jsonld";
+import { jobPostingJsonLd, articleJsonLd, breadcrumbJsonLd, jobPageJsonLd } from "@/app/lib/seo/jsonld";
+import { generateMetadata as jobPageMetadata } from "@/app/job/[source]/[id]/page";
 import { excerpt, siteUrl } from "@/app/lib/seo/site";
 import { loadJob } from "@/app/lib/jobs/loadJob";
 import { ARTICLES } from "@/app/content/articles";
@@ -65,6 +66,19 @@ describe("structured data", () => {
     expect(ild.directApply).toBe(true);
     expect(ild.employmentType).toBe("FULL_TIME");
     expect(await loadJob("external", "nope")).toBeNull();
+  });
+
+  it("a closed job page is noindex (follow) and emits no JobPosting; an open one is indexable with one", async () => {
+    const meta = (id: string) => jobPageMetadata({ params: Promise.resolve({ source: "external", id }) });
+    expect((await meta(ext)).robots).toEqual({ index: true, follow: true });
+    const open = await loadJob("external", ext);
+    expect(jobPageJsonLd({ ...open, _id: String(open._id), company: open.company }).map((x: any) => x["@type"])).toEqual(["JobPosting", "BreadcrumbList"]);
+
+    const closedId = String((await ExternalJobs.create({ job: "Old Role", company: "Acme", city: "Tel Aviv", country: "Israel", url: "u2", finalUrl: "u2", description: "gone", skills: [], seniority: [], source: "greenhouse", sourceJobId: "s-closed", active: false, closedAt: new Date("2026-10-10") } as any))._id);
+    expect((await meta(closedId)).robots).toEqual({ index: false, follow: true });
+    const closed = await loadJob("external", closedId);
+    expect(closed.active).toBe(false);
+    expect(jobPageJsonLd({ ...closed, _id: String(closed._id), company: closed.company }).map((x: any) => x["@type"])).toEqual(["BreadcrumbList"]);
   });
 
   it("builds article + breadcrumb data and clean description excerpts", () => {

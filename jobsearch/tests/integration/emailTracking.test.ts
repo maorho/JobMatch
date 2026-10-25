@@ -16,7 +16,7 @@ import Notification from "@/app/models/Notification";
 import { signJwt } from "@/app/lib/jwt";
 import { seal, open } from "@/app/lib/crypto/secretBox";
 import { applicationMailQuery, extractBody, type GmailMessage } from "@/app/lib/email/gmail";
-import { matchApplication, syncUserEmails } from "@/app/lib/email/track";
+import { matchApplication, syncUserEmails, loadApplications } from "@/app/lib/email/track";
 import { GET as gmailGET, POST as gmailPOST, DELETE as gmailDELETE } from "@/app/api/integrations/gmail/route";
 import { GET as cronGET } from "@/app/api/integrations/gmail/sync/route";
 import { GET as connectGET } from "@/app/api/integrations/gmail/connect/route";
@@ -146,5 +146,23 @@ describe("routes", () => {
     expect(d.status).toBe(200);
     expect(((await gmailGET(new NextRequest(`${O}/api/integrations/gmail`, { headers: await cookie(me) }))).status)).toBe(200);
     expect((await j(await gmailPOST(new NextRequest(`${O}/api/integrations/gmail`, { method: "POST", headers: await cookie(me) })))).status).toBe(400); // disconnected now
+  });
+});
+
+describe("loadApplications window", () => {
+  it("keeps old applications still in play and legacy rows; drops only finished ones untouched for 90 days", async () => {
+    const u = String((await User.create({ username: "old", email: "old@test.dev", password: "x", fullname: "Old", phone: "0" } as any))._id);
+    const ago = (d: number) => new Date(Date.now() - d * 86_400_000);
+    const job = async (k: string) => (await ExternalJobs.create({ job: `Role ${k}`, company: `Co ${k}`, city: "TLV", country: "Israel", url: k, finalUrl: k, description: "", skills: [], seniority: [], source: "greenhouse", sourceJobId: `win-${k}` } as any))._id;
+    const uid = new (await import("mongoose")).default.Types.ObjectId(u);
+    // Raw inserts: Mongoose would stamp fresh timestamps.
+    await Candidates.collection.insertMany([
+      { candidateId: uid, jobId: await job("a"), jobModel: "ExternalJobs", status: "Final Interview", createdAt: ago(200), updatedAt: ago(150) }, // long process, still open
+      { candidateId: uid, jobId: await job("b"), jobModel: "ExternalJobs", status: "Rejected", createdAt: ago(200), updatedAt: ago(30) }, // old, but moved recently
+      { candidateId: uid, jobId: await job("c"), jobModel: "ExternalJobs", status: "Rejected", createdAt: ago(200), updatedAt: ago(150) }, // finished long ago
+      { candidateId: uid, jobId: await job("d"), jobModel: "ExternalJobs", status: "Accepted" }, // legacy: no timestamps
+    ]);
+    const titles = (await loadApplications(u)).map((a) => a.title).sort();
+    expect(titles).toEqual(["Role a", "Role b", "Role d"]);
   });
 });

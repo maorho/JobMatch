@@ -49,6 +49,26 @@ export function jobPostingJsonLd(job: JobForSeo): Record<string, unknown> {
   return out;
 }
 
+/**
+ * A soft-closed posting (active:false) still renders for people who saved the
+ * link, but must leave Google for Jobs: no JobPosting (an expired posting with
+ * live structured data is a policy violation) and noindex, while links on the
+ * page stay followable.
+ */
+export const isClosedJob = (job: { active?: boolean } | null | undefined) => job?.active === false;
+
+export function jobPageRobots(job: { active?: boolean }): { index: boolean; follow: boolean } {
+  return { index: !isClosedJob(job), follow: true };
+}
+
+/** Structured data for /job/[source]/[id]: JobPosting (open jobs only) + breadcrumbs. */
+export function jobPageJsonLd(job: JobForSeo & { active?: boolean }): Record<string, unknown>[] {
+  return [
+    ...(isClosedJob(job) ? [] : [jobPostingJsonLd(job)]),
+    breadcrumbJsonLd([{ name: "Jobs", path: "/" }, { name: job.company, path: `/?company=${encodeURIComponent(job.company)}` }, { name: job.job, path: `/job/${job.source}/${job._id}` }]),
+  ];
+}
+
 export function breadcrumbJsonLd(items: { name: string; path: string }[]): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
