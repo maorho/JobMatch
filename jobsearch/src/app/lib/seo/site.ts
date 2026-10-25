@@ -1,14 +1,18 @@
+import { vercelPreviewOrigin } from "../appUrl";
+
 let warnedMissing = false;
 
 /**
  * Canonical site origin for metadata, sitemaps and structured data (read at
- * call time so tests/envs can set it). Outside production it falls back to
- * localhost; in production APP_URL is mandatory (lib/env.ts refuses to boot
- * without it), so a missing value here is logged loudly and yields "" rather
- * than leaking "http://localhost:3000" into canonical tags and the sitemap.
+ * call time so tests/envs can set it). On a Vercel Preview without APP_URL it
+ * is the preview's own https origin (VERCEL_BRANCH_URL, else VERCEL_URL).
+ * Outside production it falls back to localhost; in production APP_URL is
+ * mandatory (lib/env.ts refuses to boot without it), so a missing value here
+ * is logged loudly and yields "" rather than leaking "http://localhost:3000"
+ * into canonical tags and the sitemap.
  */
 export const siteUrl = (): string => {
-  const configured = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const configured = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || vercelPreviewOrigin() || "").replace(/\/$/, "");
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
     if (!warnedMissing) {

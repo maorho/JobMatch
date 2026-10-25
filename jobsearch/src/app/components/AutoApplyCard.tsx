@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Zap, Play } from "lucide-react";
 
-type Settings = { enabled: boolean; minScore: number; dailyCap: number; hasResume: boolean; applierConfigured: boolean; stats: { today: number; total: number; needsUser: number } };
+type Settings = { available?: boolean; reason?: string; enabled: boolean; minScore: number; dailyCap: number; hasResume: boolean; applierConfigured: boolean; stats: { today: number; total: number; needsUser: number } };
 type Item = { _id: string; title: string; company: string; score: number; status: string; ats: string; note: string; createdAt: string; link: string; url: string };
+
+const UNAVAILABLE = "הגשה אוטומטית אינה זמינה כרגע";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   submitted: { label: "הוגש", cls: "jm-chip jm-chip-teal" },
@@ -12,6 +14,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   needs_user: { label: "דורש אותך", cls: "jm-chip jm-chip-sky" },
   failed: { label: "נכשל", cls: "jm-chip bg-red-50 text-red-700 border-red-200" },
   skipped: { label: "דולג", cls: "jm-chip" },
+  deferred: { label: "נדחה, ננסה שוב", cls: "jm-chip" },
 };
 
 /**
@@ -45,6 +48,10 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
     const r = await fetch("/api/settings/auto-apply", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
     const d = await r.json().catch(() => ({}));
     setBusy(false);
+    if (r.status === 409) {
+      setS({ ...s, available: false, reason: d?.reason || UNAVAILABLE });
+      return setMsg(d?.reason || UNAVAILABLE);
+    }
     if (!r.ok) return setMsg(d?.error || "השמירה נכשלה");
     setS(d);
     onChange?.(d);
@@ -65,6 +72,8 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
   };
 
   if (!s) return <p className="jm-muted">טוען…</p>;
+  // Feature switched off server-side (FEATURE_AUTO_APPLY / no apply server): show it, but nothing can be turned on.
+  const unavailable = s.available === false;
 
   return (
     <div className="space-y-4">
@@ -74,6 +83,7 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
             כשמשרה חדשה עולה ומתאימה לקו״ח שלך ב-<span className="font-semibold text-navy">{s.minScore}%</span> ומעלה, סוכן ה-Applier מתאים את קורות החיים למשרה
             ומגיש אותם בשבילך — עד {s.dailyCap} הגשות ביום. אם טופס דורש תשובות שרק את/ה יכול/ה לתת, הוא יעצור ויבקש ממך להשלים.
           </p>
+          {unavailable && <p className="mt-2 text-sm font-medium text-red-700">{s.reason || UNAVAILABLE}</p>}
           {!s.hasResume && <p className="mt-2 text-sm text-red-700">קודם צריך קו״ח ב-ResumeAI — בלי זה אין למה להתאים.</p>}
         </div>
         <label className="inline-flex items-center gap-3 cursor-pointer select-none">
@@ -82,7 +92,7 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
             type="button"
             role="switch"
             aria-checked={s.enabled}
-            disabled={busy || (!s.enabled && !s.hasResume)}
+            disabled={busy || (!s.enabled && (!s.hasResume || unavailable))}
             onClick={() => save({ enabled: !s.enabled })}
             className={`relative h-7 w-12 rounded-full transition-colors ${s.enabled ? "bg-teal" : "bg-line"} disabled:opacity-50`}
           >
@@ -94,11 +104,11 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
       <div className="grid sm:grid-cols-2 gap-4">
         <label className="block">
           <span className="jm-label">סף התאמה מינימלי: {s.minScore}%</span>
-          <input type="range" min={50} max={100} step={5} value={s.minScore} disabled={busy} onChange={(e) => setS({ ...s, minScore: Number(e.target.value) })} onMouseUp={() => save({})} onTouchEnd={() => save({})} onKeyUp={() => save({})} className="w-full accent-teal" />
+          <input type="range" min={50} max={100} step={5} value={s.minScore} disabled={busy || unavailable} onChange={(e) => setS({ ...s, minScore: Number(e.target.value) })} onMouseUp={() => save({})} onTouchEnd={() => save({})} onKeyUp={() => save({})} className="w-full accent-teal" />
         </label>
         <label className="block">
           <span className="jm-label">מקסימום הגשות ביום</span>
-          <select value={s.dailyCap} disabled={busy} onChange={(e) => save({ dailyCap: Number(e.target.value) })} className="jm-input jm-select">
+          <select value={s.dailyCap} disabled={busy || unavailable} onChange={(e) => save({ dailyCap: Number(e.target.value) })} className="jm-input jm-select">
             {[1, 2, 3, 5, 8, 10, 15, 20].map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
@@ -110,7 +120,7 @@ export default function AutoApplyCard({ showList = false, onChange }: { showList
         <span className="jm-chip jm-chip-teal"><Zap className="h-3 w-3" /> היום {s.stats.today}/{s.dailyCap}</span>
         <span className="jm-chip">סה״כ הוגשו {s.stats.total}</span>
         {s.stats.needsUser > 0 && <span className="jm-chip jm-chip-sky">{s.stats.needsUser} מחכות לך</span>}
-        {s.enabled && (
+        {s.enabled && !unavailable && (
           <button type="button" disabled={busy} onClick={runNow} className="jm-btn jm-btn-secondary jm-btn-sm ms-auto">
             <Play className="h-4 w-4" /> עבור על הקטלוג עכשיו
           </button>

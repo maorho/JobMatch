@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { FEATURES, featureSnapshot } from "@/app/lib/flags";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { FEATURES, featureSnapshot, applyServerConfigured } from "@/app/lib/flags";
 
-const KEYS = ["FEATURE_PHONE", "FEATURE_AUTO_APPLY", "FEATURE_MCP", "PUPPETEER_SERVER_URL"] as const;
+const KEYS = ["FEATURE_PHONE", "FEATURE_AUTO_APPLY", "FEATURE_MCP", "PUPPETEER_SERVER_URL", "SCRAPER_TOKEN"] as const;
 const saved: Partial<Record<(typeof KEYS)[number], string | undefined>> = {};
 
 beforeEach(() => {
@@ -11,6 +11,7 @@ beforeEach(() => {
   }
 });
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const k of KEYS) {
     if (saved[k] === undefined) delete process.env[k];
     else process.env[k] = saved[k];
@@ -35,6 +36,35 @@ describe("feature flags", () => {
     expect(FEATURES.autoApply).toBe(true);
     process.env.PUPPETEER_SERVER_URL = "https://apply.example.com";
     process.env.FEATURE_AUTO_APPLY = "0";
+    expect(FEATURES.autoApply).toBe(false);
+  });
+
+  it("accepts true/false alongside 1/0", () => {
+    process.env.FEATURE_PHONE = "true";
+    expect(FEATURES.phone).toBe(true);
+    process.env.FEATURE_MCP = "false";
+    expect(FEATURES.mcp).toBe(false);
+    process.env.PUPPETEER_SERVER_URL = "https://apply.example.com";
+    process.env.FEATURE_AUTO_APPLY = "false";
+    expect(FEATURES.autoApply).toBe(false);
+    process.env.FEATURE_AUTO_APPLY = "yes"; // unknown → default
+    expect(FEATURES.autoApply).toBe(true);
+  });
+
+  it("in production the apply server needs SCRAPER_TOKEN to count as configured, even when forced on", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.PUPPETEER_SERVER_URL = "https://apply.example.com";
+    expect(applyServerConfigured()).toBe(false);
+    expect(FEATURES.autoApply).toBe(false);
+    process.env.FEATURE_AUTO_APPLY = "1";
+    expect(FEATURES.autoApply).toBe(false);
+    process.env.SCRAPER_TOKEN = "token-12345";
+    expect(applyServerConfigured()).toBe(true);
+    expect(FEATURES.autoApply).toBe(true);
+  });
+
+  it("an empty PUPPETEER_SERVER_URL counts as unset", () => {
+    process.env.PUPPETEER_SERVER_URL = "";
     expect(FEATURES.autoApply).toBe(false);
   });
 

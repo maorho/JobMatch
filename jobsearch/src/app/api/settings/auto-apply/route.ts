@@ -5,6 +5,7 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
 import AutoApplication from "@/app/models/AutoApplication";
 import { startFlow, kick } from "@/app/lib/agents";
+import { FEATURES, AUTO_APPLY_UNAVAILABLE, applyServerConfigured } from "@/app/lib/flags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,13 +25,17 @@ async function snapshot(userId: string) {
     AutoApplication.countDocuments({ userId, status: "submitted" }),
     AutoApplication.countDocuments({ userId, status: "needs_user" }),
   ]);
+  const available = FEATURES.autoApply;
   return {
+    // Feature switch (lib/flags.ts): off → the card shows "unavailable" and PUT refuses to switch it on.
+    available,
+    ...(available ? {} : { reason: AUTO_APPLY_UNAVAILABLE }),
     enabled: !!u?.autoApply?.enabled,
     minScore: u?.autoApply?.minScore ?? 75,
     dailyCap: u?.autoApply?.dailyCap ?? 5,
     enabledAt: u?.autoApply?.enabledAt ?? null,
     hasResume: !!u?.resumeUpdatedAt,
-    applierConfigured: !!(process.env.PUPPETEER_SERVER_URL || process.env.NODE_ENV !== "production"),
+    applierConfigured: applyServerConfigured() || process.env.NODE_ENV !== "production",
     stats: { today, total, needsUser },
   };
 }
@@ -42,12 +47,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ok: true, ...(await snapshot(userId)) });
 }
 
-/** PUT { enabled, minScore, dailyCap }. Turning it on wakes the Matcher → Applier right away. */
+/**
+ * PUT { enabled, minScore, dailyCap }. Turning it on wakes the Matcher → Applier right away.
+ * 409 when the feature is off (FEATURES.autoApply) and the request would switch it on.
+ */
 export async function PUT(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = schema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return NextResponse.json({ error: "Invalid settings", issues: parsed.error.issues }, { status: 400 });
+  // Feature off: refuse to switch it on (switching an existing opt-in OFF is still allowed).
+  if (!FEATURES.autoApply && parsed.data.enabled) {
+    return NextResponse.json({ ok: false, available: false, reason: AUTO_APPLY_UNAVAILABLE, error: AUTO_APPLY_UNAVAILABLE }, { status: 409 });
+  }
   await connectToDatabase();
   const before: any = await User.findById(userId).select("autoApply").lean();
   const wasOn = !!before?.autoApply?.enabled;

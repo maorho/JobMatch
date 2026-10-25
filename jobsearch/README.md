@@ -22,4 +22,4 @@ npm run dev                   # http://localhost:3000
 
 ## Deploy
 
-See [DEPLOY.md](./DEPLOY.md): Vercel settings (root `jobsearch`, Node 22, env vars), Atlas indexes, GitHub secrets for the cron workflow, the Puppeteer host and post-deploy smoke checks. Every environment variable is documented in [.env.example](./.env.example) and validated at boot by `src/app/lib/env.ts`.
+See [DEPLOY.md](./DEPLOY.md): Vercel settings (root `jobsearch`, Node 22, env vars), Atlas indexes, GitHub secrets for the cron workflow, the Puppeteer host and post-deploy smoke checks. Every environment variable is documented in [.env.example](./.env.example) and validated at boot by `src/app/lib/env.ts`: only `MONGO_URI`, `JWT_SECRET`, `CRON_SECRET` and (in production) `APP_URL` are fatal — Vercel previews fall back to `https://$VERCEL_BRANCH_URL` — while a half-configured optional feature logs a `⚠️ env:` warning and switches itself off.

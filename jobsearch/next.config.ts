@@ -28,6 +28,8 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // Violations are POSTed here (api/csp-report logs a rate-limited one-line summary).
+  "report-uri /api/csp-report",
 ].join("; ");
 
 const securityHeaders = [
@@ -40,8 +42,9 @@ const securityHeaders = [
   { key: "Content-Security-Policy-Report-Only", value: csp },
 ];
 
-// Font files read with fs at runtime (PDF rendering) — every route that can
-// end up rendering a PDF needs them traced into its serverless bundle.
+// Font files read with fs at runtime (PDF rendering). Many API routes reach the
+// renderer indirectly (agents' kick() → Applier → renderResumePdf: settings/auto-apply,
+// chat/upload-resume, chat/buildResume, agents/tick, …), so every API route gets them.
 const FONT_GLOB = ["./src/app/lib/fonts/**"];
 
 const nextConfig: NextConfig = {
@@ -54,11 +57,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["mongoose", "bcrypt", "puppeteer", "cheerio"],
   // Ensure the PDF font files are traced into the serverless bundle (they are
   // read via fs at runtime, not imported, so Next won't include them otherwise).
+  // Keys are picomatch route globs (next/dist/build/collect-build-traces.js), so "/api/**" covers them all.
   outputFileTracingIncludes: {
-    "/api/chat/download-resume": FONT_GLOB,
-    "/api/agents/tick": FONT_GLOB,
-    "/api/auto-apply": FONT_GLOB,
-    "/api/mcp": FONT_GLOB,
+    "/api/**": FONT_GLOB,
   },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

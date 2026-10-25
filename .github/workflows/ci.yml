@@ -5,8 +5,11 @@ on:
     branches: ["**"]
   pull_request:
 
+# Push (any branch) and pull_request both trigger; keying on the branch name
+# (head_ref for PRs, ref_name for pushes) lets the PR run supersede the push
+# run for the same branch instead of running the suite twice.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
