@@ -48,6 +48,8 @@ const nextConfig: NextConfig = {
   // The repo root once held a stray package.json; pin the workspace root so
   // Turbopack never infers it from a parent directory.
   turbopack: { root: path.join(__dirname) },
+  // Have `next dev` / coding agents nudge only about published security advisories.
+  experimental: { agentUpgrade: "security" },
   // Native/ heavy server-only packages stay out of the bundler.
   serverExternalPackages: ["mongoose", "bcrypt", "puppeteer", "cheerio"],
   // Ensure the PDF font files are traced into the serverless bundle (they are
