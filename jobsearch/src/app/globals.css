@@ -10,7 +10,7 @@
  * page keeps working; only their values and the primitives changed.
  */
 @theme {
-  --font-inter: var(--font-inter-next), "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-inter: var(--font-inter-next), "Assistant", ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-serif-next), "Lora", ui-serif, Georgia, serif;
   --font-outfit: var(--font-inter);
   --font-sans: var(--font-inter);
@@ -113,16 +113,14 @@
   @apply transition-[transform,box-shadow,border-color] duration-300 hover:-translate-y-1 hover:shadow-card-hover hover:border-lavender-200;
 }
 @utility jm-title {
-  @apply text-3xl sm:text-4xl lg:text-[42px] font-medium text-navy leading-[1.1];
-  font-family: var(--font-display);
+  @apply text-3xl sm:text-4xl lg:text-[42px] font-bold text-navy leading-[1.1];
   letter-spacing: -0.015em;
 }
 @utility jm-subtitle {
   @apply text-base sm:text-lg text-ink-600 mt-3 leading-relaxed max-w-2xl;
 }
 @utility jm-h2 {
-  @apply text-xl sm:text-2xl font-medium text-navy;
-  font-family: var(--font-display);
+  @apply text-xl sm:text-2xl font-semibold text-navy;
   letter-spacing: -0.01em;
 }
 @utility jm-muted {
@@ -131,6 +129,7 @@
 @utility jm-eyebrow {
   @apply text-xs font-semibold uppercase tracking-[0.14em] text-teal;
 }
+/* The serif display face is reserved for the hero headline (JobTable); everything else is Assistant. */
 @utility jm-display {
   font-family: var(--font-display);
   font-weight: 500;

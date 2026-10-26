@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Manrope, Lora } from "next/font/google";
+import { Assistant, Lora } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "./components/LayoutWrapper";
 import { siteUrl } from "./lib/seo/site";
 
-// UI face (Manrope) + a calm, medium-contrast serif (Lora) for headings — both open-licensed via Google Fonts.
-const inter = Manrope({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// UI face: Assistant (Latin + Hebrew, so Hebrew no longer falls back to the OS font) for all text
+// and headings; Lora (serif) is kept for the hero headline only. Both open-licensed via Google Fonts.
+const inter = Assistant({
+  subsets: ["latin", "hebrew"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--font-inter-next",
   display: "swap",
 });

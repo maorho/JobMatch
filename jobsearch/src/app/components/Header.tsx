@@ -48,7 +48,7 @@ function Header() {
       <div className="jm-container flex items-center gap-3 h-[72px]">
         <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="JobMatch home">
           <Image src="/jobMatchIcon.png" alt="" width={40} height={40} priority className="rounded-xl" />
-          <span className="jm-display text-[22px] leading-none hidden sm:inline">JobMatch</span>
+          <span className="font-bold text-[22px] leading-none hidden sm:inline">JobMatch</span>
         </Link>
 
         <nav className="hidden lg:flex items-center gap-0.5 ms-6">
