@@ -9,7 +9,6 @@ import LogoMarquee from "./LogoMarquee";
 import CompanyLogo from "./CompanyLogo";
 import { EmptyState } from "./ui";
 import { useModalBehavior } from "./Dialog";
-import { useIsMobile } from "../lib/hooks/useIsMobile";
 import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
 
@@ -98,7 +97,6 @@ function JobTable() {
   const [jobCount, setJobCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
-  const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
   const closeSheet = React.useCallback(() => setShowModal(false), []);
   const sheetRef = React.useRef<HTMLDivElement | null>(null);
@@ -381,7 +379,6 @@ function JobTable() {
       setJobType={setJobType}
       seniority={seniority}
       setSeniority={setSeniority}
-      isMobile={isMobile}
     />
   );
 
@@ -459,10 +456,7 @@ function JobTable() {
       
 
       {/* Filters + results */}
-      <section className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
-        {/* Sticky, and scrollable on its own when the filter list is taller than the viewport. */}
-        <aside className="hidden lg:block lg:sticky lg:top-[88px] lg:max-h-[calc(100vh-104px)] lg:overflow-y-auto jm-scroll pe-1">{filtersPanel}</aside>
-
+      <section className="mt-8 lg:mt-10">
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -471,9 +465,9 @@ function JobTable() {
                 {loading && page === 1 ? "Searching the catalog…" : user && !isSearching && catalogTotal > jobCount ? `Your best ${jobCount.toLocaleString()} matches of ${catalogTotal.toLocaleString()} open jobs · ranked by your resume` : `Showing ${jobCount.toLocaleString()} jobs${user && !isSearching ? " · ranked by your resume" : ""}`}
               </p>
             </div>
-            <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary jm-btn-sm lg:hidden">
+            <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary" aria-haspopup="dialog" aria-expanded={showmodal}>
               <SlidersHorizontal className="h-4 w-4" />
-              Filters
+              Filter
               {activeFilters.length > 0 && <span className="jm-chip jm-chip-navy px-2 py-0">{activeFilters.length}</span>}
             </button>
           </div>
@@ -497,7 +491,7 @@ function JobTable() {
           )}
 
           {loading && page === 1 ? (
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5" aria-busy="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="jm-card p-5 space-y-4">
                   <div className="flex items-center gap-3">
@@ -531,7 +525,7 @@ function JobTable() {
             </div>
           ) : (
             <>
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 auto-rows-fr">
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 auto-rows-fr">
                 {jobs.map((job, i) => (
                   <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}
@@ -551,32 +545,34 @@ function JobTable() {
         </div>
       </section>
 
-      {/* Mobile filter sheet */}
-      {showmodal && <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-[60] lg:hidden" onClick={closeSheet} />}
-      <div
-        ref={sheetRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Filters"
-        aria-hidden={!showmodal}
-        inert={!showmodal}
-        tabIndex={-1}
-        className={`lg:hidden fixed inset-x-0 bottom-0 z-[70] bg-surface rounded-t-card shadow-card-hover
-        transition-transform duration-300 ease-out ${showmodal ? "translate-y-0" : "translate-y-full"}`}
-      >
-        <div className="flex items-center justify-between px-5 pt-3 pb-2">
-          <div className="w-12 h-1.5 bg-line rounded-full mx-auto absolute left-1/2 -translate-x-1/2 top-2" />
-          <span className="jm-h2 mt-2">Filters</span>
-          <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-ghost jm-btn-icon mt-2" aria-label="Close filters">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="px-4 pb-4 overflow-y-auto max-h-[70vh] jm-scroll">{filtersPanel}</div>
-        <div className="p-4 border-t border-line flex gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <button type="button" onClick={clearAll} className="jm-btn jm-btn-secondary flex-1">Clear</button>
-          <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-primary flex-1">
-            Show {jobCount.toLocaleString()} jobs
-          </button>
+      {/* Filter drawer: slides in from the right edge on every screen size (like a store's filter panel). The
+          fixed wrapper clips the parked panel so it can never widen the page on phones. */}
+      <div className={`fixed inset-0 z-[70] overflow-hidden ${showmodal ? "" : "pointer-events-none"}`} aria-hidden={!showmodal} inert={!showmodal}>
+        <div onClick={closeSheet} className={`absolute inset-0 bg-navy/60 backdrop-blur-sm transition-opacity duration-300 ${showmodal ? "opacity-100" : "opacity-0"}`} />
+        <div
+          ref={sheetRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Filters"
+          tabIndex={-1}
+          className={`absolute top-0 right-0 h-full w-[88%] max-w-[400px] bg-surface shadow-card-hover flex flex-col
+          transition-transform duration-300 ease-out ${showmodal ? "translate-x-0" : "translate-x-full"}`}
+        >
+          <div className="flex items-center justify-between px-6 h-[72px] border-b border-line shrink-0">
+            <span className="jm-h2 tracking-[0.08em] uppercase text-[15px]">Filter</span>
+            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-ghost jm-btn-icon" aria-label="Close filters">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-6 flex-1 overflow-y-auto jm-scroll">{filtersPanel}</div>
+          <div className="px-6 py-4 border-t border-line flex items-center justify-between gap-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <button type="button" onClick={clearAll} disabled={activeFilters.length === 0} className="text-sm text-ink-600 hover:text-navy underline-offset-4 hover:underline disabled:opacity-40 disabled:no-underline">
+              Clear all{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+            </button>
+            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
+              View {jobCount.toLocaleString()} jobs
+            </button>
+          </div>
         </div>
       </div>
     </div>

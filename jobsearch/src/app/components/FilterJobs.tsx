@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import {ChevronDown} from "lucide-react";
 import { Job, getJobType, getSeniorityLevel } from "./JobTable";
 
 interface FilterRenderProps {
@@ -26,23 +26,24 @@ const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, s
   const id = `filter-${title.toLowerCase().replace(/\s+/g, "-")}`;
 
   return (
-    <div className="py-4 border-b border-line last:border-b-0">
+    <div className="border-b border-line">
       <button
         type="button"
         onClick={() => setIsOpen((o) => !o)}
         aria-expanded={isOpen}
         aria-controls={id}
-        className="w-full flex items-center justify-between gap-2 text-start"
+        className="w-full flex items-center justify-between gap-2 text-start py-4 min-h-[56px]"
       >
-        <span className="font-semibold text-navy">
+        <span className="font-semibold text-navy text-[15px]">
           {title}
           {selected.length > 0 && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0">{selected.length}</span>}
+          {!isOpen && selected.length > 0 && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{selected.join(", ")}</span>}
         </span>
         <ChevronDown className={`h-4 w-4 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
-        <div id={id} className="mt-3 space-y-1">
+        <div id={id} className="pb-4 space-y-1">
           {searchable && options.length > 8 && (
             <input
               value={q}
@@ -97,7 +98,6 @@ interface JobFiltersProps {
   setCity: React.Dispatch<React.SetStateAction<string[]>>;
   setJobType: React.Dispatch<React.SetStateAction<string[]>>;
   setSeniority: React.Dispatch<React.SetStateAction<string[]>>;
-  isMobile: boolean;
 }
 
 export const JobsFilters: React.FC<JobFiltersProps> = ({
@@ -113,7 +113,6 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   setCity,
   setJobType,
   setSeniority,
-  isMobile,
 }) => {
   const getUniqueValues = (arr: Job[], key: keyof Job) => {
     const values = arr
@@ -135,38 +134,13 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   const seniorityOrder = ["Intern", "Junior", "Mid", "Senior"];
   const presentSeniority = new Set(facets?.seniority ?? jobs.map(getSeniorityLevel));
   const uniqueSeniority = seniorityOrder.filter((s) => presentSeniority.has(s));
-  const total = seniority.length + jobType.length + country.length + city.length + company.length;
-
   return (
-    <div className={isMobile ? "w-full" : "jm-card p-5 w-full"}>
-      {!isMobile && (
-        <div className="flex items-center justify-between pb-1">
-          <span className="jm-h2 inline-flex items-center gap-2">
-            <SlidersHorizontal className="h-4 w-4 text-teal" />
-            Filters
-          </span>
-          {total > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                setSeniority([]);
-                setJobType([]);
-                setCountry([]);
-                setCity([]);
-                setCompany([]);
-              }}
-              className="text-sm text-ink-400 hover:text-navy"
-            >
-              Clear ({total})
-            </button>
-          )}
-        </div>
-      )}
+    <div className="w-full">
       {/* Seniority (Intern / Junior / Mid / Senior) */}
-      <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} />
+      <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
       {/* Work mode (On Site / Hybrid / Remote) */}
-      <FilterRender title="Job Type" options={uniqueJobTypes} selected={jobType} setSelected={setJobType} />
-      <FilterRender title="Country" options={uniqueCountries} selected={country} setSelected={setCountry} searchable />
+      <FilterRender title="Job Type" options={uniqueJobTypes} selected={jobType} setSelected={setJobType} defaultOpen={false} />
+      <FilterRender title="Country" options={uniqueCountries} selected={country} setSelected={setCountry} searchable defaultOpen={false} />
       <FilterRender title="Cities" options={uniqueCities} selected={city} setSelected={setCity} searchable defaultOpen={false} />
       <FilterRender title="Companies" options={uniqueCompanies} selected={company} setSelected={setCompany} searchable defaultOpen={false} />
     </div>
