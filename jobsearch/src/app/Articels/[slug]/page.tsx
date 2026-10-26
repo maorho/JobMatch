@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     keywords: a.seo?.keywords?.length ? a.seo.keywords : a.tags,
     alternates: { canonical: `/Articels/${a.slug}` },
     // Per-page openGraph replaces the root one, so the image must be repeated here.
-    openGraph: { title, description, type: "article", publishedTime: a.date, url: `/Articels/${a.slug}`, tags: a.tags, images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
+    openGraph: { title, description, type: "article", publishedTime: a.date, url: `/Articels/${a.slug}`, tags: a.tags, images: [{ url: "/og.png", width: 1200, height: 630, alt: "JobMatch" }] },
   };
 }
 

@@ -2,6 +2,7 @@
 import React, { Suspense, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { LogoMark } from "@/app/components/Logo";
 import { useSearchParams } from "next/navigation";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -137,7 +138,7 @@ function PasswordResetInner() {
       {/* Form column */}
       <div className="flex flex-col px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-10">
         <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label="JobMatch home">
-          <Image src="/jobMatchIcon.png" alt="JobMatch" width={40} height={40} className="h-10 w-10 rounded-xl bg-navy p-0.5" />
+          <LogoMark size={40} className="text-teal" title="JobMatch" />
           <span className="font-semibold text-navy text-lg">JobMatch</span>
         </Link>
 

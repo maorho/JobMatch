@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
+import { LogoMark } from "./Logo";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Sparkles, LayoutDashboard, Settings, ChevronDown } from "lucide-react";
@@ -47,8 +47,8 @@ function Header() {
     <header className="sticky top-0 z-40 bg-navy/95 backdrop-blur-md text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
       <div className="jm-container flex items-center gap-3 h-[72px]">
         <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="JobMatch home">
-          <Image src="/jobMatchIcon.png" alt="" width={40} height={40} priority className="rounded-xl" />
-          <span className="font-bold text-[22px] leading-none hidden sm:inline">JobMatch</span>
+          <LogoMark size={36} className="text-white" />
+          <span className="font-extrabold text-[22px] leading-none tracking-[-0.02em] hidden sm:inline">Job<span className="text-sky">Match</span></span>
         </Link>
 
         <nav className="hidden lg:flex items-center gap-0.5 ms-6">

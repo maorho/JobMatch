@@ -13,6 +13,7 @@ const OAUTH_ERRORS: Record<string, string> = {
 };
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { LogoMark } from "@/app/components/Logo";
 import { mutate } from "swr";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
@@ -87,7 +88,7 @@ function LoginForm() {
       {/* Form column */}
       <div className="flex flex-col px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-10">
         <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label="JobMatch home">
-          <Image src="/jobMatchIcon.png" alt="JobMatch" width={40} height={40} className="h-10 w-10 rounded-xl bg-navy p-0.5" />
+          <LogoMark size={40} className="text-teal" title="JobMatch" />
           <span className="font-semibold text-navy text-lg">JobMatch</span>
         </Link>
 

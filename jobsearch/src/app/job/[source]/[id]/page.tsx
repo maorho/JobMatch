@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     description,
     alternates: { canonical: `/job/${source}/${id}` },
     // Per-page openGraph replaces the root one, so the image must be repeated here.
-    openGraph: { title, description, type: "article", url: `/job/${source}/${id}`, images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
+    openGraph: { title, description, type: "article", url: `/job/${source}/${id}`, images: [{ url: "/og.png", width: 1200, height: 630, alt: "JobMatch" }] },
     // Closed postings keep rendering but drop out of the index.
     robots: jobPageRobots(job),
   };

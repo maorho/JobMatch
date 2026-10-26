@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import Image from "next/image";
+import { LogoMark } from "./Logo";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
@@ -74,8 +74,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
       >
         <div className="flex items-center justify-between px-5 h-[72px] border-b border-line">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/jobMatchIcon.png" alt="" width={36} height={36} className="rounded-lg" />
-            <span className="font-semibold text-navy">JobMatch</span>
+            <LogoMark size={32} className="text-teal" />
+            <span className="font-extrabold text-navy tracking-[-0.02em]">Job<span className="text-teal">Match</span></span>
           </Link>
           <button onClick={closeNav} aria-label="Close menu" className="jm-btn jm-btn-ghost jm-btn-icon">
             <X className="h-5 w-5" />

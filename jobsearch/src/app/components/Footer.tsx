@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { LogoMark } from "./Logo";
 import { Github, Linkedin, Facebook } from "lucide-react";
 
 const COLUMNS = [
@@ -44,7 +44,7 @@ function Footer() {
       <div className="jm-container py-12 grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="space-y-4">
           <Link href="/" className="inline-flex items-center gap-2.5">
-            <Image src="/favicon.png" alt="" width={40} height={40} className="rounded-xl" />
+            <LogoMark size={36} className="text-white" />
             <span className="text-lg font-semibold text-navy">JobMatch</span>
           </Link>
           <p className="text-sm text-ink-600 max-w-xs leading-relaxed">

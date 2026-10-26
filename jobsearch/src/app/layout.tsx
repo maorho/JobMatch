@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   description: "4,000+ משרות הייטק חיות מ-120+ חברות בישראל, מותאמות לקורות החיים שלך: התאמה חכמה, הכנה לראיון, הפניות והגשה אוטומטית. חינם.",
   applicationName: "JobMatch",
   keywords: ["משרות הייטק", "משרות ג'וניור", "חיפוש עבודה", "קורות חיים", "הכנה לראיון", "tech jobs Israel", "junior developer jobs"],
-  openGraph: { type: "website", siteName: "JobMatch", locale: "he_IL", url: siteUrl(), images: [{ url: "/hero.jpg", width: 1200, height: 630, alt: "JobMatch" }] },
+  openGraph: { type: "website", siteName: "JobMatch", locale: "he_IL", url: siteUrl(), images: [{ url: "/og.png", width: 1200, height: 630, alt: "JobMatch" }] },
   twitter: { card: "summary_large_image" },
   robots: { index: true, follow: true },
   // No root canonical: it would be inherited by every page that doesn't set
@@ -53,9 +53,6 @@ export default function RootLayout({
     // containers set dir="rtl"/"ltr" themselves (≈40 of each), and flipping it
     // here would mirror every ml-/mr-/text-left layout that assumes ltr.
     <html lang="he" className={`${inter.variable} ${serif.variable}`}>
-      <head>
-        <link rel="icon" href="/favicon.png" sizes="32x32" />
-      </head>
       <body className="w-full min-h-screen flex flex-col font-sans">
         <LayoutWrapper>{children}</LayoutWrapper>
       </body>
