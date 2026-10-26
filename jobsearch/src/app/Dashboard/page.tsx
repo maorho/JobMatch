@@ -1,15 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 import useSWR from "swr";
+import { Search } from "lucide-react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import OutsideJobAdding from "./components/OutsideJobAdding";
+import EmailTrackingCard from "./components/EmailTrackingCard";
+import OutcomesCard from "./components/OutcomesCard";
+import SavedJobsCard from "./components/SavedJobsCard";
+import ReferralOpportunitiesCard from "./components/ReferralOpportunitiesCard";
+import AutoApplyCard from "../components/AutoApplyCard";
 import JobManagement from "./components/JobManagement";
 import { CandidateHeroImage } from "../components/HeroImages";
-import { SearchIcon } from "../components/icons";
+import { EmptyState, Spinner } from "../components/ui";
+import { Modal } from "../components/Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import { isSelfAddedJob } from "../../../utils/isSelfAddedJob";
+
+const LOGIN_HREF = "/Login?next=%2FDashboard";
 
 const fetcher = async ([url, body]: [string, any]) => {
   const res = await fetch(url, {
@@ -37,13 +46,12 @@ const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredJobs, setFilteredJobs] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const isMobile = useIsMobile();
 
-  
-    
+
+
   const swrKey =
     user && !user.recruiter
       ? [
@@ -56,137 +64,169 @@ const DashboardPage: React.FC = () => {
     data: jobsSubmitted,
     error,
     isLoading,
+    mutate: refetchApplications,
   } = useSWR(swrKey, fetcher, {
-    refreshInterval: 10000,
+    // Changes made on this page call `refetchApplications()` right away; the
+    // interval only catches status updates made by recruiters elsewhere.
+    refreshInterval: 60_000,
     revalidateOnFocus: true,
   });
-  useEffect(() => {
-  if (!jobsSubmitted) return;
-
-  const term = searchTerm.toLowerCase();
-
-  const results = jobsSubmitted.filter((job: any) => {
-    const matchesSearch =
-      job?.jobId?.job?.toLowerCase().includes(term) ||
-      job?.jobId?.company?.companyName?.toLowerCase().includes(term) ||
-      job?.jobId?.country?.toLowerCase().includes(term) ||
-      job?.status?.toLowerCase().includes(term) ||
-      job?.jobId?.type?.toLowerCase().includes(term);
-
-    const matchesStatus =
-      !statusFilter || job?.status?.toLowerCase() === statusFilter.toLowerCase();
-
-    const matchesType =
-      !typeFilter || job?.jobId?.type?.toLowerCase() === typeFilter.toLowerCase();
-
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-    setFilteredJobs(results);
+  // Derived from the user's own applications (a small per-user list), so an
+  // in-memory filter is right here; it's a memo, not state synced by an effect.
+  const filteredJobs = useMemo(() => {
+    if (!jobsSubmitted) return [];
+    const term = searchTerm.toLowerCase();
+    return jobsSubmitted.filter((job: any) => {
+      const matchesSearch =
+        job?.jobId?.job?.toLowerCase().includes(term) ||
+        job?.jobId?.company?.companyName?.toLowerCase().includes(term) ||
+        job?.jobId?.country?.toLowerCase().includes(term) ||
+        job?.status?.toLowerCase().includes(term) ||
+        job?.jobId?.type?.toLowerCase().includes(term);
+      const matchesStatus =
+        !statusFilter || job?.status?.toLowerCase() === statusFilter.toLowerCase();
+      const matchesType =
+        !typeFilter || job?.jobId?.type?.toLowerCase() === typeFilter.toLowerCase();
+      return matchesSearch && matchesStatus && matchesType;
+    });
   }, [searchTerm, statusFilter, typeFilter, jobsSubmitted]);
 
-  if (loading || isLoading) return <p>Loading...</p>;
+  if (loading || isLoading) return <Spinner label="Loading..." />;
 
-  
+
   if (!user) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/Login" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="You are not logged in."
+          action={
+            <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
+              Go to Login
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   if (user.recruiter) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are a recruiter</p>
-        <Link href="/RecruiterDashboard" className="text-blue-600 underline">
-          Go to RecruiterDashboard
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🧭"
+          title="You are a recruiter"
+          action={
+            <Link href="/RecruiterDashboard" className="jm-btn jm-btn-primary">
+              Go to RecruiterDashboard
+            </Link>
+          }
+        />
       </div>
     );
   }
-  console.log(`jobsSubmitted:`, jobsSubmitted);
+
+  // Stat tiles are a pure read of the loaded list — no extra state.
+  const allJobs: any[] = jobsSubmitted ?? [];
+  const statusOf = (job: any) => String(job?.status ?? "").toLowerCase();
+  const stats = [
+    { label: "Applications", value: allJobs.length },
+    { label: "In interviews", value: allJobs.filter((j) => statusOf(j).includes("interview")).length },
+    { label: "Offers", value: allJobs.filter((j) => statusOf(j).includes("offer") || statusOf(j) === "accepted").length },
+    { label: "Rejected", value: allJobs.filter((j) => statusOf(j) === "rejected").length },
+  ];
+
   return (
-    <div className="mt-8">
-      <div className="items-center justify-items-center max-w-[1440px] mx-auto">
-          <div
-            id="candidate hero section"
-            className="relative w-full pb-25 lg:mb-32 flex flex-col"
-          >
-            <div className="absolute inset-0 flex flex-col px-16 text-white z-10">
-              <label className="text-3xl lg:text-7xl font-semibold pt-[92px] text-white mb-4">
-                Welcome, {user.fullname}! 👋
-              </label>
-              <p className="text-white lg:text-[20px] font-normal font-poppins">Manage your job applications, track your progress, and find your next opportunity. </p>
-              <button
-                onClick={() => setShowModal(true)}
-                className="mt-5 w-40 h-10 bg-[#11AEFF] text-white rounded-4xl md:rounded-[8px] hover:bg-[#24A8A2]"
-              >
-                Add New Job +
-              </button>
-            </div>
-            <CandidateHeroImage />
+    <div className="jm-page space-y-6">
+      <section
+        id="candidate hero section"
+        className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
+      >
+        <CandidateHeroImage />
+        <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
+          <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
+            Welcome, {user.fullname}! 👋
+          </h1>
+          <p className="text-sm sm:text-base text-white/80">Manage your job applications, track your progress, and find your next opportunity. </p>
+          <div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="jm-btn jm-btn-accent"
+            >
+              Add New Job +
+            </button>
           </div>
-      </div>
-      {error && (
-        <p className="text-red-500 text-sm mb-4">Something went wrong</p>
-      )}
-      <div className="mx-auto flex lg:flex-row flex-col lg:gap-50 items-center justify-center mb-5">
-        <div>
-          {isMobile?<label className="font-bold text-3xl">
-            {jobsSubmitted ? jobsSubmitted.length : 0} Active Job Post
-          </label> 
-           :<label className="font-bold text-3xl">
-            You Have Applied to {jobsSubmitted ? jobsSubmitted.length : 0} Jobs
-          </label>}
         </div>
-        <div className="flex lg:flex-row bg-white md:bg-transparent rounded-2xl md:rounded-none flex-col gap-4">
-          <div className="relative flex items-center w-full lg:max-w-[256px] h-[46px] bg-white rounded-[8px] shadow-sm">
+      </section>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="jm-card p-5">
+            <div className="text-3xl sm:text-4xl font-semibold text-navy leading-none">{stat.value}</div>
+            <div className="jm-muted mt-2">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && (
+        <p className="jm-alert jm-alert-err">Something went wrong</p>
+      )}
+
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        {isMobile ? (
+          <h2 className="jm-h2">
+            {jobsSubmitted ? jobsSubmitted.length : 0} Active Job Post
+          </h2>
+        ) : (
+          <h2 className="jm-h2">
+            You Have Applied to {jobsSubmitted ? jobsSubmitted.length : 0} Jobs
+          </h2>
+        )}
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+          <div className="relative flex-1 sm:min-w-[240px]">
+            <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Search for a job..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-full pl-10 pr-4 text-[15px] text-gray-700 placeholder-gray-400 rounded-[8px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="jm-input ps-11"
             />
-            <div className="absolute -top-2 text-gray-400">
-              <SearchIcon />
-            </div>
           </div>
-          <div className="flex gap-4">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white">
-            <option className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white" value="">Filter by Status</option>
-            {jobsSubmitted?.
-              map((job: any) => <option key={job._id} value={job.status}>{job.status}</option>)}
-          </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white">
-            <option className="border-[#222222]/10 border-[1px] rounded-[8px] px-2 h-[46px] bg-white" value="">Filter by Type</option>
-            {jobsSubmitted?.
-              map((job: any) => <option key={job._id} value={isSelfAddedJob(job)?job.jobType:job.jobId.type}>{isSelfAddedJob(job)?job.jobType:job.jobId.type}</option>)}
-          </select>
+          <div className="grid grid-cols-2 sm:flex gap-3">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
+              <option value="">Filter by Status</option>
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => job.status).filter(Boolean))].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
+              <option value="">Filter by Type</option>
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => (isSelfAddedJob(job) ? job.jobType : job.jobId?.type)).filter(Boolean))].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
-          
         </div>
       </div>
-      {jobsSubmitted && <JobManagement jobs={filteredJobs}/>}
 
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white p-6 rounded-lg w-[500px] max-w-full">
-            <OutsideJobAdding />
-            <button
-              onClick={() => setShowModal(false)}
-              className="mt-4 bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-            >
-              Close
-            </button>
-          </div>
+      <ReferralOpportunitiesCard />
+      <SavedJobsCard />
+      <OutcomesCard />
+      <EmailTrackingCard />
+      <section id="auto-apply" className="jm-card p-5 sm:p-6" dir="rtl">
+        <h2 className="jm-h2 mb-3">⚡ הגשה אוטומטית</h2>
+        <AutoApplyCard showList />
+      </section>
+      {jobsSubmitted && <JobManagement jobs={filteredJobs} onChanged={() => refetchApplications()} />}
+
+      <Modal open={showModal} onClose={() => setShowModal(false)} label="Add new job">
+        <div className="jm-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+          <OutsideJobAdding onAdded={() => refetchApplications()} />
+          <button
+            onClick={() => setShowModal(false)}
+            className="jm-btn jm-btn-ghost w-full mt-3"
+          >
+            Close
+          </button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 };

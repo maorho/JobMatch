@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Push (any branch) and pull_request both trigger; keying on the branch name
+# (head_ref for PRs, ref_name for pushes) lets the PR run supersede the push
+# run for the same branch instead of running the suite twice.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jobsearch
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same major as the Vercel runtime (package.json "engines" + .nvmrc).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: jobsearch/package-lock.json
+
+      # mongodb-memory-server downloads a mongod binary once; keep it between runs.
+      - name: Cache MongoDB binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
+
+      - run: npm ci
+
+      # Advisory only: surfaces critical advisories in production deps without blocking the merge.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit + integration tests
+        run: npm test
+        env:
+          OPENAI_API_KEY: test-key-not-used
+          CRON_SECRET: test-cron-secret
+          JWT_SECRET: test-jwt-secret-at-least-32-characters-long
+
+      - name: Build
+        run: npm run build
+        env:
+          # Build must not need real services; routes connect lazily.
+          # Values satisfy the production env contract (lib/env.ts) in case the
+          # build evaluates it: 32+ char CRON_SECRET, https APP_URL.
+          MONGO_URI: mongodb://localhost:27017/build-placeholder
+          JWT_SECRET: test-jwt-secret-at-least-32-characters-long
+          CRON_SECRET: test-cron-secret-at-least-32-characters-long
+          OPENAI_API_KEY: test-key-not-used
+          APP_URL: https://ci.invalid

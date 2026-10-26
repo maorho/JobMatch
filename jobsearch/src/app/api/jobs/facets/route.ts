@@ -1,0 +1,72 @@
+import { NextResponse } from "next/server";
+import { connectToDatabase } from "@/app/lib/db";
+import Job from "@/app/models/Job";
+import Company from "@/app/models/Company"; // registers the model for populate()
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import { SENIORITY_LEVELS, WORK_MODES } from "@/app/lib/jobTaxonomy";
+import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Values come normalized from the location agent; this is the safety net for
+// anything not yet normalized (multi-location strings, addresses, "Unknown").
+const JUNK = /;|\||•|\b(st\.|street|floor|suite)\b/i;
+const ADDRESS_NUMBERS = /\d{2,}/; // street numbers / zip codes in location strings — not for company names (Team8, "Company 12")
+const clean = (values: unknown[], opts: { location?: boolean } = {}): string[] =>
+  Array.from(
+    new Set(
+      values
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter((v) => v && v !== "Unknown" && v !== "Remote" && v.length <= 40 && !JUNK.test(v) && !(opts.location && ADDRESS_NUMBERS.test(v)))
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+/**
+ * Filter options computed over the WHOLE catalog (internal + external), so
+ * the dropdowns offer every company/city/country in the DB — not just the
+ * ones on the page that happens to be loaded.
+ */
+const TTL_MS = ttl(5 * 60_000); // the catalog changes hourly; the dropdown lists can lag a few minutes
+
+export async function GET() {
+  try {
+    const facets = await memo("facets", TTL_MS, computeFacets);
+    return NextResponse.json(facets, { headers: PUBLIC_CACHE });
+  } catch (err) {
+    console.error("❌ facets error:", err);
+    return NextResponse.json({ message: "Failed to load facets" }, { status: 500 });
+  }
+}
+
+async function computeFacets() {
+  {
+    await connectToDatabase();
+
+    const [extCompanies, extCities, extCountries, internal] = await Promise.all([
+      // Only open postings: a closed company shouldn't stay in the dropdown with zero results.
+      // Served by the {active, field} compound indexes on ExternalJobs. Kept as
+      // $ne:false (not active:true): it's the same OPEN_JOBS every reader uses,
+      // and a doc written without the field (a raw/legacy insert) stays visible.
+      ExternalJobs.distinct("company", OPEN_JOBS),
+      ExternalJobs.distinct("city", OPEN_JOBS),
+      ExternalJobs.distinct("country", OPEN_JOBS),
+      // Internal postings are few; one populated read covers all three facets.
+      Job.find({}, "company city country")
+        .populate({ path: "company", model: Company, select: "companyName" })
+        .lean(),
+    ]);
+
+    const internalCompanies = internal.map((j: any) => j.company?.companyName);
+    const internalCities = internal.map((j: any) => j.city);
+    const internalCountries = internal.map((j: any) => j.country);
+
+    return {
+      companies: clean([...extCompanies, ...internalCompanies]),
+      cities: clean([...extCities, ...internalCities], { location: true }),
+      countries: clean([...extCountries, ...internalCountries], { location: true }),
+      jobTypes: [...WORK_MODES],
+      seniority: [...SENIORITY_LEVELS],
+    };
+  }
+}

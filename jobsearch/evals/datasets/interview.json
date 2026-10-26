@@ -1,0 +1,50 @@
+{
+  "description": "Mock-interview transcripts with what a good debrief must and must not do. Scored by an LLM judge against the rubric plus hard checks (score band, mentions, no invented experience).",
+  "cases": [
+    {
+      "id": "strong_junior_technical",
+      "stage": "technical",
+      "job": { "title": "Junior Frontend Developer", "company": "Acme" },
+      "resume": "B.Sc. CS 2024. Projects: React/TypeScript dashboard (Next.js, MongoDB), Node REST API. Internship 3 months at a startup: React components, Jest tests.",
+      "transcript": [
+        { "role": "interviewer", "content": "What is the difference between useEffect and useLayoutEffect?" },
+        { "role": "candidate", "content": "useEffect runs after the browser paints, so it doesn't block rendering; useLayoutEffect runs synchronously after DOM mutations but before paint, so you use it when you need to measure layout and avoid a flicker. In my dashboard I used useLayoutEffect once to measure a chart container before rendering the SVG, and useEffect for data fetching." },
+        { "role": "interviewer", "content": "How would you avoid refetching the same data on every render?" },
+        { "role": "candidate", "content": "Put the fetch in a useEffect keyed by the id, or better, use a cache layer like SWR or React Query which dedupes requests and gives stale-while-revalidate. In the internship we moved from manual useEffect fetches to SWR and the duplicate requests disappeared." },
+        { "role": "interviewer", "content": "Tell me about a bug that took you a long time to find." },
+        { "role": "candidate", "content": "A stale closure: an interval callback read an old state value. I found it by logging renders, then fixed it with a ref holding the latest value, and wrote a Jest test with fake timers to lock it down." }
+      ],
+      "expect": { "scoreMin": 70, "scoreMax": 100, "mustMention": ["useLayoutEffect", "SWR"], "mustNotInvent": ["Kubernetes", "5 years", "Angular"] }
+    },
+    {
+      "id": "weak_vague_hr",
+      "stage": "hr",
+      "job": { "title": "Junior Backend Developer", "company": "Globex" },
+      "resume": "Bootcamp graduate 2025 (Node.js, Express, PostgreSQL). One portfolio project: a todo API. Previously a sales representative for 3 years.",
+      "transcript": [
+        { "role": "interviewer", "content": "Tell me about yourself." },
+        { "role": "candidate", "content": "I'm a passionate developer who loves technology and learning new things. I'm a team player and a fast learner." },
+        { "role": "interviewer", "content": "Why Globex?" },
+        { "role": "candidate", "content": "I heard it's a great company with a good culture." },
+        { "role": "interviewer", "content": "Can you describe your todo API project — what was hard about it?" },
+        { "role": "candidate", "content": "Not really hard, I followed the bootcamp material. It works." }
+      ],
+      "expect": { "scoreMin": 15, "scoreMax": 50, "mustMention": ["sales", "todo"], "mustNotInvent": ["Kubernetes", "React", "team lead"] }
+    },
+    {
+      "id": "mixed_mid_backend",
+      "stage": "technical",
+      "job": { "title": "Backend Engineer", "company": "Initech" },
+      "resume": "Backend engineer, 4 years Node.js and Go, Kubernetes, PostgreSQL, Kafka. Owned the billing service at a fintech.",
+      "transcript": [
+        { "role": "interviewer", "content": "How do you make a payment operation idempotent?" },
+        { "role": "candidate", "content": "Client sends an idempotency key; we store it with the result in Postgres with a unique constraint, so a retry returns the stored response instead of charging twice. We did exactly this for billing at my last job with a 24h TTL." },
+        { "role": "interviewer", "content": "How would you design the Kafka consumers to handle a poison message?" },
+        { "role": "candidate", "content": "Hmm, I think you just retry it? Maybe log it." },
+        { "role": "interviewer", "content": "What happens to the rest of the partition while you retry?" },
+        { "role": "candidate", "content": "I'm not sure, I haven't dealt with that." }
+      ],
+      "expect": { "scoreMin": 45, "scoreMax": 75, "mustMention": ["idempotency", "poison"], "mustNotInvent": ["dead-letter queue at my last job", "I implemented a DLQ"] }
+    }
+  ]
+}

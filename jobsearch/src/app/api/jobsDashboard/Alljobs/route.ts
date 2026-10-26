@@ -8,8 +8,10 @@ export async function GET(req: NextRequest) {
   try {
     await connectToDatabase();
     const { searchParams } = new URL(req.url);
-    const page = parseInt(searchParams.get("page") || "1", 10);
-    const limit = parseInt(searchParams.get("limit") || "50", 10);
+    // NaN-safe: page ≥ 1, 1 ≤ limit ≤ 100 (no "limit=0" / "limit=1e9" catalogue dumps).
+    const int = (v: string | null, fallback: number) => { const n = parseInt(v || "", 10); return Number.isFinite(n) ? n : fallback; };
+    const page = Math.max(1, int(searchParams.get("page"), 1));
+    const limit = Math.min(100, Math.max(1, int(searchParams.get("limit"), 50)));
     const skip = (page - 1) * limit;
     console.log("Company schema loaded:", Company?.modelName);
     const total = await Job.countDocuments();

@@ -1,11 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+// Messages for the social-login callback's ?error= codes.
+const OAUTH_ERRORS: Record<string, string> = {
+  oauth_denied: "ההתחברות בוטלה.",
+  oauth_state: "ההתחברות פגה או לא תקינה — נסה שוב.",
+  oauth_email_unverified: "הספק לא אימת את כתובת המייל — התחבר עם ספק אחר או עם סיסמה.",
+  oauth_not_configured: "התחברות חברתית עדיין לא מוגדרת בסביבה הזו.",
+  oauth_failed: "ההתחברות נכשלה — נסה שוב.",
+};
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { LogoMark } from "@/app/components/Logo";
+import { mutate } from "swr";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
+import { safeNextPath } from "../lib/hooks/nextPath";
 
 function LoginForm() {
   const router = useRouter();
@@ -13,6 +25,19 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Where to go after login (`?next=`); only same-origin relative paths are honoured.
+  const [next, setNext] = useState("");
+
+  // Surface a social-login failure (callback redirects here with ?error=).
+  // Read from window instead of useSearchParams to keep this page static.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const code = sp.get("error");
+    if (code) setError(OAUTH_ERRORS[code] || OAUTH_ERRORS.oauth_failed);
+    setNext(safeNextPath(sp.get("next"), ""));
+  }, []);
+
+  const oauthHref = (provider: "google" | "facebook") => `/api/auth/oauth/${provider}?next=${encodeURIComponent(next || "/")}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,15 +52,11 @@ function LoginForm() {
       });
 
       const data = await res.json();
-      console.log(`data:`,data);
-      console.log(`is admin:`,data.admin);
       if (res.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        data.recruiter
-          ? router.push("/RecruiterDashboard")
-          : data.admin
-          ? router.push("/AdminDashboard")
-          : router.push("/Dashboard");
+        // Refresh the cached session so the header/pages see the user at once.
+        await mutate("/api/auth/me");
+        const dashboard = data.recruiter ? "/RecruiterDashboard" : data.admin ? "/AdminDashboard" : "/Dashboard";
+        router.push(next || dashboard);
       } else {
         setError(data.message || "Login failed");
       }
@@ -45,124 +66,117 @@ function LoginForm() {
       setLoading(false);
     }
   }
-  const LoginImage = () => (
-    <Image
-      src="/login_image.jpg"
-      alt="Singin background"
-      width={780}
-      height={1024}
-      className="rounded-t-[60px] w-full lg:rounded-tr-none  lg:rounded-l-[60px] lg:h-screen h-auto"
-      priority
-    />
-  );
+
   return (
-    <div className="flex flex-col lg:flex-row h-full font-outfit">
-      <div className="px-10 lg:my-auto lg:w-1/2">
-        <div className="mx-auto pt-10 lg:w-[90%]">
-          <div>
-            <h2 className="text-[28px] lg:text-4xl font-medium mb-4">
-              Welcome Back
-            </h2>
-            <span className="text-[16px] text-[#222222] font-outfit">
-              Sign in to access your account.
-            </span>
-          </div>
-          <div>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="mt-10">
-                <h3 className="font-semibold font-outfit mb-3">Username</h3>
-                <input
-                  type="text"
-                  className="px-5 w-full h-10 border text-[#222222] border-gray-300 rounded-[14px] text-[16px]"
-                  placeholder="Enter Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-              <div>
-                <h3 className="font-semibold font-outfit mb-3 mt-5 ">
-                  Password
-                </h3>
-                <input
-                  type="password"
-                  className="px-5 w-full h-10 border text-[#222222] border-gray-300 rounded-[14px] text-[16px]"
-                  placeholder="Enter Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <div className="text-[#FF0000] text-[16px] mt-8">
-                <label>
-                  <Link href="/PasswordReset" className="font-semibold">
-                    Forgot Password?
-                  </Link>
-                </label>
-              </div>
+    <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-2">
+      {/* Mobile banner (image panel is full-height on lg) */}
+      <div className="relative h-36 sm:h-44 lg:hidden overflow-hidden">
+        <Image
+          src="/login_image.jpg"
+          alt="Singin background"
+          fill
+          sizes="100vw"
+          className="object-cover"
+          priority
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/60 to-navy/20" />
+        <p className="absolute bottom-4 inset-x-4 sm:inset-x-6 text-white text-sm sm:text-base font-medium">
+          Your next role, matched to you.
+        </p>
+      </div>
 
-              {error && <p className="text-red-600 mt-2">{error}</p>}
-              <div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-2 w-full bg-[#24A8A2] text-white py-3.5 px-10 rounded-[14px] hover:bg-blue-600"
-                >
-                  {loading ? "Logging in..." : "Sign In"}
-                </button>
-              </div>
+      {/* Form column */}
+      <div className="flex flex-col px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-10">
+        <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label="JobMatch home">
+          <LogoMark size={40} className="text-teal" title="JobMatch" />
+          <span className="font-semibold text-navy text-lg">JobMatch</span>
+        </Link>
 
-              <div className="grid grid-flow-col justify-items-center">
-                <label>
-                  Not signed in?{" "}
-                  <Link href="/SignUp" className="font-semibold text-[#11AEFF]">
-                    Sign Up
-                  </Link>
-                </label>
-              </div>
-            </form>
+        <div className="w-full max-w-md mx-auto my-auto py-8 sm:py-10 space-y-6">
+          <div>
+            <h1 className="jm-title">Welcome Back</h1>
+            <p className="jm-subtitle">Sign in to access your account.</p>
           </div>
-          <div className="w-full mx-auto mt-12 mb-5">
-            {/* קו אופקי עם "OR" באמצע */}
-            <div className="flex w-full items-center gap-2 mb-8 ">
-              <div className="flex-1 border-t border-[#66666640]" />
-              <span className="font-outfit text-[18px] text-[#66666680]">
-                OR
-              </span>
-              <div className="flex-1 border-t border-[#66666640]" />
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="login-username" className="jm-label">Username</label>
+              <input
+                id="login-username"
+                type="text"
+                className="jm-input"
+                placeholder="Enter Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-1.5">
+                <label htmlFor="login-password" className="jm-label mb-0">Password</label>
+                <Link href="/PasswordReset" className="text-sm font-medium text-sky hover:text-sky-600">
+                  Forgot Password?
+                </Link>
+              </div>
+              <input
+                id="login-password"
+                type="password"
+                className="jm-input"
+                placeholder="Enter Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
-            {/* כפתורי ההרשמה */}
-            <div className="w-full max-w-[520px] mx-auto p-4 flex flex-col sm:flex-row gap-4 justify-center items-center">
-              {/* Google */}
-              <button
-                className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
-    flex items-center justify-center gap-2 sm:gap-3
-    py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
-    text-[13px] sm:text-[14px] md:text-[15px] lg:text-[15px] xl:text-[16px]
-    whitespace-nowrap w-full sm:w-[48%] max-w-full
-    hover:bg-gray-50 transition-all duration-200 overflow-hidden"
-              >
-                <FcGoogle className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                <span className="leading-none">Sign up with Google</span>
-              </button>
+            {error && <p className="jm-alert jm-alert-err">{error}</p>}
 
-              {/* Facebook */}
-              <button
-                className="font-outfit font-normal border border-[#23232380]/50 rounded-[40px]
-    flex items-center justify-center gap-2 sm:gap-3
-    py-2.5 px-4 sm:py-3 sm:px-6 md:py-3 md:px-7 lg:py-3 lg:px-7 xl:py-3.5 xl:px-9
-    text-[13px] sm:text-[14px] md:text-[15px] lg:text-[15px] xl:text-[16px]
-    whitespace-nowrap w-full sm:w-[48%] max-w-full
-    hover:bg-gray-50 transition-all duration-200 overflow-hidden"
-              >
-                <FaFacebook className="text-[#1877F2] w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
-                <span className="leading-none">Sign up with Facebook</span>
-              </button>
-            </div>
+            <button type="submit" disabled={loading} className="jm-btn jm-btn-primary w-full">
+              {loading ? "Logging in..." : "Sign In"}
+            </button>
+
+            <p className="text-center text-sm text-ink-600">
+              Not signed in?{" "}
+              <Link href="/SignUp" className="font-semibold text-sky hover:text-sky-600">
+                Sign Up
+              </Link>
+            </p>
+          </form>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 border-t border-line" />
+            <span className="text-sm text-ink-400">or</span>
+            <div className="flex-1 border-t border-line" />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <a href={oauthHref("google")} className="jm-btn jm-btn-secondary w-full">
+              <FcGoogle className="h-5 w-5 shrink-0" />
+              <span>Continue with Google</span>
+            </a>
+            <a href={oauthHref("facebook")} className="jm-btn jm-btn-secondary w-full">
+              <FaFacebook className="h-5 w-5 shrink-0 text-sky-600" />
+              <span>Continue with Facebook</span>
+            </a>
           </div>
         </div>
       </div>
-      <div className="lg:w-1/2">
-        <LoginImage />
+
+      {/* Image panel (desktop) */}
+      <div className="relative hidden lg:block min-h-screen overflow-hidden">
+        <Image
+          src="/login_image.jpg"
+          alt="Singin background"
+          fill
+          sizes="50vw"
+          className="object-cover"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/50 to-navy/10" />
+        <div className="absolute bottom-0 inset-x-0 p-10 xl:p-14 text-white">
+          <p className="text-xs font-semibold uppercase tracking-wider text-sky mb-2">JobMatch</p>
+          <p className="text-2xl xl:text-3xl font-semibold leading-tight max-w-md">
+            Your next role, matched to you.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -4,15 +4,25 @@ export interface IUser extends Document {
   username: string;
   email: string;
   password: string;
+  resetTokenHash?: string;
+  resetTokenExpires?: Date;
+  tokenVersion?: number;
+  channels?: { whatsapp?: { id?: string; label?: string; linkedAt?: Date }; telegram?: { id?: string; label?: string; linkedAt?: Date } };
+  channelPrefs?: { matches?: boolean; updates?: boolean };
+  channelLinkCode?: string;
+  channelLinkCodeExpires?: Date;
   fullname: string;
   recruiter: boolean;
   admin: boolean;
   approved?: boolean;
   company_id?: mongoose.Types.ObjectId | null;
   company?: string;
-  phone: string;
+  phone?: string;
   resume?: string;
   currentJob?: string;
+  authProvider?: "local" | "google" | "facebook";
+  providerId?: string;
+  avatar?: string;
 
   memory?: {
     skills: string[];
@@ -24,15 +34,63 @@ export interface IUser extends Document {
     };
   };
 
+  resumeText?: string;
+  embedding?: number[];
+  // Latest résumé built/improved in ResumeAI (structured JSON) + its review.
+  resumeStructured?: unknown;
+  resumeScore?: number;
+  resumeIssues?: string[];
+  resumeUpdatedAt?: Date;
+  level?: "junior" | "mid" | "senior";
+  coachMemory?: unknown;
+  apiKeyHash?: string;
+  apiKeyPrefix?: string;
+  apiKeyCreatedAt?: Date;
+  lastMatchDigestAt?: Date;
+  gmail?: {
+    address?: string;
+    refreshTokenSealed?: string;
+    connectedAt?: Date;
+    lastSyncAt?: Date;
+    lastError?: string;
+  };
+  autoApply?: { enabled?: boolean; minScore?: number; dailyCap?: number; enabledAt?: Date };
+  onboarding?: { completedAt?: Date; contactsStep?: "" | "done" | "skipped" };
+  searchProfile?: { roles?: string[]; level?: "junior" | "mid" | "senior"; cities?: string[]; workModes?: string[]; keywords?: string[]; updatedAt?: Date };
+  searchVector?: number[];
+  searchVectorKey?: string;
+  partner?: { slug?: string; code?: string; cohort?: string; joinedAt?: Date };
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 const UserSchema = new Schema<IUser>(
   {
-    username: { type: String, required: true, unique: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    username: { type: String, required: true, unique: true, trim: true },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+    },
+    // Never leaves the DB unless asked for: readers use .select("+password").
+    password: { type: String, required: true, select: false },
+    // Email password reset (lib/auth/passwordReset.ts): sha256 of a single-use token + its expiry.
+    resetTokenHash: { type: String, select: false, index: true },
+    resetTokenExpires: { type: Date },
+    // Session generation: every JWT carries it as `tv`; bumping it ($inc) on a
+    // password change/reset revokes every session issued before.
+    tokenVersion: { type: Number, default: 0 },
+    // Messaging channels (lib/messaging/channels.ts): linked WhatsApp / Telegram identities + what to push there.
+    channels: {
+      whatsapp: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },
+      telegram: { id: { type: String }, label: { type: String, default: "" }, linkedAt: { type: Date } },
+    },
+    channelPrefs: { matches: { type: Boolean, default: true }, updates: { type: Boolean, default: true } },
+    channelLinkCode: { type: String, index: true, select: false },
+    channelLinkCodeExpires: { type: Date },
     fullname: { type: String, required: true },
 
     recruiter: { type: Boolean, default: false },
@@ -48,19 +106,89 @@ const UserSchema = new Schema<IUser>(
 
     resume: { type: String, default: "" },
 
-    phone: { type: String, required: true },
+    // Optional: social-login accounts arrive without a phone number.
+    phone: { type: String, default: "" },
     currentJob: { type: String, default: "" },
+
+    // Social login (Google / Facebook). "local" = email + password signup.
+    authProvider: { type: String, enum: ["local", "google", "facebook"], default: "local" },
+    providerId: { type: String, default: undefined },
+    avatar: { type: String, default: "" },
+
+    // Extracted résumé text + its embedding, used to personalize the job feed.
+    resumeText: { type: String, default: "", select: false },
+    embedding: { type: [Number], default: undefined, select: false },
+    // Latest résumé built/improved in ResumeAI (structured JSON) + its review.
+    resumeStructured: { type: mongoose.Schema.Types.Mixed, default: undefined, select: false },
+    resumeScore: { type: Number, default: undefined },
+    resumeIssues: { type: [String], default: undefined },
+    resumeUpdatedAt: { type: Date, default: undefined },
+    /** Personal API key for MCP clients (lib/auth/apiKey.ts): hash + display prefix. */
+    apiKeyHash: { type: String, default: undefined, index: true, select: false },
+    apiKeyPrefix: { type: String, default: undefined },
+    apiKeyCreatedAt: { type: Date, default: undefined },
+    /** The coach's memory across mock interviews (lib/interview/coachMemory.ts). */
+    coachMemory: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    /** Inferred seniority (junior | mid | senior) — drives level-aware matching. */
+    level: { type: String, enum: ["junior", "mid", "senior"], default: undefined },
+    // Last time the daily "new matching jobs" digest ran for this user.
+    lastMatchDigestAt: { type: Date, default: undefined },
+
+    // Gmail connection for application-status tracking (refresh token is
+    // AES-GCM sealed — see lib/crypto/secretBox).
+    gmail: {
+      address: { type: String, default: "" },
+      refreshTokenSealed: { type: String, default: "", select: false },
+      connectedAt: { type: Date, default: undefined },
+      lastSyncAt: { type: Date, default: undefined },
+      lastError: { type: String, default: "" },
+    },
+
+    // Applier agent opt-in: submit automatically when a new posting scores
+    // at least `minScore` against the résumé, at most `dailyCap` per day.
+    autoApply: {
+      enabled: { type: Boolean, default: false },
+      minScore: { type: Number, default: 75, min: 50, max: 100 },
+      dailyCap: { type: Number, default: 5, min: 1, max: 30 },
+      enabledAt: { type: Date, default: undefined },
+    },
+    /** Partner program membership (lib/partners/partners.ts): the bootcamp/college cohort this user belongs to. */
+    partner: {
+      slug: { type: String, default: undefined },
+      code: { type: String, default: undefined },
+      cohort: { type: String, default: "" },
+      joinedAt: { type: Date, default: undefined },
+    },
+    /** "What I'm looking for" (lib/matcher/searchProfile.ts): roles, level, cities, work modes, keywords. */
+    searchProfile: {
+      roles: { type: [String], default: undefined },
+      level: { type: String, enum: ["junior", "mid", "senior"], default: undefined },
+      cities: { type: [String], default: undefined },
+      workModes: { type: [String], default: undefined },
+      keywords: { type: [String], default: undefined },
+      updatedAt: { type: Date, default: undefined },
+    },
+    /** Recall vector = résumé embedding blended with the target embedding; cached by profile text + résumé version. */
+    searchVector: { type: [Number], default: undefined, select: false },
+    searchVectorKey: { type: String, default: undefined },
+    /** Onboarding steps the user completed or skipped. */
+    onboarding: {
+      completedAt: { type: Date, default: undefined },
+      contactsStep: { type: String, enum: ["", "done", "skipped"], default: "" },
+    },
 
     memory: {
       skills: { type: [String], default: [] },
       experience: { type: [String], default: [] },
       preferences: {
         type: Object,
-        default: {
+        // Factory default so each user gets its own object (a static literal
+        // default would be shared/mutable across documents).
+        default: () => ({
           preferredLanguage: "he",
           preferredResumeStyle: "ats",
           hideSections: [],
-        },
+        }),
       },
     },
   },

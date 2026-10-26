@@ -1,106 +1,148 @@
 "use client";
 import React from "react";
-import { Job } from "./JobTable";
-import { OpenNavIcon,CloseNavIcon,FilterIcon } from "./icons";
-
-
+import {ChevronDown} from "lucide-react";
+import { Job, getJobType, getSeniorityLevel } from "./JobTable";
 
 interface FilterRenderProps {
   title: string;
   options: string[];
   selected: string[];
   setSelected: (values: string[]) => void;
+  /** Lists longer than this get a search box and a scroll area. */
+  searchable?: boolean;
+  defaultOpen?: boolean;
 }
-const FilterRender: React.FC<FilterRenderProps> = ({title, options, selected, setSelected})=>{
-  const [isOpen, setIsOpen] = React.useState<boolean>(true);
+
+const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, setSelected, searchable, defaultOpen = true }) => {
+  const [isOpen, setIsOpen] = React.useState<boolean>(defaultOpen);
+  const [q, setQ] = React.useState("");
   const toggleElement = (value: string) => {
-    if (selected.includes(value)) {
-      setSelected(selected.filter((v) => v !== value));
-    } else {
-      setSelected([...selected, value]);
-    }
+    if (selected.includes(value)) setSelected(selected.filter((v) => v !== value));
+    else setSelected([...selected, value]);
   };
+  const needle = q.trim().toLowerCase();
+  // Selected values stay visible at the top even when the search hides them.
+  const visible = needle ? options.filter((o) => o.toLowerCase().includes(needle) || selected.includes(o)) : options;
+  const id = `filter-${title.toLowerCase().replace(/\s+/g, "-")}`;
+
   return (
-    <div className="flex flex-col w-full">
-      <div className="flex gap-38 items-center justify-between">
-        <label className="font-medium text-[18px] lg:text-[20px] mb-1">
-            {title}
-          </label>
-          {isOpen?<button onClick={() => setIsOpen && setIsOpen(false)}><OpenNavIcon/></button>:<button onClick={() => setIsOpen && setIsOpen(true)}><CloseNavIcon/></button>}
-      </div>
-           {isOpen && options.map((type) => (
-            <label key={type} className="block font-outfit font-normal text-[#000000]/60">
-              <input
-                type="checkbox"
-                checked={selected.includes(type)}
-                onChange={() => toggleElement(type)}
-                className="mx-2 my-4"
-              />
-              {type}
-            </label>
-          ))}
-          
-      </div>
-  )
+    <div className="border-b border-line">
+      <button
+        type="button"
+        onClick={() => setIsOpen((o) => !o)}
+        aria-expanded={isOpen}
+        aria-controls={id}
+        className="w-full flex items-center justify-between gap-2 text-start py-4 min-h-[56px]"
+      >
+        <span className="font-semibold text-navy text-[15px]">
+          {title}
+          {selected.length > 0 && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0">{selected.length}</span>}
+          {!isOpen && selected.length > 0 && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{selected.join(", ")}</span>}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <div id={id} className="pb-4 space-y-1">
+          {searchable && options.length > 8 && (
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={`Search ${title.toLowerCase()}…`}
+              className="jm-input py-2 text-sm mb-2"
+              aria-label={`Search ${title}`}
+            />
+          )}
+          <div className={`space-y-0.5 ${searchable ? "max-h-56 overflow-y-auto jm-scroll pe-1" : ""}`}>
+            {visible.length === 0 && <p className="jm-muted py-1">No matches</p>}
+            {visible.map((value) => (
+              <label key={value} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-canvas cursor-pointer text-sm text-ink-600">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(value)}
+                  onChange={() => toggleElement(value)}
+                  className="h-4 w-4 accent-teal rounded"
+                />
+                <span className="truncate" title={value}>
+                  {value}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
+
+/** Filter options computed server-side over the whole catalog (/api/jobs/facets). */
+export interface JobFacets {
+  companies: string[];
+  cities: string[];
+  countries: string[];
+  jobTypes: string[];
+  seniority: string[];
+}
+
 interface JobFiltersProps {
   jobs: Job[];
+  /** When provided, options come from the DB-wide facets instead of `jobs`. */
+  facets?: JobFacets | null;
   company: string[];
   country: string[];
   city: string[];
+  jobType: string[];
+  seniority: string[];
   setCompany: React.Dispatch<React.SetStateAction<string[]>>;
   setCountry: React.Dispatch<React.SetStateAction<string[]>>;
   setCity: React.Dispatch<React.SetStateAction<string[]>>;
-  isMobile: boolean;
+  setJobType: React.Dispatch<React.SetStateAction<string[]>>;
+  setSeniority: React.Dispatch<React.SetStateAction<string[]>>;
 }
-export const BottomLine = () => (
-  <div className="w-full border-[1px] border-[#000000]/10 h-[1px] my-4"></div>
-);
+
 export const JobsFilters: React.FC<JobFiltersProps> = ({
   jobs,
+  facets,
   company,
   country,
   city,
+  jobType,
+  seniority,
   setCompany,
   setCountry,
   setCity,
-  isMobile,
+  setJobType,
+  setSeniority,
 }) => {
   const getUniqueValues = (arr: Job[], key: keyof Job) => {
     const values = arr
       .map((job) => {
         if (key === "company") {
-          return typeof job.company === "object"
-            ? job.company.companyName
-            : job.company;
+          return typeof job.company === "object" ? job.company.companyName : job.company;
         }
-        return (job[key] as unknown) as string;
+        return job[key] as unknown as string;
       })
       .filter((value): value is string => typeof value === "string" && value.trim() !== "");
     return Array.from(new Set(values));
   };
-  const uniqueCompanies = getUniqueValues(jobs, "company");
-  const uniqueTypes = getUniqueValues(jobs, "country");
-  const uniqueCities = getUniqueValues(jobs, "city");
+  // Prefer DB-wide facets (every company/city in the catalog); fall back to
+  // deriving from the loaded jobs while they are still loading.
+  const uniqueCompanies = facets?.companies ?? getUniqueValues(jobs, "company");
+  const uniqueCountries = facets?.countries ?? getUniqueValues(jobs, "country");
+  const uniqueCities = facets?.cities ?? getUniqueValues(jobs, "city");
+  const uniqueJobTypes = facets?.jobTypes ?? Array.from(new Set(jobs.map(getJobType))).filter(Boolean);
+  const seniorityOrder = ["Intern", "Junior", "Mid", "Senior"];
+  const presentSeniority = new Set(facets?.seniority ?? jobs.map(getSeniorityLevel));
+  const uniqueSeniority = seniorityOrder.filter((s) => presentSeniority.has(s));
   return (
-    <div className={isMobile ? "flex flex-col rounded-4xl w-full max-w-[295px] h-full mx-auto":"flex flex-col border border-[#232323]/10 rounded-4xl w-full max-w-[295px] h-full mx-auto"}>
-         <div className="flex w-full mt-4 gap-44 items-center justify-between">
-              <label className="font-medium text-[18px] lg:text-[20px] ml-5">Filters</label>
-              <FilterIcon />
-          </div>
-          <BottomLine />
-    <div className="w-full flex flex-col justify-center">
-      <div className="flex flex-col font-outfit md:flex-row flex-wrap gap-4 bg-white p-4 rounded max-w-5xl w-full">
-        {/* Job Type Filter */}
-        <FilterRender key={"job-type"} title="Job Type" options={uniqueTypes} selected={country} setSelected={setCountry} />
-        <BottomLine />
-        {/* City Filter */}
-        <FilterRender key={"cities"} title="Cities" options={uniqueCities} selected={city} setSelected={setCity} />
-        <BottomLine />
-        {/* Company Filter */}
-        <FilterRender key={"companies"} title="Companies" options={uniqueCompanies} selected={company} setSelected={setCompany} />
-      </div>
-    </div>
+    <div className="w-full">
+      {/* Seniority (Intern / Junior / Mid / Senior) */}
+      <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
+      {/* Work mode (On Site / Hybrid / Remote) */}
+      <FilterRender title="Job Type" options={uniqueJobTypes} selected={jobType} setSelected={setJobType} defaultOpen={false} />
+      <FilterRender title="Country" options={uniqueCountries} selected={country} setSelected={setCountry} searchable defaultOpen={false} />
+      <FilterRender title="Cities" options={uniqueCities} selected={city} setSelected={setCity} searchable defaultOpen={false} />
+      <FilterRender title="Companies" options={uniqueCompanies} selected={company} setSelected={setCompany} searchable defaultOpen={false} />
     </div>
   );
 };

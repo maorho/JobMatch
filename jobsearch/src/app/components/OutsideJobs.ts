@@ -1,37 +1,49 @@
 import { ExternalJob } from "./JobTable";
 
-const isDBUpdated = async (): Promise<boolean> => {
-  try {
-    const res = await fetch("/api/external-jobs/last-updated");
-    if (!res.ok) {
-      console.error("❌ Failed to fetch last update info");
-      return false;
+// Parse one CSV line, honoring double-quoted fields that contain commas and
+// escaped quotes (""). A naive split(",") corrupts every such row.
+function parseCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
     }
-
-    const data = await res.json();
-
-    const lastUpdate = new Date(data.lastUpdated).getTime();
-    const now = Date.now();
-
-    const diffInHours = (now - lastUpdate) / (1000 * 60 * 60);
-
-    // true אם עודכן ב־12 השעות האחרונות
-    return diffInHours <= 12;
-  } catch (err) {
-    console.error("❌ Error checking DB update status:", err);
-    return false;
   }
-};
-
+  out.push(cur);
+  return out.map((v) => v.replace(/\r/g, ""));
+}
 
 export default async function fetchSheetAsJson(): Promise<any[]> {
-  
-  const lastUpdated = new Date();
   const csvUrl = process.env.NEXT_PUBLIC_CSV_URL;
   if (!csvUrl) {
-    throw new Error("❌ CSV_URL is not defined in environment variables");
+    // The sheet is an optional legacy source; without it the sync is simply a no-op.
+    console.warn("⚠️ NEXT_PUBLIC_CSV_URL is not set — skipping the external-jobs sheet");
+    return [];
   }
   const res = await fetch(csvUrl);
+  if (!res.ok) {
+    console.warn(`⚠️ external-jobs sheet returned ${res.status} — skipping`);
+    return [];
+  }
   const csvText = await res.text();
   const lines = csvText.trim().split("\n");
 
@@ -43,17 +55,15 @@ export default async function fetchSheetAsJson(): Promise<any[]> {
 
   if (headerIndex === -1) throw new Error("⚠️ לא נמצאה שורת כותרות בטבלה");
 
-  const headers = lines[headerIndex]
-    .split(",")
-    .map(h => h.trim().replace(/\r/g, ""));
+  const headers = parseCsvLine(lines[headerIndex]).map((h) => h.trim());
 
   const dataLines = lines.slice(headerIndex + 1);
-  
-  const json = dataLines.map(line => {
-    const values = line.split(",");
+
+  const json = dataLines.map((line) => {
+    const values = parseCsvLine(line);
     const obj: Record<string, string> = {};
-    values.forEach((val, i) => {
-      obj[headers[i]] = val.trim().replace(/\r/g, "");
+    headers.forEach((header, i) => {
+      obj[header] = (values[i] ?? "").trim();
     });
     return obj;
   });

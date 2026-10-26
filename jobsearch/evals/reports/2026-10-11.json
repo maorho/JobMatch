@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-11T07:17:23.737Z",
+  "match": {
+    "pairwise": 0.8372093023255814,
+    "spearman": 0.8754940711462451,
+    "mae": 11.043478260869565,
+    "worst": [
+      "junior_react→student_fe: pred 85 vs label 55",
+      "senior_frontend→fullstack_mid: pred 30 vs label 60",
+      "junior_react→backend_node: pred 10 vs label 35",
+      "mid_backend→junior_fe: pred 10 vs label 30",
+      "senior_frontend→junior_fe: pred 10 vs label 30"
+    ]
+  }
+}

@@ -1,13 +1,16 @@
 "use client";
+import HealthCard from "./components/HealthCard";
 
 import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
-import {Job} from "../components/JobTable"; 
-import { IUser } from "../models/User";
+import {Job} from "../components/JobTable";
+import type { IUser } from "../models/User";
 import { motion } from "framer-motion";
 import JobrecruiterCard from "../RecruiterDashboard/components/JobrecruiterCard";
 import { AdminHero } from "../components/HeroImages";
+import { EmptyState, Spinner } from "../components/ui";
 
 interface Tab {
   label: string;
@@ -22,8 +25,7 @@ const changeStatus = async (recruiterId: string, status: 'approve' | 'decline') 
     });
 
     if (!res.ok) throw new Error("Failed to change recruiter status");
-    const data = await res.json();
-    console.log(data.msg);
+    await res.json();
   } catch (err) {
     console.error("❌ Error changing recruiter status:", err);
   }
@@ -36,8 +38,7 @@ const approveRecruiter = async (recruiterId: string) => {
       body: JSON.stringify({ recruiterId }),
   });
   if (!res.ok) throw new Error("Failed to approve recruiter");
-  const data = await res.json();
-  console.log(data.msg);    
+  await res.json();
 }
 const declineRecruiter = async (recruiterId: string) => {
   const res = await fetch("/api/admin/declinerecruiter", {
@@ -46,16 +47,18 @@ const declineRecruiter = async (recruiterId: string) => {
       body: JSON.stringify({ recruiterId }),
   });
   if (!res.ok) throw new Error("Failed to decline recruiter");
-  const data = await res.json();
-  console.log(data.msg);    
-} 
-const Jobs = ({ jobs }: { jobs: Job[] }) => (
-  <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {jobs.map((job, i) => (
-            <JobrecruiterCard key={job.id || i} job={job} jobIndex={i} />
-        ))}
-  </div>
-)
+  await res.json();
+}
+const Jobs = ({ jobs }: { jobs: Job[] }) =>
+  jobs.length === 0 ? (
+    <EmptyState icon="🗂️" title="No jobs yet" />
+  ) : (
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+      {jobs.map((job, i) => (
+        <JobrecruiterCard key={job._id || job.id || i} job={job} jobIndex={i} />
+      ))}
+    </div>
+  );
 
 
 interface RecruitersProps {
@@ -64,125 +67,159 @@ interface RecruitersProps {
 }
 const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }) => {
   const handleApprove = async (recruiterId: string) => {
-    await approveRecruiter(recruiterId);
+    try {
+      await approveRecruiter(recruiterId);
+    } catch (e) {
+      console.error("Approve failed:", e);
+    }
     refreshRecruiters()
   }
   const handleDecline = async (recruiterId: string) => {
-    await declineRecruiter(recruiterId);
+    try {
+      await declineRecruiter(recruiterId);
+    } catch (e) {
+      console.error("Decline failed:", e);
+    }
     refreshRecruiters()
   }
+  if (recruiters.length === 0) {
+    return <EmptyState icon="👥" title="No recruiters yet" />;
+  }
   return (
-    <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         {recruiters.map((recruiter, i) => (
             <motion.div
               initial={{ opacity: 0, x: -40 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.05, duration: 0.5 }}
-              key={recruiter._id ? String(recruiter._id) : i} 
-              className="border border-[#000000]/10 p-4 rounded shadow">
-              <h3 className="text-lg font-semibold">{recruiter.fullname}</h3>
-              <p className="text-gray-600">Email:{recruiter.email}</p>
-              <p className="text-gray-600">Company: {recruiter.company}</p>
-              <p className="text-gray-600">Approved: {recruiter.approved ? "Yes" : "No"}</p>
-              <button className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
-              <button className="mt-2 ml-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
+              key={recruiter._id ? String(recruiter._id) : i}
+              className="jm-card p-5 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-base sm:text-lg font-semibold text-navy truncate">{recruiter.fullname}</h3>
+                <span className={`jm-chip shrink-0 ${recruiter.approved ? "jm-chip-teal" : ""}`}>
+                  Approved: {recruiter.approved ? "Yes" : "No"}
+                </span>
+              </div>
+              <div className="text-sm text-ink-600 space-y-1">
+                <p className="truncate">Email:{recruiter.email}</p>
+                <p className="truncate">Company: {recruiter.company}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-3 mt-auto border-t border-line">
+                <button className="jm-btn jm-btn-primary jm-btn-sm" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
+                <button className="jm-btn jm-btn-danger jm-btn-sm" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
+              </div>
             </motion.div>
         ))}
   </div>
-  ) 
-  
+  )
+
 }
-function EmployerDashboard() {
-  const { user } = useCurrentUser();
+const LOGIN_HREF = "/Login?next=%2FAdminDashboard";
+
+function AdminDashboard() {
+  const { user, loading: authLoading } = useCurrentUser();
+  const router = useRouter();
   const [recruitersList, setRecruitersList] = useState<IUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<number>(0);
+  const isAdmin = !!user?.admin;
+  const company: string = user?.company ?? "";
 
-  
   const fetchAllRecruiters = useCallback(async () => {
-    if (!user) return;
-
     try {
       const res = await fetch("/api/admin/allrecruiters", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName: user.company }),
+        body: JSON.stringify({ companyName: company }),
       });
 
       if (!res.ok) throw new Error("Failed to fetch recruiters");
       const data = await res.json();
       setRecruitersList(data||[]);
-      console.log(recruitersList);
     } catch (err) {
       console.error("❌ Error fetching recruiters:", err);
     }
-  }, [user]);
+  }, [company]);
 
-  
+
   const fetchAllCompaniesJobs = useCallback(async () => {
-    if (!user) return;
-
     try {
       const res = await fetch("/api/jobsDashboard/Company/allCompanyJobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName: user.company }),
+        body: JSON.stringify({ companyName: company }),
       });
 
       if (!res.ok) throw new Error("Failed to fetch jobs");
       const data = await res.json();
       setJobs(data||[]);
-      console.log(jobs);
     } catch (err) {
       console.error("❌ Error fetching jobs:", err);
     }
-  }, [user]);
+  }, [company]);
 
 
+  // Logged-out visitors go to the login page (and come back here afterwards).
   useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    console.log(user);
+    if (!authLoading && !user) router.replace(LOGIN_HREF);
+  }, [authLoading, user, router]);
+
+  // Data loads only for admins; the auth phase is a separate flag so a
+  // logged-out visitor never sees an endless spinner.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
     const loadData = async () => {
       await Promise.all([fetchAllRecruiters(), fetchAllCompaniesJobs()]);
-      setLoading(false);
+      if (!cancelled) setDataLoading(false);
     };
-
     loadData();
-  }, [user, fetchAllRecruiters, fetchAllCompaniesJobs]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, fetchAllRecruiters, fetchAllCompaniesJobs]);
 
-  // ⏳ מצב טעינה
-  if (!user || loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-gray-600 text-lg">Loading dashboard...</p>
-      </div>
-    );
+  if (authLoading) {
+    return <Spinner label="Loading dashboard..." />;
   }
 
- 
   if (!user) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not logged in.</p>
-        <Link href="/Login" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="You are not logged in."
+          text="Redirecting to sign in…"
+          action={
+            <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
+              Go to Login
+            </Link>
+          }
+        />
       </div>
     );
   }
-
 
   if (!user.admin) {
     return (
-      <div className="text-center min-h-screen">
-        <p className="text-red-500 text-lg">You are not an admin.</p>
-        <Link href="/LoginPage" className="text-blue-600 underline">
-          Go to Login
-        </Link>
+      <div className="jm-page">
+        <EmptyState
+          icon="🔒"
+          title="This area is for admins only."
+          text={`You are signed in as ${user.fullname || user.email}, which is not an admin account.`}
+          action={
+            <Link href={user.recruiter ? "/RecruiterDashboard" : "/Dashboard"} className="jm-btn jm-btn-primary">
+              Go to your dashboard
+            </Link>
+          }
+        />
       </div>
     );
+  }
+
+  if (dataLoading) {
+    return <Spinner label="Loading dashboard..." />;
   }
 
   const tabs: Tab[] = [
@@ -195,48 +232,82 @@ function EmployerDashboard() {
       content: <Recruiters recruiters={recruitersList} refreshRecruiters={fetchAllRecruiters}/>,
     },
   ];
-  
+
+  const pendingRecruiters = recruitersList.filter((r) => !r.approved).length;
+  const stats = [
+    { label: "Jobs", value: jobs.length },
+    { label: "Recruiters", value: recruitersList.length },
+    { label: "Approved recruiters", value: recruitersList.length - pendingRecruiters },
+    { label: "Pending approval", value: pendingRecruiters },
+  ];
+
   return (
-    <div className="p-6 items-center justify-items-center min-h-screen">
-      <div
+    <div className="jm-page space-y-6">
+      <section
         id="recruiter hero section"
-        className="relative w-full pb-25 lg:mb-32 flex flex-col"
+        className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
       >
-        <div className="absolute inset-0 flex flex-col text-white items-center justify-center text-center px-4 z-10">
-          <label className="text-3xl lg:text-7xl font-semibold mb-4">
-            Welcome, {user.fullname}! 👋
-          </label>
-        </div>
-
         <AdminHero />
-      </div>
+        <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
+          <div className="text-xs font-semibold uppercase tracking-wider text-white/70">Admin</div>
+          <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
+            Welcome, {user.fullname}! 👋
+          </h1>
+          <p className="text-sm sm:text-base text-white/80">
+            Review your company&apos;s positions and approve recruiters.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/AdminDashboard/agents" className="jm-btn jm-btn-accent w-fit">
+              🤖 Agent team
+            </Link>
+            <Link href="/AdminDashboard/articles" className="jm-btn jm-btn-secondary w-fit">
+              ✍️ Articles
+            </Link>
+            <Link href="/AdminDashboard/partners" className="jm-btn jm-btn-secondary w-fit">
+              🤝 Partners
+            </Link>
+          </div>
+        </div>
+      </section>
 
-  
-       <div className="w-full max-w-5xl mx-auto mt-10 font-outfit">
-      {/* Tabs Header */}
-      <div className="flex border-b border-gray-300">
-        {tabs.map((tab, index) => (
-          <button
-            key={index}
-            onClick={() => setActiveTab(index)}
-            className={`flex-1 py-3 text-center text-sm lg:text-base font-medium transition-colors ${
-              activeTab === index
-                ? "border-b-2 border-[#24A8A2] text-[#24A8A2]"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}
-          </button>
+      <HealthCard />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="jm-card p-5">
+            <div className="text-3xl sm:text-4xl font-semibold text-navy leading-none">{stat.value}</div>
+            <div className="jm-muted mt-2">{stat.label}</div>
+          </div>
         ))}
       </div>
 
-      {/* Tabs Content */}
-      <div className="p-4 bg-white shadow-md rounded-b-lg">
-        {tabs[activeTab].content}
+      <div className="space-y-5">
+        {/* Tabs Header */}
+        <div className="flex border-b border-line" role="tablist">
+          {tabs.map((tab, index) => (
+            <button
+              key={index}
+              role="tab"
+              aria-selected={activeTab === index}
+              onClick={() => setActiveTab(index)}
+              className={`flex-1 sm:flex-none sm:px-6 py-3 text-center text-sm sm:text-base font-medium transition-colors -mb-px border-b-2 ${
+                activeTab === index
+                  ? "border-teal text-teal"
+                  : "border-transparent text-ink-400 hover:text-navy"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tabs Content */}
+        <div>
+          {tabs[activeTab].content}
+        </div>
       </div>
-    </div>
     </div>
   );
 }
 
-export default EmployerDashboard;
+export default AdminDashboard;

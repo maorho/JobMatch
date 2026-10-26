@@ -2,8 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { mutate } from "swr";
+import { LogOut } from "lucide-react";
+import { markSignedOut } from "../lib/hooks/useCurrentUser";
 
-export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
+export default function LogoutButton({
+  closeNav,
+  className = "jm-btn jm-btn-secondary jm-btn-sm",
+}: {
+  closeNav?: () => void;
+  className?: string;
+}) {
   const router = useRouter();
 
   async function handleLogout() {
@@ -12,7 +20,8 @@ export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
     // מחיקת קוקי
     document.cookie = "token=; Max-Age=0; path=/";
 
-    // לעדכן SWR שהמשתמש התנתק
+    // לעדכן SWR שהמשתמש התנתק (ולא להציג "ההתחברות פגה" על יציאה יזומה)
+    markSignedOut();
     await mutate("/api/auth/me", null, false);
 
     if (closeNav) closeNav();
@@ -21,10 +30,8 @@ export default function LogoutButton({ closeNav }: { closeNav?: () => void }) {
   }
 
   return (
-    <button
-      className="text-lg font-semibold hover:text-blue-400"
-      onClick={handleLogout}
-    >
+    <button className={className} onClick={handleLogout}>
+      <LogOut className="h-4 w-4" />
       Logout
     </button>
   );

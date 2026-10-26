@@ -2,13 +2,16 @@ import { connectToDatabase } from "@/app/lib/db";
 import Company from "@/app/models/Company";
 import User from "@/app/models/User";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdmin } from "@/app/lib/authGuard";
 
 export async function POST(req: NextRequest) {
+    if (!(await requireAdmin(req)))
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     await connectToDatabase();
     const {companyName} = await req.json();
     const company = await Company.findOne({ companyName });
     if(!company){
-        return new NextResponse("company not found");
+        return NextResponse.json({ error: "company not found" }, { status: 404 });
     }
     const companyId = company._id;
     const recruiters = await User.find({
@@ -16,14 +19,13 @@ export async function POST(req: NextRequest) {
     $or: [{ admin: false }, { admin: { $exists: false } }],
     company_id: companyId,
   })
+    // Only what the admin dashboard shows — never the whole user document.
+    .select("fullname email company company_id approved createdAt")
     .populate({
       path: "company_id",
       model: "Company",
       select: "companyName", 
     })
     .lean();
-    if(!recruiters){
-        return NextResponse.json({msg:"there are no recriuters",status:404})
-    }
     return NextResponse.json(recruiters);
 }

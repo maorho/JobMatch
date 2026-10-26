@@ -1,0 +1,155 @@
+import type { PracticeRole, PracticeLevel } from "@/app/lib/practice/roles";
+
+/**
+ * The vocabulary the agents share. Every message on the bus has one of these
+ * types and the payload shape listed next to it. Keep this file the single
+ * source of truth when adding an agent or a new kind of message.
+ */
+export const AGENT_NAMES = ["scout", "locator", "matcher", "notifier", "tracker", "coach", "janitor", "applier", "writer", "researcher", "examiner", "assigner"] as const;
+export type AgentName = (typeof AGENT_NAMES)[number];
+
+/** Non-agent senders. */
+export type Sender = AgentName | "system" | "cron" | "admin" | "user" | "resumeai";
+
+/** One application moving to a new status (what the Tracker reports). */
+export type ApplicationChange = { userId: string; applicationId: string; jobId: string; jobModel: string; status: string; title: string; company: string };
+
+export type Payloads = {
+  /** Scout: poll the catalog sources (chunked; `offset`/`acc` continue a run). */
+  "catalog.refresh": { offset?: number; since: string; company?: string; acc?: { created: number; removed: number; sources: number } };
+  /** Scout (cron): find companies that are not in the catalog yet and probe their ATS boards. */
+  "catalog.discover": { limit?: number; search?: boolean };
+  /** Tracker: read one user's inbox and report application status changes. */
+  "inbox.sync": { userId: string };
+  /** Scout → Locator: new postings landed since `since`. `company` marks a lightweight, company-scoped refresh (discovery): no digest. */
+  "jobs.ingested": { since: string; created: number; removed: number; sources: number; company?: string };
+  /** Locator → Matcher: locations are clean, go embed (`created`/`company` ride along from jobs.ingested). */
+  "jobs.normalized": { since: string; updatedDocs: number; unresolved: number; created?: number; company?: string };
+  /** Matcher → Notifier: new postings have vectors, tell people. The digest is skipped when `created` is 0 or the refresh was company-scoped. */
+  "jobs.embedded": { since: string; embedded: number; remaining: number; created?: number; company?: string };
+  /** ResumeAI → Matcher: a user's résumé changed. */
+  "resume.updated": { userId: string };
+  /** Matcher → Notifier: a user's fresh top matches. */
+  "candidate.matched": { userId: string; top: { jobId: string; title: string; company: string; score: number }[] };
+  /** Tracker → Coach: an application moved to a new status. */
+  "application.changed": ApplicationChange;
+  /** Coach → Matcher: how well does this user fit this job? (`context` rides along so the coach stays stateless.) */
+  "fit.request": { userId: string; jobId: string; jobModel: string; context: ApplicationChange };
+  /** Matcher → Coach: the answer, with the coach's context echoed back. */
+  "fit.reply": { userId: string; jobId: string; jobModel: string; score: number | null; context: ApplicationChange };
+  /** Coach → Researcher: what should the candidate know about this company before the interview? */
+  "research.request": { company: string; domain?: string; context: ApplicationChange & { score: number | null; stage: string } };
+  /** Researcher → Coach: the brief (echoes the context so the coach stays stateless). */
+  "research.reply": { company: string; confidence: "high" | "medium" | "low"; searched: boolean; headline: string; context: ApplicationChange & { score: number | null; stage: string } };
+  /** Researcher (cron): write "what they do" profiles for catalog companies that have none (or a stale one). */
+  "companies.describe": { limit?: number };
+  /** Examiner: make sure a role × level has `count` timed coding questions. */
+  "coding.author": { role: PracticeRole; level: PracticeLevel; count?: number };
+  /** Examiner: grade a submitted coding attempt. */
+  "coding.grade": { attemptId: string; userId: string };
+  /** Assigner: make sure a role × level has `count` take-home assignments. */
+  "assignment.author": { role: PracticeRole; level: PracticeLevel; count?: number };
+  /** Assigner: review a handed-in take-home. */
+  "assignment.review": { attemptId: string; userId: string };
+  /** Examiner / Assigner → Notifier: a grade is ready. */
+  "practice.graded": { userId: string; attemptId: string; kind: "coding" | "assignment"; title: string; score: number; verdict: "pass" | "borderline" | "fail" };
+  /** Coach → Notifier: a plan for the next stage is ready. */
+  "prep.ready": { userId: string; jobId: string; source: "internal" | "external"; stage: string; status: string; title: string; company: string; score: number | null; generated: boolean };
+  /** Janitor: delete postings no source has reported for a while. */
+  "catalog.sweep": { staleDays?: number };
+  /** Matcher → Applier: postings that cleared the user's auto-apply bar. Trigger "retry" carries no jobs: the Applier pulls the user's due deferred rows itself. */
+  "apply.request": { userId: string; jobs: { jobId: string; jobModel: "Job" | "ExternalJobs"; score: number; title: string; company: string }[]; trigger: "new_postings" | "resume_updated" | "manual" | "retry" };
+  /** Writer: pick `count` timely topics and write them. */
+  "content.plan": { count: number; publish?: boolean };
+  /** Writer: write one article. */
+  "content.request": { topic: string; angle?: string; audience?: string; publish?: boolean };
+  /** Writer → Notifier: an article is drafted/published. */
+  "content.ready": { articleId: string; slug: string; title: string; status: "draft" | "published"; words: number };
+  /** Tracker (cron): close the outcome loop — expire silent applications, find who to ask. */
+  "outcomes.ask": { limit?: number };
+  /** Tracker → Notifier: ask this candidate about their applications / interviews. */
+  "outcome.prompt": { userId: string; replies: { applicationId: string; title: string; company: string; daysAgo: number }[]; questions: { applicationId: string; title: string; company: string; stage: string }[] };
+  /** Applier → Notifier: what happened with the auto-applications. */
+  "apply.report": { userId: string; submitted: { jobId: string; title: string; company: string; score: number }[]; needsUser: { jobId: string; title: string; company: string; reason: string }[]; failed: number; capped: number; deferred?: number };
+};
+export type MessageType = keyof Payloads;
+
+/**
+ * Claim order. Work a person is waiting on (a fresh résumé, a graded attempt,
+ * an auto-apply pass and the notifications that close those loops) is picked
+ * before cron work, so a 400-source catalog refresh never makes a user wait.
+ */
+export const USER_PRIORITY = 10;
+const USER_TRIGGERED: ReadonlySet<MessageType> = new Set<MessageType>(["resume.updated", "coding.grade", "assignment.review", "apply.request", "candidate.matched", "practice.graded", "apply.report"]);
+export const priorityOf = (type: MessageType): number => (USER_TRIGGERED.has(type) ? USER_PRIORITY : 0);
+
+/** Who handles what. The bus routes by this table, so a message type has exactly one owner. */
+export const ROUTES: Record<MessageType, AgentName> = {
+  "catalog.refresh": "scout",
+  "catalog.discover": "scout",
+  "inbox.sync": "tracker",
+  "jobs.ingested": "locator",
+  "jobs.normalized": "matcher",
+  "jobs.embedded": "notifier",
+  "resume.updated": "matcher",
+  "candidate.matched": "notifier",
+  "application.changed": "coach",
+  "fit.request": "matcher",
+  "fit.reply": "coach",
+  "research.request": "researcher",
+  "research.reply": "coach",
+  "companies.describe": "researcher",
+  "coding.author": "examiner",
+  "coding.grade": "examiner",
+  "assignment.author": "assigner",
+  "assignment.review": "assigner",
+  "practice.graded": "notifier",
+  "prep.ready": "notifier",
+  "catalog.sweep": "janitor",
+  "apply.request": "applier",
+  "outcomes.ask": "tracker",
+  "outcome.prompt": "notifier",
+  "apply.report": "notifier",
+  "content.plan": "writer",
+  "content.request": "writer",
+  "content.ready": "notifier",
+};
+
+export type BusMessage<T extends MessageType = MessageType> = {
+  _id: string;
+  runId: string;
+  from: Sender;
+  to: AgentName;
+  type: T;
+  payload: Payloads[T];
+  says: string;
+  replyTo?: string;
+  parentId?: string;
+  attempts: number;
+};
+
+export type AgentContext = {
+  /** Send a message to the agent that owns `type` (same run, parented to the current message). */
+  send<T extends MessageType>(type: T, payload: Payloads[T], says?: string): Promise<string>;
+  /** Answer the sender of the current message. */
+  reply<T extends MessageType>(type: T, payload: Payloads[T], says?: string): Promise<string>;
+  /** Append a line to the current message's log (visible in the conversation view). */
+  log(line: string): void;
+  /**
+   * Renew the lease on the current message. Long handlers call it between
+   * units of work (sources, candidates, companies, users) so another
+   * dispatcher never mistakes a busy message for a stuck one.
+   */
+  heartbeat(): Promise<void>;
+  /** When (ms since epoch) the dispatcher's budget ends; handlers stop starting new work near it. */
+  deadline: number;
+};
+
+export type AgentDef = {
+  name: AgentName;
+  title: string;
+  description: string;
+  handles: MessageType[];
+  /** Return the line this agent "says" after handling the message. */
+  handle: (msg: BusMessage, ctx: AgentContext) => Promise<string | void>;
+};

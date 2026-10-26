@@ -1,21 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import mongoose from "mongoose";
 import User from "@/app/models/User";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+import { connectToDatabase } from "@/app/lib/db";
+import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { announceResumeUpdate } from "@/app/lib/agents/triggers";
+import { structuredToText } from "@/app/lib/resume/structuredToText";
+
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, rawResumeText } = await req.json();
     const userId = await getUserIdFromRequest(req);
-    if (mongoose.connection.readyState === 0) {
-      if (!process.env.MONGO_URI) {
-        console.error("❌ MONGODB_URI is not defined");
-      } else {
-        await mongoose.connect(process.env.MONGO_URI);
-      }
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+    try {
+      await consumeQuota(userId, "resume_build");
+    } catch (e) {
+      const q = quotaResponse(e);
+      if (q) return q;
+      throw e;
+    }
+    const { messages, rawResumeText } = await req.json();
+    await connectToDatabase();
 
     const user = userId ? await User.findById(userId).lean() : null;
 
@@ -105,7 +117,7 @@ ${convoSummary.slice(0, 5000)}
 OUTPUT FORMAT (STRICT)
 ============================================================
 
-Return ONLY the following JSON structure:
+Return ONLY the following JSON structure (sections in this order; omit a section only when there is truly nothing for it):
 
 {
   "structuredResume": [
@@ -114,10 +126,10 @@ Return ONLY the following JSON structure:
       "items": [
         {
           "title": "Full Name",
-          "subtitle": "Job Title or Target Role",
-          "location": "City, Country (optional)",
-          "contact": ["Email:email@example.com", "Phone: 123456789", "LinkedIn:  ..."],
-          "summary": "Auto-generated or resume-extracted summary",
+          "subtitle": "",
+          "location": "",
+          "contact": ["054-1234567", "name@email.com", "linkedin.com/in/handle", "github.com/handle"],
+          "summary": "2–3 sentences: profession, strongest stack, years/experience type, what you build. No fluff, no first person.",
           "bullets": []
         }
       ]
@@ -127,12 +139,12 @@ Return ONLY the following JSON structure:
       "items": [
         {
           "title": "Job Title",
-          "subtitle": "Company Name",
+          "subtitle": "Company",
           "location": "",
-          "dateRange": "2021 - Present",
+          "dateRange": "2024 – Present",
           "bullets": [
-            "Achievement-focused bullet with measurable impact",
-            "Another optimized bullet"
+            "Verb-first bullet with impact and 1–3 **bold** technologies or metrics, e.g. Built the **React (TypeScript)** frontend on **Next.js**, cutting page load by **40%**.",
+            "2–4 bullets per role, each one line or two, no duplicates"
           ]
         }
       ]
@@ -140,31 +152,32 @@ Return ONLY the following JSON structure:
     {
       "heading": "Education",
       "items": [
-        {
-          "title": "Degree",
-          "subtitle": "University",
-          "location": "",
-          "dateRange": "2018 - 2021",
-          "bullets": []
-        }
+        { "title": "B.Sc. Computer Science", "subtitle": "University", "location": "", "dateRange": "2019 – 2023", "bullets": [] }
+      ]
+    },
+    {
+      "heading": "Projects",
+      "items": [
+        { "title": "Project Name", "subtitle": "", "dateRange": "", "bullets": ["What it does and the **stack**; your role; a measurable outcome"] }
+      ]
+    },
+    {
+      "heading": "Military Service",
+      "items": [
+        { "title": "Role", "subtitle": "Unit", "dateRange": "2013 – 2017", "bullets": ["Leadership/scale bullets — only if the person served"] }
       ]
     },
     {
       "heading": "Skills",
       "items": [
-        {
-          "title": "Technical Skills",
-          "bullets": ["React", "Node.js", "MongoDB", "SQL"]
-        }
+        { "title": "Languages & Frameworks", "bullets": ["TypeScript", "React", "Node.js"] },
+        { "title": "Data & Cloud", "bullets": ["MongoDB", "AWS", "Vercel"] }
       ]
     },
     {
       "heading": "Languages",
       "items": [
-        {
-          "title": "Language",
-          "bullets": []
-        }
+        { "title": "", "bullets": ["Hebrew – Native", "English – Proficient"] }
       ]
     }
   ],
@@ -180,8 +193,13 @@ RULES
 ============================================================
 - Output MUST be valid JSON. No markdown, no commentary.
 - All resume content MUST be in ENGLISH.
-- If information is missing → infer realistic placeholders.
-- Use strong active verbs, ATS-friendly structure, and clean formatting.
+- NEVER invent employers, titles, dates, degrees, companies, numbers or links. If something is unknown, omit the field or the whole item — a short, true résumé beats a padded one. No placeholders like "[Your Name]" or "City, Country".
+- Contact entries are plain values (no "Email:"/"Phone:" prefixes), max 4, in this order: phone, email, LinkedIn, GitHub/portfolio.
+- Bullets: start with a strong past/present-tense verb, state what + how + impact, mark 1–3 key technologies/metrics per bullet with **double asterisks**, ≤ 2 lines each, 2–4 per role. Never start a bullet with "Responsible for".
+- Experience newest first. "Present" for current roles. Date format "2021 – 2023" (en dash).
+- Projects: only real projects from the input; the strongest 1–2, with stack and ownership.
+- Keep it to ONE page for < 8 years of experience: trim weak bullets before dropping sections.
+- Skills: group into 2–4 titled groups, 4–8 items each, only skills evidenced by the résumé or the conversation.
 - Absolutely DO NOT include any extra keys beyond: structuredResume, score, issues.
 `.trim();
 
@@ -198,7 +216,7 @@ RULES
       new HumanMessage("Generate the JSON now."),
     ]);
 
-    let text =
+    const text =
       typeof response.content === "string"
         ? response.content
         : (response.content as any[])
@@ -211,12 +229,56 @@ RULES
       .replace(/```\s*$/i, "")
       .trim();
 
-    const parsed = JSON.parse(clean);
-    
+    let parsed: any;
+    try {
+      parsed = JSON.parse(clean);
+    } catch {
+      // Tolerate a prose preamble/suffix around the JSON object.
+      const start = clean.indexOf("{");
+      const end = clean.lastIndexOf("}");
+      if (start === -1 || end <= start) {
+        throw new Error("Model did not return valid JSON");
+      }
+      parsed = JSON.parse(clean.slice(start, end + 1));
+    }
+
+    if (!parsed || !Array.isArray(parsed.structuredResume)) {
+      return NextResponse.json(
+        { error: "Model returned an unexpected shape" },
+        { status: 502 }
+      );
+    }
+
+    // Persist the result and feed the Matcher, so the personalized feed, the
+    // match scores and the "tailor to this job" agent all see this résumé.
+    const issues = Array.isArray(parsed.issues) ? parsed.issues.map(String).slice(0, 20) : [];
+    const score = Number.isFinite(Number(parsed.score)) ? Number(parsed.score) : undefined;
+    await User.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          resumeStructured: parsed.structuredResume,
+          resumeScore: score,
+          resumeIssues: issues,
+          resumeUpdatedAt: new Date(),
+        },
+      }
+    );
+    let matchReady = false;
+    try {
+      // The uploaded text is the richest source; otherwise embed the built résumé.
+      const text = (rawResumeText || "").trim() || structuredToText(parsed.structuredResume);
+      matchReady = !!(await embedAndStoreResume(userId, text));
+      if (matchReady) announceResumeUpdate(userId);
+    } catch (e) {
+      console.warn("[buildResume] embedding skipped:", (e as Error)?.message);
+    }
+
     return NextResponse.json({
       structuredResume: parsed.structuredResume,
       score: parsed.score,
       issues: parsed.issues,
+      matchReady,
     });
   } catch (err: any) {
     console.error("❌ buildResume error:", err);

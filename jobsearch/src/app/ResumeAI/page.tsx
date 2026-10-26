@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { PageHeader } from "../components/ui";
 
 type Role = "user" | "assistant" | "system";
 
@@ -8,6 +10,14 @@ type Message = {
   role: Role;
   content: string;
 };
+
+const PdfGlyph = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+    <path d="M9 13h6M9 17h6" />
+  </svg>
+);
 
 export default function ResumeAIPage() {
   const [messages, setMessages] = useState<Message[]>([
@@ -24,6 +34,8 @@ export default function ResumeAIPage() {
   const [rawResumeText, setRawResumeText] = useState<string | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [issues, setIssues] = useState<string[]>([]);
+  // True once the résumé is stored for matching → the feed is personalized.
+  const [matchReady, setMatchReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // מושך את המשתמש המחובר (בהנחה ש /api/auth/me מחזיר user._id)
@@ -33,8 +45,8 @@ export default function ResumeAIPage() {
         const res = await fetch("/api/auth/me");
         if (!res.ok) return;
         const data = await res.json();
-        if (data?.user?._id) {
-          setUserId(data.user._id);
+        if (data?.user?._id || data?.user?.id || data?.id) {
+          setUserId(data.user?._id ?? data.user?.id ?? data.id);
         }
       } catch (err) {
         console.error("❌ failed to load me:", err);
@@ -127,6 +139,7 @@ export default function ResumeAIPage() {
 
       setScore(buildData.score ?? null);
       setIssues(Array.isArray(buildData.issues) ? buildData.issues : []);
+      setMatchReady(!!buildData.matchReady);
 
       // 2️⃣ יצירת PDF
       const pdfRes = await fetch("/api/chat/download-resume", {
@@ -145,7 +158,11 @@ export default function ResumeAIPage() {
 
       const blob = await pdfRes.blob();
       const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
+      // Revoke any previous object URL to avoid leaking blob memory.
+      setDownloadUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
 
       appendMessage({
         role: "assistant",
@@ -211,7 +228,6 @@ export default function ResumeAIPage() {
     });
 
     const buildData = await buildRes.json();
-    console.log("🚀 structuredResume:", buildData.structuredResume);
     if (buildData.error) {
       appendMessage({
         role: "assistant",
@@ -223,6 +239,7 @@ export default function ResumeAIPage() {
 
     setScore(buildData.score ?? null);
     setIssues(buildData.issues ?? []);
+    setMatchReady(!!(buildData.matchReady || data.matchReady));
 
     // 3️⃣ יצירת PDF משופר
     const pdfRes = await fetch("/api/chat/download-resume", {
@@ -243,7 +260,10 @@ export default function ResumeAIPage() {
 
     const blob = await pdfRes.blob();
     const url = URL.createObjectURL(blob);
-    setDownloadUrl(url);
+    setDownloadUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
 
     appendMessage({
       role: "assistant",
@@ -263,96 +283,131 @@ export default function ResumeAIPage() {
 };
 
 
+  const hasResult = score !== null || !!downloadUrl || matchReady;
+
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
-      <h1 className="text-2xl font-bold mb-2 text-center">
-        ResumeAI – בניית ושיפור קורות חיים
-      </h1>
-      <p className="text-center text-gray-600 text-sm mb-4">
-        אתה יכול לנהל שיחה חופשית, להעלות קובץ קורות חיים קיים, או לבנות קורות חיים מאפס.
-      </p>
+    <div className="jm-page" dir="rtl">
+      <PageHeader
+        eyebrow="ResumeAI"
+        title="ResumeAI – בניית ושיפור קורות חיים"
+        subtitle="אתה יכול לנהל שיחה חופשית, להעלות קובץ קורות חיים קיים, או לבנות קורות חיים מאפס."
+      />
 
-      <div className="border rounded-lg p-4 h-[520px] overflow-y-auto bg-gray-50">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`mb-3 ${
-              msg.role === "user" ? "text-right" : "text-left"
-            }`}
+      <div className="grid gap-6 lg:grid-cols-2 items-start">
+        {/* Upload card */}
+        <section className="jm-card p-5 sm:p-6 space-y-4">
+          <input
+            type="file"
+            accept="application/pdf"
+            ref={fileInputRef}
+            onChange={handleUpload}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+            className="w-full rounded-card border-2 border-dashed border-line hover:border-teal hover:bg-teal-50/40 transition-colors p-8 sm:p-10 flex flex-col items-center gap-3 text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div
-              className={`inline-block px-4 py-2 rounded-xl whitespace-pre-line ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-white border border-gray-200 text-gray-900"
-              }`}
-            >
-              {msg.content}
-            </div>
-          </div>
-        ))}
+            <span className="h-14 w-14 rounded-2xl bg-teal-50 text-teal flex items-center justify-center">
+              <PdfGlyph />
+            </span>
+            <span className="text-base sm:text-lg font-semibold text-navy">📄 העלה קו״ח</span>
+          </button>
 
-        {loading && (
-          <div className="text-left text-gray-400 italic">המערכת חושבת…</div>
-        )}
+          {hasResult && (
+            <div className="space-y-4">
+              {score !== null && (
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-semibold text-navy">⭐ Resume Score: {score}/100</div>
+                  </div>
+                  <div
+                    className="mt-2 h-2 w-full rounded-full bg-line overflow-hidden"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={score}
+                  >
+                    <div className="h-full rounded-full bg-teal transition-[width] duration-500" style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+                  </div>
+                  {issues.length > 0 && (
+                    <div className="jm-alert jm-alert-info mt-3">
+                      <ul className="list-disc ps-5 space-y-1">
+                        {issues.map((issue, idx) => (
+                          <li key={idx} dir="auto">{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
 
-        {score !== null && (
-          <div className="mt-4 bg-white border rounded-lg p-3 text-sm">
-            <div className="font-semibold mb-1">
-              ⭐ Resume Score: {score}/100
+              {downloadUrl && (
+                <a
+                  href={downloadUrl}
+                  download="Improved_Resume_ATS.pdf"
+                  className="jm-btn jm-btn-primary w-full"
+                >
+                  📄 הורד קורות חיים משופרים (ATS Ready)
+                </a>
+              )}
+
+              {matchReady && (
+                <div className="jm-alert jm-alert-ok space-y-3">
+                  <p>🎯 קורות החיים שלך נשמרו — הפיד שלך עכשיו מותאם אישית אליהם.</p>
+                  <Link href="/" className="jm-btn jm-btn-accent jm-btn-sm w-full">
+                    ראה משרות שמתאימות לקורות החיים שלך
+                  </Link>
+                </div>
+              )}
             </div>
-            {issues.length > 0 && (
-              <ul className="list-disc list-inside text-gray-700">
-                {issues.map((issue, idx) => (
-                  <li key={idx}>{issue}</li>
-                ))}
-              </ul>
+          )}
+        </section>
+
+        {/* Chat card */}
+        <section className="jm-card p-5 sm:p-6 flex flex-col">
+          <div className="jm-scroll max-h-[60vh] min-h-[320px] overflow-y-auto space-y-3 pe-1">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div
+                  dir="auto"
+                  className={`max-w-[85%] px-4 py-2.5 text-sm sm:text-base whitespace-pre-line break-words ${
+                    msg.role === "user"
+                      ? "bg-navy text-white rounded-2xl rounded-ee-sm"
+                      : "bg-canvas border border-line text-ink rounded-2xl rounded-es-sm"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="flex items-center gap-2 text-sm text-ink-400" role="status">
+                <span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" />
+                המערכת חושבת…
+              </div>
             )}
           </div>
-        )}
 
-        {downloadUrl && (
-          <div className="text-center mt-4">
-            <a
-              href={downloadUrl}
-              download="Improved_Resume_ATS.pdf"
-              className="inline-block px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded shadow text-sm"
+          <div className="mt-4 flex flex-col sm:flex-row gap-2">
+            <input
+              className="jm-input flex-1"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            />
+            <button
+              onClick={handleSend}
+              disabled={loading}
+              className="jm-btn jm-btn-primary"
             >
-              📄 הורד קורות חיים משופרים (ATS Ready)
-            </a>
+              שלח
+            </button>
           </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <input
-          className="flex-1 border rounded px-3 py-2 text-sm"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-        />
-        <button
-          onClick={handleSend}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
-        >
-          שלח
-        </button>
-        <input
-          type="file"
-          accept="application/pdf"
-          ref={fileInputRef}
-          onChange={handleUpload}
-          className="hidden"
-        />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={loading}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm disabled:opacity-60"
-        >
-          📄 העלה קו״ח
-        </button>
+        </section>
       </div>
     </div>
   );

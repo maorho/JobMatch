@@ -2,28 +2,281 @@ name: JobMatch Cron
 
 on:
   schedule:
-    - cron: "0 */6 * * *"    # every 6 hours (UTC)
-    - cron: "0 */12 * * *"   # every 12 hours (UTC)
+    - cron: "*/30 * * * *"    # Scout: ingest fresh ATS jobs (every 30 min, best-effort)
+    - cron: "0 */6 * * *"     # sync-if-stale: every 6 hours (UTC)
+    - cron: "0 */12 * * *"    # cleanup-now: every 12 hours (UTC)
+    - cron: "0 6 * * *"       # job-match digest: daily 06:00 UTC (09:00 Israel)
+    - cron: "15 */2 * * *"    # gmail application tracking: every 2 hours
+    - cron: "45 * * * *"      # agents tick: drain the bus hourly (outcome loop, company profiles, authoring)
+    - cron: "30 5 * * *"      # outcome loop: ask "did you get a reply?" daily 05:30 UTC
+    - cron: "0 3 * * *"       # company profiles: 15 more per night
+    - cron: "30 2 * * *"      # company discovery: probe 20 new companies per night
   workflow_dispatch:
+    inputs:
+      job:
+        description: Which job to run (a manual run triggers exactly one)
+        type: choice
+        required: true
+        default: scout_run
+        options:
+          - scout_run
+          - sync_if_stale
+          - job_match_digest
+          - gmail_sync
+          - cleanup_now
+          - agents_tick
+          - outcomes_ask
+          - company_profiles
+          - health
+          - company_discovery
 
 env:
   PROD_BASE_URL: https://job-match-six.vercel.app
+  # Every endpoint is cron-guarded by `Authorization: Bearer $CRON_SECRET`
+  # (lib/cron/requireCron.ts). Secrets the workflow expects: CRON_SECRET.
+  AUTH: "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+
+# Concurrency is per job (see each job's `concurrency` group) so a slow scout
+# walk never blocks the hourly bus drain or the daily jobs, while two scout
+# walks (or two drains) still never overlap. cancel-in-progress is off
+# everywhere: a running job finishes, the newer one waits.
 
 jobs:
-  sync_if_stale:
+  scout_run:
+    # Only on the 30-min schedule (or a manual dispatch that picked it).
+    if: github.event.schedule == '*/30 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'scout_run')
     runs-on: ubuntu-latest
+    timeout-minutes: 150
+    concurrency:
+      group: cron-scout
+      cancel-in-progress: false
+    steps:
+      - name: Call scout/run (chunked until the whole catalog is covered)
+        shell: bash
+        run: |
+          # Each call polls sources for up to ~4 minutes and returns
+          # `nextOffset`; loop until it is null so a serverless timeout can
+          # never leave the tail of the catalog unpolled.
+          #
+          # One `since` for the whole walk: the server uses it on the last
+          # chunk to tell the agents about every posting ingested since the
+          # walk began, not just the last chunk's.
+          #
+          # A failed chunk (5xx, timeout, bad JSON) does not stop the walk: we
+          # skip ahead by the chunk size, count it, and fail the job at the end
+          # so the tail of the catalog still gets polled today.
+          set +e
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          limit=25
+          offset=0
+          failures=0
+          total=""
+          covered=0
+          for i in $(seq 1 40); do
+            resp=$(curl -sS --fail-with-body --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
+              -H "${{ env.AUTH }}" \
+              --data-urlencode "offset=$offset" \
+              --data-urlencode "limit=$limit" \
+              --data-urlencode "budget=240" \
+              --data-urlencode "since=$since")
+            rc=$?
+            # Parse once: prints a summary line, then "NEXT=<n|last|error> TOTAL=<n>" on the last line.
+            parsed=$(printf '%s' "$resp" | node -e '
+              let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+                let j; try { j=JSON.parse(s); } catch { console.log("unparseable response: "+s.slice(0,300)); console.log("NEXT=error TOTAL="); return; }
+                if(!j.ok){ console.log("error response: "+(j.error||s.slice(0,300))); console.log("NEXT=error TOTAL="+(j.totalSources??"")); return; }
+                console.log(`chunk offset=${j.nextOffset===null?"last":j.nextOffset} processed=${j.processed}/${j.totalSources} created=${j.created} closed=${j.removed}`);
+                const errs=(j.results||[]).filter(r=>r.error);
+                if(errs.length) console.log("source errors:", errs.map(r=>r.company+": "+r.error).join(" | "));
+                console.log(`NEXT=${j.nextOffset===null?"last":j.nextOffset} TOTAL=${j.totalSources}`);
+              });')
+            echo "$parsed" | sed '$d'
+            tail=$(echo "$parsed" | tail -n 1)
+            next=${tail#NEXT=}; next=${next%% *}
+            t=${tail##*TOTAL=}; [ -n "$t" ] && total=$t
+            if [ "$rc" -ne 0 ] || [ "$next" = "error" ]; then
+              failures=$((failures+1))
+              echo "::warning::scout chunk at offset=$offset failed (curl rc=$rc); skipping ahead by $limit"
+              offset=$((offset+limit))
+              if [ -n "$total" ] && [ "$offset" -ge "$total" ]; then echo "scout: reached the end after a failed chunk"; break; fi
+              continue
+            fi
+            if [ "$next" = "last" ]; then echo "scout: catalog fully covered"; covered=1; break; fi
+            offset=$next
+          done
+          # The server announces jobs.ingested on the last successful chunk. If
+          # the walk ended any other way (the final chunk failed, skip-ahead ran
+          # past the end, or the loop cap was hit), make one closing call so the
+          # agents still hear about everything ingested since $since.
+          if [ "$covered" != 1 ]; then
+            echo "scout: walk ended without a successful last chunk — finalizing (announce since $since)"
+            if ! curl -sS --fail-with-body --max-time 120 -G "${{ env.PROD_BASE_URL }}/api/scout/run" \
+              -H "${{ env.AUTH }}" \
+              --data-urlencode "finalize=1" \
+              --data-urlencode "since=$since"; then
+              failures=$((failures+1))
+              echo "::warning::scout finalize call failed: the agents were not told about this walk"
+            fi
+            echo
+          fi
+          if [ "$failures" -gt 0 ]; then
+            note=""; [ "$covered" = 1 ] && note=" (the rest of the catalog was still covered)"
+            echo "::error::$failures scout chunk(s) failed$note"
+            exit 1
+          fi
+
+  normalize_locations:
+    # Location agent: resolve any new raw location strings (cache → rules →
+    # LLM) so filters/facets stay canonical. Idempotent. Runs after the scout
+    # even when some chunks failed (there is still new data to clean).
+    needs: scout_run
+    if: ${{ !cancelled() && (needs.scout_run.result == 'success' || needs.scout_run.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-scout-normalize
+      cancel-in-progress: false
+    steps:
+      - name: Call scout/normalize-locations
+        shell: bash
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/scout/normalize-locations" -H "${{ env.AUTH }}"
+
+  embed_jobs:
+    # Embed newly-ingested jobs for the Matcher, after the Scout runs.
+    needs: scout_run
+    if: ${{ !cancelled() && (needs.scout_run.result == 'success' || needs.scout_run.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-scout-embed
+      cancel-in-progress: false
+    steps:
+      - name: Call matcher/embed-jobs
+        shell: bash
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/matcher/embed-jobs" -H "${{ env.AUTH }}"
+
+  sync_if_stale:
+    if: github.event.schedule == '0 */6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'sync_if_stale')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-sync
+      cancel-in-progress: false
     steps:
       - name: Call sync-if-stale
         shell: bash
         run: |
-          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/sync-if-stale" \
-            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/external-jobs/sync-if-stale" -H "${{ env.AUTH }}"
+
+  job_match_digest:
+    # Notify each user with a résumé about new postings that match them.
+    if: github.event.schedule == '0 6 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'job_match_digest')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-digest
+      cancel-in-progress: false
+    steps:
+      - name: Call notifications/job-matches
+        shell: bash
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/notifications/job-matches" -H "${{ env.AUTH }}"
+
+  gmail_sync:
+    # Read connected mailboxes and update application statuses from emails.
+    if: github.event.schedule == '15 */2 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'gmail_sync')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-gmail
+      cancel-in-progress: false
+    steps:
+      - name: Call integrations/gmail/sync
+        shell: bash
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/integrations/gmail/sync" -H "${{ env.AUTH }}"
 
   cleanup_now:
+    if: github.event.schedule == '0 */12 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'cleanup_now')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-cleanup
+      cancel-in-progress: false
     steps:
       - name: Call cleanup-now
         shell: bash
         run: |
-          curl -fsS -G "${{ env.PROD_BASE_URL }}/api/external-jobs/cleanup-now" \
-            --data-urlencode "cron_secret=${{ secrets.CRON_SECRET }}"
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/external-jobs/cleanup-now" -H "${{ env.AUTH }}"
+
+  agents_tick:
+    if: github.event.schedule == '45 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'agents_tick')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-agents
+      cancel-in-progress: false
+    steps:
+      - name: Drain the agent bus
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/agents/tick" -H "${{ env.AUTH }}" \
+            --data-urlencode "budget=240"
+
+  outcomes_ask:
+    if: github.event.schedule == '30 5 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'outcomes_ask')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-outcomes
+      cancel-in-progress: false
+    steps:
+      - name: Outcome loop (did you get a reply? what did they ask?)
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/agents/tick" -H "${{ env.AUTH }}" \
+            --data-urlencode "flow=outcomes.ask" \
+            --data-urlencode "budget=240"
+
+  company_profiles:
+    if: github.event.schedule == '0 3 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'company_profiles')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-profiles
+      cancel-in-progress: false
+    steps:
+      - name: Company profiles for the Companies page
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/agents/tick" -H "${{ env.AUTH }}" \
+            --data-urlencode "flow=companies.describe" \
+            --data-urlencode "limit=15" \
+            --data-urlencode "budget=240"
+
+  health:
+    if: github.event.schedule == '45 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'health')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: cron-health
+      cancel-in-progress: false
+    steps:
+      - name: Health check (fails the workflow when production is unhealthy)
+        run: |
+          curl -fsS --max-time 60 -G "${{ env.PROD_BASE_URL }}/api/admin/health" -H "${{ env.AUTH }}" | tee health.json
+          node -e 'const h=require("./health.json"); if(!h.ok){console.error("UNHEALTHY", JSON.stringify(h.checks)); process.exit(1)}'
+
+  company_discovery:
+    if: github.event.schedule == '30 2 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'company_discovery')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-daily-discovery
+      cancel-in-progress: false
+    steps:
+      - name: Find and probe companies not in the catalog yet
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/agents/tick" -H "${{ env.AUTH }}" \
+            --data-urlencode "flow=catalog.discover" \
+            --data-urlencode "limit=20" \
+            --data-urlencode "budget=240"

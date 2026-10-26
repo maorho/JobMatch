@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# JobMatch
 
-## Getting Started
+Israeli tech-job search with a team of AI agents: the Scout ingests live postings from company ATSes (Greenhouse, Lever, Comeet, Workable, …), the Matcher embeds jobs and résumés for semantic matching, and further agents handle tailoring, referral outreach, auto-apply through a Puppeteer server, interview prep (text, voice and phone), content and application tracking via Gmail. Hebrew UI, Next.js 16 App Router, MongoDB Atlas.
 
-First, run the development server:
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+nvm use                       # Node 22 (.nvmrc)
+cp .env.example .env.local    # fill in at least MONGO_URI, JWT_SECRET, CRON_SECRET, OPENAI_API_KEY
+npm ci
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`npm test` runs Vitest (unit + integration on an in-memory MongoDB), `npm run typecheck` and `npm run lint` match CI.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/app` — pages, API routes (`api/**`), `lib/` (agents, matcher, scout, interview, email, env contract), `models/` (Mongoose).
+- `server/` — the Puppeteer render/apply server (`npm run puppeteer-server`) and the background worker (`npm run worker`); both run on a separate host.
+- `tests/` — Vitest suites; `evals/` — agent evals.
+- `.github/workflows` — `ci.yml` (typecheck, lint, tests, build) and `cron-jobs.yml` (scheduled scout/matcher/agent ticks against production).
 
-## Learn More
+## Deploy
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See [DEPLOY.md](./DEPLOY.md): Vercel settings (root `jobsearch`, Node 22, env vars), Atlas indexes, GitHub secrets for the cron workflow, the Puppeteer host and post-deploy smoke checks. Every environment variable is documented in [.env.example](./.env.example) and validated at boot by `src/app/lib/env.ts`: only `MONGO_URI`, `JWT_SECRET`, `CRON_SECRET` and (in production) `APP_URL` are fatal — Vercel previews fall back to `https://$VERCEL_BRANCH_URL` — while a half-configured optional feature logs a `⚠️ env:` warning and switches itself off.

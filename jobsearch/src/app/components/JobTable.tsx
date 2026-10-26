@@ -3,10 +3,14 @@ import React, { useState, useEffect } from "react";
 import JobCard from "./JobCard";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import JobsFilters from "./FilterJobs";
-import { FilterIcon, SearchIcon, WhiteFilterIcon } from "./icons";
 import LocationSelect from "./LocationSelect";
-import { HeroImg } from "./HeroImages";
-import { useIsMobile } from "../lib/hooks/useIsMobile";
+import { Search, SlidersHorizontal, X, ArrowRight } from "lucide-react";
+import LogoMarquee from "./LogoMarquee";
+import CompanyLogo from "./CompanyLogo";
+import { EmptyState } from "./ui";
+import { useModalBehavior } from "./Dialog";
+import type { JobFacets } from "./FilterJobs";
+import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
 
 
 interface BaseJob {
@@ -15,6 +19,10 @@ interface BaseJob {
   country: string;
   createdAt?: Date;
   description?: string;
+  companyDomain?: string;
+  logoUrl?: string;
+  matchScore?: number;
+  likelihood?: { pct: number; basis: string; samples: number };
 }
 
 export interface ExternalJob extends BaseJob {
@@ -45,6 +53,34 @@ export function isInternalJob(job: Job): job is InternalJob {
   return job.source === "internal";
 }
 
+/**
+ * Work mode for a job (On Site / Hybrid / Remote). Internal jobs carry it in
+ * `type`; for external (ATS) jobs we infer it from the location/description.
+ */
+export function getJobType(job: Job): string {
+  // Shared taxonomy — the server search classifies with the same rules.
+  return isInternalJob(job)
+    ? workModeOf({ type: job.type || "On Site" })
+    : workModeOf({ city: job.city, country: job.country, remote: (job as any).remote === true });
+}
+
+/**
+ * Seniority bucket (Intern / Junior / Mid / Senior). Uses the `seniority` field
+ * (Comeet's experience_level) when present, otherwise infers from the title.
+ */
+export function getSeniorityLevel(job: Job): string {
+  return seniorityOf(job.job, job.seniority as string[] | string | undefined);
+}
+
+const jobKey = (job: Job, i: number) => String(job._id || job.id || `${job.source}-${i}`);
+
+/** Append a page without repeating a job already on screen (the catalog changes between page loads; React keys must stay unique). */
+function appendUnique(prev: Job[], next: Job[]): Job[] {
+  const seen = new Set(prev.map(jobKey));
+  const fresh = next.filter((job, i) => !seen.has(jobKey(job, i)));
+  return fresh.length ? [...prev, ...fresh] : prev;
+}
+
 function JobTable() {
   const { user } = useCurrentUser();
   const [allJobs, setAllJobs] = useState<Job[]>([]); 
@@ -56,67 +92,159 @@ function JobTable() {
   const [company, setCompany] = useState<string[]>([]);
   const [country, setCountry] = useState<string[]>([]);
   const [city, setCity] = useState<string[]>([]);
+  const [jobType, setJobType] = useState<string[]>([]);
+  const [seniority, setSeniority] = useState<string[]>([]);
   const [jobCount, setJobCount] = useState(0);
+  const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
-  const isMobile = useIsMobile();
   const handleModalOpen = () => setShowModal(true);
-  const [globalSearchMode, setGlobalSearchMode] = useState(false);
-  const searchAllJobsOnServer = async () => {
+  const closeSheet = React.useCallback(() => setShowModal(false), []);
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  useModalBehavior(showmodal, closeSheet, sheetRef);
+
+  // Every fetch/search gets a token; a response whose token is no longer the
+  // latest is dropped (a filter change while page 2 is in flight must not
+  // append unfiltered results). The previous request is also aborted.
+  const requestIdRef = React.useRef(0);
+  const abortRef = React.useRef<AbortController | null>(null);
+  const beginRequest = () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const id = ++requestIdRef.current;
+    return { id, signal: controller.signal, isCurrent: () => id === requestIdRef.current };
+  };
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Deep links: /?company=Google&q=react&city=Haifa&seniority=Junior
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const list = (k: string) => sp.getAll(k).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean);
+    if (sp.get("q")) setSearchTerm(sp.get("q")!);
+    if (list("company").length) setCompany(list("company"));
+    if (list("city").length) setCity(list("city"));
+    if (list("country").length) setCountry(list("country"));
+    if (list("seniority").length) setSeniority(list("seniority"));
+    if (list("jobType").length) setJobType(list("jobType"));
+  }, []);
+
+  // Filter options for the WHOLE catalog (every company/city in the DB).
+  const [facets, setFacets] = useState<JobFacets | null>(null);
+  useEffect(() => {
+    fetch("/api/jobs/facets")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((f) => f && setFacets(f))
+      .catch(() => {});
+  }, []);
+
+  // Any term or filter active → search the DB server-side instead of the page.
+  const isSearching =
+    searchTerm.trim() !== "" ||
+    company.length > 0 ||
+    country.length > 0 ||
+    city.length > 0 ||
+    jobType.length > 0 ||
+    seniority.length > 0;
+
+  // ✅ חיפוש בכל המאגר (פנימי + חיצוני) — לא רק במשרות שנטענו לדף
+  const searchServer = async (pageNum: number) => {
+    const req = beginRequest();
     try {
       setLoading(true);
-      setGlobalSearchMode(true);
+      const params = new URLSearchParams();
+      if (searchTerm.trim()) params.set("q", searchTerm.trim());
+      company.forEach((v) => params.append("company", v));
+      city.forEach((v) => params.append("city", v));
+      country.forEach((v) => params.append("country", v));
+      jobType.forEach((v) => params.append("jobType", v));
+      seniority.forEach((v) => params.append("seniority", v));
+      params.set("page", String(pageNum));
+      params.set("limit", "48");
 
-      const res = await fetch("api/jobsDashboard/jobfilter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          searchTerm,
-          company,
-          city,
-          country,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to search all jobs");
-
+      if (user) params.set("me", "1"); // personalised responses are private; a distinct URL keeps them apart from the public cached copy
+      const res = await fetch(`/api/jobs/search?${params.toString()}`, { signal: req.signal });
+      if (!res.ok) throw new Error("Failed to search jobs");
       const data = await res.json();
+      if (!req.isCurrent()) return; // stale: a newer search/filter superseded this one
+      const results: Job[] = data.jobs || [];
 
-      // אם אתה רוצה לשמור את ה־shape של JobTable:
-      const serverJobs = data.jobs.map((j: any) => ({
-        ...j,
-        source: "internal" as const,
-      }));
-
-      setAllJobs(serverJobs);
-      setJobs(serverJobs);
-      setJobCount(data.total);
-      setTotalPages(data.pages);
-      setPage(1);
+      if (pageNum === 1) {
+        setAllJobs(results);
+        setJobs(results);
+      } else {
+        setAllJobs((prev) => appendUnique(prev, results));
+        setJobs((prev) => appendUnique(prev, results));
+      }
+      setJobCount(data.total ?? results.length);
+      setTotalPages(data.pages || 1);
     } catch (err) {
-      console.error("❌ Global search failed:", err);
+      if ((err as Error)?.name !== "AbortError") console.error("❌ Search failed:", err);
     } finally {
-      setLoading(false);
+      if (req.isCurrent()) setLoading(false);
     }
   };
 
-  
+
 
   // ✅ מביא את המשרות מהשרת
   const fetchJobs = async (pageNum: number) => {
+    const req = beginRequest();
     try {
       setLoading(true);
 
+      // Personalized feed (ranked by the user's résumé) for logged-in users.
+      if (user) {
+        try {
+          const feedRes = await fetch(
+            `/api/matcher/feed?page=${pageNum}&limit=48`,
+            { signal: req.signal }
+          );
+          if (feedRes.ok) {
+            const feedData = await feedRes.json();
+            if (!req.isCurrent()) return;
+            if (
+              feedData.personalized &&
+              Array.isArray(feedData.jobs) &&
+              feedData.jobs.length
+            ) {
+              const feedJobs = feedData.jobs.map((j: Job) => ({
+                ...j,
+                source: "external",
+              }));
+              if (pageNum === 1) {
+                setAllJobs(feedJobs);
+                setJobs(feedJobs);
+              } else {
+                setAllJobs((prev) => appendUnique(prev, feedJobs));
+                setJobs((prev) => appendUnique(prev, feedJobs));
+              }
+              // Catalog-wide count, not the page size.
+              setJobCount(feedData.total ?? feedJobs.length);
+              if (feedData.catalogTotal) setCatalogTotal(feedData.catalogTotal);
+              setTotalPages(feedData.pages || 1);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          if ((err as Error)?.name === "AbortError") return; // superseded
+          // fall through to the normal feed
+        }
+      }
+      if (!req.isCurrent()) return;
+
       const internalUrl = user
-        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id}&page=${pageNum}&limit=50`
+        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id ?? user.id}&page=${pageNum}&limit=50`
         : `/api/jobsDashboard/Alljobs?page=${pageNum}&limit=50`;
 
       const [resInternal, resExternal] = await Promise.all([
-        fetch(internalUrl),
-        fetch(`/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=48`),
+        fetch(internalUrl, { signal: req.signal }),
+        fetch(`/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=48`, { signal: req.signal }),
       ]);
 
       const internalData = await resInternal.json();
       const externalData = await resExternal.json();
+      if (!req.isCurrent()) return; // stale: a newer page/filter request superseded this one
 
       const internalJobs = (internalData.jobs || []).map((j: Job) => ({
         ...j,
@@ -131,281 +259,320 @@ function JobTable() {
       if (pageNum === 1) {
         setAllJobs(merged);
         setJobs(merged);
-        setJobCount(merged.length);
       } else {
-        setAllJobs((prev) => {
-          const combined = [...prev, ...merged];
-          setJobCount(combined.length);
-          return combined;
-        });
-        setJobs((prev) => [...prev, ...merged]);
+        setAllJobs((prev) => appendUnique(prev, merged));
+        setJobs((prev) => appendUnique(prev, merged));
       }
+      // Catalog-wide count (what the DB holds), not the size of this page.
+      setJobCount(
+        (externalData.total ?? externalJobs.length) +
+          (internalData.total ?? internalJobs.length)
+      );
       setTotalPages(Math.max(internalData.pages || 1, externalData.pages || 1));
     } catch (err) {
-      console.error("❌ Failed to fetch jobs:", err);
+      if ((err as Error)?.name !== "AbortError") console.error("❌ Failed to fetch jobs:", err);
     } finally {
-      setLoading(false);
+      if (req.isCurrent()) setLoading(false);
     }
   };
 
+  // One driver for all loading. Term/filter changes reset to page 1 (debounced
+  // so typing doesn't fire a request per keystroke); page changes load at once.
+  const searchKey = JSON.stringify({
+    q: searchTerm.trim(),
+    company,
+    country,
+    city,
+    jobType,
+    seniority,
+    u: user?._id ?? user?.id ?? null,
+  });
+  const prevKeyRef = React.useRef(searchKey);
+
   useEffect(() => {
-    fetchJobs(page);
-  }, [page]);
-  
-  useEffect(() => {
-  handleSearch();
-}, [city, country, company]); 
-
-  const handleSearch = () => {
-    const term = searchTerm.toLowerCase();
-
-    const filtered = allJobs.filter((job) => {
-      const matchKeyword =
-        !term ||
-        job.job.toLowerCase().includes(term) ||
-        job.description?.toLowerCase().includes(term) ||
-        job.city.toLowerCase().includes(term) ||
-        (isInternalJob(job)
-          ? job.company.companyName.toLowerCase().includes(term)
-          : job.company.toLowerCase().includes(term)) ||
-        job.country.toLowerCase().includes(term);
-
-      const matchCompany = isInternalJob(job)
-        ? company.length === 0 || company.includes(job.company.companyName)
-        : company.length === 0 || company.includes(job.company);
-
-      const matchCity = city.length === 0 || city.includes(job.city);
-      const matchCountry = country.length === 0 || country.includes(job.country);
-
-      return matchKeyword && matchCompany && matchCity && matchCountry;
-    });
-    setJobCount(filtered.length);
-    setJobs(filtered);
-  };
-
-  const loadMore = async () => {
-    if (page >= totalPages) return;
-
-    const nextPage = page + 1;
-
-    if (!globalSearchMode) {
-      // מצב רגיל – מה שיש לך כבר
-      setPage(nextPage);
+    const keyChanged = prevKeyRef.current !== searchKey;
+    prevKeyRef.current = searchKey;
+    if (keyChanged && page !== 1) {
+      setPage(1); // re-runs this effect with page 1
       return;
     }
+    const run = () => (isSearching ? searchServer(page) : fetchJobs(page));
+    const t = setTimeout(run, keyChanged ? 350 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchKey]);
 
-    // מצב חיפוש גלובלי
-    try {
-      setLoading(true);
-      const res = await fetch("/api/jobs/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          searchTerm,
-          company,
-          city,
-          country,
-          page: nextPage,
-          limit: 50,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to load more search results");
-      const data = await res.json();
-
-      const serverJobs = data.jobs.map((j: any) => ({
-        ...j,
-        source: "internal" as const,
-      }));
-
-      setAllJobs((prev) => [...prev, ...serverJobs]);
-      setJobs((prev) => [...prev, ...serverJobs]);
-      setPage(nextPage);
-    } catch (err) {
-      console.error("❌ Load more (global search) failed:", err);
-    } finally {
-      setLoading(false);
+  // "Search Jobs" button: search the whole catalog right now (no debounce).
+  const handleSearch = () => {
+    if (page !== 1) {
+      setPage(1);
+      return;
     }
+    if (isSearching) searchServer(1);
+    else fetchJobs(1);
   };
 
+  // Next page of whatever is active (feed or server search) — the effect loads it.
+  const loadMore = () => {
+    if (page >= totalPages || loading) return;
+    setPage(page + 1);
+  };
+
+  // Infinite scroll: a sentinel above the "Load More" button triggers loadMore
+  // when it comes into view (400px early so the next page is usually ready
+  // before the user reaches the end). `requestedPage` stops a second trigger
+  // from firing in the tick between setPage and the fetch effect's `loading`.
+  const loadMoreRef = React.useRef<HTMLDivElement | null>(null);
+  const requestedPageRef = React.useRef(1);
+  useEffect(() => {
+    if (page === 1) requestedPageRef.current = 1; // filters reset the paging
+    const el = loadMoreRef.current;
+    if (!el || page >= totalPages) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting || loading) return;
+        if (requestedPageRef.current >= page + 1) return;
+        requestedPageRef.current = page + 1;
+        setPage(page + 1);
+      },
+      { rootMargin: "400px 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [page, totalPages, loading]);
+
+  const activeFilters: { label: string; clear: () => void }[] = [
+    ...seniority.map((v) => ({ label: v, clear: () => setSeniority((s) => s.filter((x) => x !== v)) })),
+    ...jobType.map((v) => ({ label: v, clear: () => setJobType((s) => s.filter((x) => x !== v)) })),
+    ...country.map((v) => ({ label: v, clear: () => setCountry((s) => s.filter((x) => x !== v)) })),
+    ...city.map((v) => ({ label: v, clear: () => setCity((s) => s.filter((x) => x !== v)) })),
+    ...company.map((v) => ({ label: v, clear: () => setCompany((s) => s.filter((x) => x !== v)) })),
+  ];
+  const clearAll = () => {
+    setSearchTerm("");
+    setSeniority([]);
+    setJobType([]);
+    setCountry([]);
+    setCity([]);
+    setCompany([]);
+  };
+  // One-tap shortcuts under the hero search; each toggles a single filter.
+  const quick = [
+    { label: "Junior", on: seniority.includes("Junior"), toggle: () => setSeniority((s) => (s.includes("Junior") ? s.filter((x) => x !== "Junior") : [...s, "Junior"])) },
+    { label: "Remote", on: jobType.includes("Remote"), toggle: () => setJobType((s) => (s.includes("Remote") ? s.filter((x) => x !== "Remote") : [...s, "Remote"])) },
+    { label: "Hybrid", on: jobType.includes("Hybrid"), toggle: () => setJobType((s) => (s.includes("Hybrid") ? s.filter((x) => x !== "Hybrid") : [...s, "Hybrid"])) },
+    { label: "Tel Aviv", on: city.includes("Tel Aviv"), toggle: () => setCity((s) => (s.includes("Tel Aviv") ? s.filter((x) => x !== "Tel Aviv") : [...s, "Tel Aviv"])) },
+    { label: "Israel", on: country.includes("Israel"), toggle: () => setCountry((s) => (s.includes("Israel") ? s.filter((x) => x !== "Israel") : [...s, "Israel"])) },
+  ];
+
+  const filtersPanel = (
+    <JobsFilters
+      jobs={allJobs}
+      facets={facets}
+      company={company}
+      country={country}
+      city={city}
+      setCompany={setCompany}
+      setCountry={setCountry}
+      setCity={setCity}
+      jobType={jobType}
+      setJobType={setJobType}
+      seniority={seniority}
+      setSeniority={setSeniority}
+    />
+  );
 
   return (
-    <div className="w-screen items-center mx-auto justify-center">
-      <div id="HeroSection" className="relative w-full max-w-[1440px] mx-auto mt-10">
-        <HeroImg />
-        <div className="font-outfit inset-0 flex flex-col absolute text-white items-center justify-center text-center px-4">
-          <label className="text-4xl lg:text-7xl">
-            Find Your Dream Job <br /> in Tech
-          </label>
-          <p className="mt-[40px]">
-            Connect with top companies and discover opportunities that match your skills and ambitions
+    <div className="jm-container pt-6 sm:pt-10">
+      {/* Hero: one soft band — centred editorial headline + search, and a live ticker of this person's top matches underneath */}
+      <section className="relative jm-band overflow-hidden px-5 pt-10 pb-8 sm:px-10 sm:pt-16 lg:pt-20">
+        <div className="pointer-events-none absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" aria-hidden="true" />
+        <div className="relative max-w-3xl mx-auto text-center animate-rise">
+          <span className="jm-eyebrow">
+            {(catalogTotal || jobCount) > 0 ? `${(catalogTotal || jobCount).toLocaleString()} open positions · updated daily` : "Fresh openings every day"}
+          </span>
+          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]">
+            The tech job you&apos;re <span className="italic text-teal">actually</span> a fit for.
+          </h1>
+          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-xl mx-auto leading-relaxed">
+            Live postings from companies&apos; own careers pages, ranked against your resume, with interview prep, real interview questions and auto-apply built in.
           </p>
 
-          <div className="backdrop-blur-md lg:backdrop-blur-0 border border-white lg:border-0 p-2 lg:p-0 rounded-2xl mt-[40px] flex flex-col lg:flex-row items-center justify-center gap-5">
-            <div className="relative w-full">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSearch();
+            }}
+            className="mt-7 sm:mt-9 bg-surface rounded-[22px] lg:rounded-full p-1.5 flex flex-col lg:flex-row gap-1.5 text-ink shadow-card-hover border border-line text-start"
+          >
+            <label className="relative flex-1">
+              <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-5 w-5 text-ink-400 pointer-events-none" />
               <input
-                className="bg-white w-full py-[23px] pl-12 lg:pl-10 rounded-[14px] lg:w-[525px] h-[58px] text-[#232323]"
-                type="text"
+                className="w-full h-12 lg:h-14 ps-12 pe-4 rounded-full bg-transparent text-base placeholder:text-ink-400 focus:outline-none focus:bg-canvas"
+                type="search"
                 placeholder="Search jobs, companies, or keywords..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                aria-label="Search jobs"
               />
-              <SearchIcon />
-            </div>
-            <div className="flex flex-row gap-4 items-center">
-              <LocationSelect
-                jobs={allJobs}
-                selectedCities={city}
-                setSelectedCities={setCity}
-              />
+            </label>
+            <LocationSelect jobs={allJobs} cities={facets?.cities} selectedCities={city} setSelectedCities={setCity} />
+            <button type="submit" className="jm-btn jm-btn-primary h-12 lg:h-14 lg:px-7">
+              Search jobs <ArrowRight className="h-4 w-4" />
+            </button>
+          </form>
+
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {quick.map((q) => (
               <button
-                onClick={handleSearch}
-                className="bg-[#11AEFF] px-12 py-3.5 lg:px-20 lg:py-4 rounded-[14px] whitespace-nowrap w-fit lg:text-[16px] text-[12px]"
+                key={q.label}
+                type="button"
+                onClick={q.toggle}
+                aria-pressed={q.on}
+                className={`jm-chip transition-colors ${q.on ? "bg-navy text-white" : "bg-surface hover:bg-band-200"}`}
               >
-                Search Jobs
+                {q.label}
               </button>
-              <div className="flex flex-row gap-4 items-center">
-                {/* חיפוש גלובלי */}
-               
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 text-center lg:left-40 lg:w-[230px] lg:transform-none lg:text-left w-fit">
-          <p className="text-white text-[14px] lg:text-[18px]">
-            Job Match has a collection of +1000 high-end Jobs
-          </p>
-        </div>
-      </div>
 
-      {loading && page === 1 ? (
-        <p className="text-center mt-4">Loading jobs...</p>
-      ) : jobs.length === 0 ? (
-        <div className="flex flex-col lg:flex-row lg:items-start items-center justify-center mx-auto lg:max-w-4/5 px-4 gap-5 mt-10">
-            {!isMobile ? (
-              <div className="block md:hidden lg:block">
-                <JobsFilters
-                  jobs={allJobs}
-                  company={company}
-                  country={country}
-                  city={city}
-                  setCompany={setCompany}
-                  setCountry={setCountry}
-                  setCity={setCity}
-                  isMobile={isMobile}
-                />
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={handleModalOpen}
-                  className="bg-[#24A8A2] max-w-72 flex gap-20 rounded-[20px] p-5 hover:bg-[#11AEFF]"
-                >
-                  <label className="mb-1 text-white font-outfit font-medium text-[20px]">
-                    Filters and Sort
-                  </label>
-                  <FilterIcon />
+        {/* Ticker: the first postings on the page (your top matches when signed in), sliding slowly; pauses on hover */}
+        {jobs.length >= 4 && (
+          <LogoMarquee
+            onPick={(name) => {
+              // Every open posting of that company: clear the other filters, keep the page, scroll to the list.
+              setSearchTerm("");
+              setCompany([name]);
+              setCity([]); setCountry([]); setSeniority([]); setJobType([]);
+              window.history.replaceState(null, "", `/?company=${encodeURIComponent(name)}`);
+              document.getElementById("positions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        )}
+      </section>
+
+      
+
+      {/* Filters + results */}
+      <section className="mt-8 lg:mt-10">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 id="positions" className="jm-title scroll-mt-24">Available positions</h2>
+              <p className="jm-subtitle">
+                {loading && page === 1 ? "Searching the catalog…" : user && !isSearching && catalogTotal > jobCount ? `Your best ${jobCount.toLocaleString()} matches of ${catalogTotal.toLocaleString()} open jobs · ranked by your resume` : `Showing ${jobCount.toLocaleString()} jobs${user && !isSearching ? " · ranked by your resume" : ""}`}
+              </p>
+            </div>
+            <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary" aria-haspopup="dialog" aria-expanded={showmodal}>
+              <SlidersHorizontal className="h-4 w-4" />
+              Filter
+              {activeFilters.length > 0 && <span className="jm-chip jm-chip-navy px-2 py-0">{activeFilters.length}</span>}
+            </button>
+          </div>
+
+          {(activeFilters.length > 0 || searchTerm.trim()) && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {searchTerm.trim() && (
+                <button type="button" onClick={() => setSearchTerm("")} className="jm-chip jm-chip-sky hover:bg-sky/20">
+                  “{searchTerm.trim()}” <X className="h-3 w-3" />
                 </button>
-              </div>
-            )}
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col lg:flex-row lg:items-start items-center justify-center mx-auto lg:max-w-4/5 px-4 gap-5 mt-10">
-            {!isMobile ? (
-              <div className="block md:hidden lg:block">
-                <JobsFilters
-                  jobs={allJobs}
-                  company={company}
-                  country={country}
-                  city={city}
-                  setCompany={setCompany}
-                  setCountry={setCountry}
-                  setCity={setCity}
-                  isMobile={isMobile}
-                />
-              </div>
-            ) : (
-              <div>
-                <button
-                  onClick={handleModalOpen}
-                  className="bg-[#24A8A2] max-w-72 max-h-16 flex gap-20 rounded-[20px] p-5 hover:bg-[#11AEFF]"
-                >
-                  <label className="text-white font-outfit font-medium text-[18px]">
-                    Filters and Sort
-                  </label>
-                  <WhiteFilterIcon />
+              )}
+              {activeFilters.map((f) => (
+                <button key={f.label} type="button" onClick={f.clear} className="jm-chip jm-chip-teal hover:bg-teal/20">
+                  {f.label} <X className="h-3 w-3" />
                 </button>
-              </div>
-            )}
+              ))}
+              <button type="button" onClick={clearAll} className="text-sm text-ink-400 hover:text-navy underline-offset-2 hover:underline ms-1">
+                Clear all
+              </button>
+            </div>
+          )}
 
-            <div className="flex-1">
-              <div className="flex flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <label className="font-outfit text-2xl lg:text-[34px] font-semibold">
-                    Available Positions
-                  </label>
-                  <p className="lg:text-[16px] text-[12px] mt-2 text-[#232323]">
-                    Showing {jobCount} jobs 
-                  </p>
+          {loading && page === 1 ? (
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5" aria-busy="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="jm-card p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="jm-skeleton h-11 w-11" />
+                    <div className="flex-1 space-y-2">
+                      <div className="jm-skeleton h-4 w-3/4" />
+                      <div className="jm-skeleton h-3 w-1/2" />
+                    </div>
+                  </div>
+                  <div className="jm-skeleton h-3 w-full" />
+                  <div className="jm-skeleton h-3 w-5/6" />
+                  <div className="flex gap-2">
+                    <div className="jm-skeleton h-6 w-16 rounded-full" />
+                    <div className="jm-skeleton h-6 w-20 rounded-full" />
+                  </div>
                 </div>
-
-                <div>
-                  <select className="border border-[#232323]/50 rounded-[14px] py-3 px-4 text-[#232323] font-outfit w-full sm:w-auto">
-                    <option>Newest First</option>
-                    <option>Least Applications</option>
-                    <option>Most Popular</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              ))}
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="mt-6">
+              <EmptyState
+                icon="🔎"
+                title="No jobs match these filters"
+                text="Try fewer filters or a broader search term — the catalog is refreshed every day."
+                action={
+                  <button type="button" onClick={clearAll} className="jm-btn jm-btn-primary">
+                    Clear filters
+                  </button>
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 auto-rows-fr">
                 {jobs.map((job, i) => (
-                  <JobCard key={job.id || i} job={job} jobIndex={i} />
+                  <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}
               </div>
 
               {page < totalPages && (
-                <div className="text-center mt-6">
-                  <button
-                    className="px-6 py-3 bg-[#24A8A2] text-white rounded-[14px] hover:bg-blue-600 transition font-outfit"
-                    onClick={loadMore}
-                    disabled={loading}
-                  >
-                    {loading ? "Loading..." : "Load More"}
+                <div className="text-center mt-8">
+                  {/* Scroll sentinel: when visible, the next page loads automatically. */}
+                  <div ref={loadMoreRef} aria-hidden="true" className="h-px" />
+                  <button className="jm-btn jm-btn-secondary" onClick={loadMore} disabled={loading}>
+                    {loading ? "Loading…" : "Load more"}
                   </button>
                 </div>
               )}
-            </div>
-          </div>
-        </>
-      )}
+            </>
+          )}
+        </div>
+      </section>
 
-      {showmodal && (
+      {/* Filter drawer: slides in from the right edge on every screen size (like a store's filter panel). The
+          fixed wrapper clips the parked panel so it can never widen the page on phones. */}
+      <div className={`fixed inset-0 z-[70] overflow-hidden ${showmodal ? "" : "pointer-events-none"}`} aria-hidden={!showmodal} inert={!showmodal}>
+        <div onClick={closeSheet} className={`absolute inset-0 bg-navy/60 backdrop-blur-sm transition-opacity duration-300 ${showmodal ? "opacity-100" : "opacity-0"}`} />
         <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setShowModal(false)}
-        />
-      )}
-
-      <div
-        className={`lg:hidden fixed left-1/2 bottom-6 transform -translate-x-1/2
-        w-[95%] max-w-84 bg-white rounded-t-3xl shadow-2xl
-        transition-all duration-300 ease-in-out z-50
-        ${showmodal ? "translate-y-0" : "translate-y-full"}`}
-      >
-        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-2" />
-        <div className="p-4 overflow-y-auto max-h-[75vh]">
-          <JobsFilters
-            jobs={allJobs}
-            company={company}
-            country={country}
-            city={city}
-            setCompany={setCompany}
-            setCountry={setCountry}
-            setCity={setCity}
-            isMobile={isMobile}
-          />
+          ref={sheetRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Filters"
+          tabIndex={-1}
+          className={`absolute top-0 right-0 h-full w-[88%] max-w-[400px] bg-surface shadow-card-hover flex flex-col
+          transition-transform duration-300 ease-out ${showmodal ? "translate-x-0" : "translate-x-full"}`}
+        >
+          <div className="flex items-center justify-between px-6 h-[72px] border-b border-line shrink-0">
+            <span className="jm-h2 tracking-[0.08em] uppercase text-[15px]">Filter</span>
+            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-ghost jm-btn-icon" aria-label="Close filters">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="px-6 flex-1 overflow-y-auto jm-scroll">{filtersPanel}</div>
+          <div className="px-6 py-4 border-t border-line flex items-center justify-between gap-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <button type="button" onClick={clearAll} disabled={activeFilters.length === 0} className="text-sm text-ink-600 hover:text-navy underline-offset-4 hover:underline disabled:opacity-40 disabled:no-underline">
+              Clear all{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+            </button>
+            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
+              View {jobCount.toLocaleString()} jobs
+            </button>
+          </div>
         </div>
       </div>
     </div>

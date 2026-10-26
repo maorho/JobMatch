@@ -5,23 +5,22 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
 import JobrecruiterCandidateList from "./JobrecruiterCandidateList";
-import { GoogleIcon } from "@/app/components/JobCard";
+import CompanyLogo from "@/app/components/CompanyLogo";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { CloseIcon, EditIcon, UpdateIcon } from "@/app/components/icons";
 import { DeleteIcon } from "lucide-react";
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
+import { ConfirmInline, InlineNotice, Modal } from "@/app/components/Dialog";
 
 interface TagCompProps {
   headline: string;
   number: number;
 }
 const TagComp: React.FC<TagCompProps> = ({ headline, number }) => (
-  <div className="flex justify-between items-center py-4 px-6 bg-white rounded-[12px] border border-black/30 shadow-sm w-full max-w-[250px]">
-    <div className="flex flex-col">
-      <label className="font-outfit font-medium text-[14px]">{headline}</label>
-      <label className="font-outfit font-bold text-[30px]">{number}</label>
-    </div>
+  <div className="jm-card p-4 sm:p-5">
+    <div className="text-2xl sm:text-3xl font-semibold text-navy leading-none">{number}</div>
+    <div className="jm-muted mt-2">{headline}</div>
   </div>
 );
 
@@ -37,6 +36,10 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   onSuccess,
 }) => {
   const [showModal, setShowModal] = useState(false);
+  // Inline replacements for confirm()/alert(): a pending delete question and a result notice.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [totalCandidates, setTotalCandidates] = useState(0);
   const [underReview, setUnderReview] = useState(0);
   const [shortlisted, setShortlisted] = useState(0);
@@ -50,7 +53,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
       rejected: number;
     } | null>
   >(() => Promise.resolve(null));
-  
+
   const [updateStatuses, setUpdatedStatuses] = useState<Map<string, string>>(
     new Map()
   );
@@ -77,7 +80,9 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
     { headline: "Rejected", number: rejected },
   ];
   if (!user) return null;
-  const isPublisher = user.id.toString() === job.publisher.toString()|| user.admin === true;
+  const isPublisher =
+    user.admin === true ||
+    (!!job.publisher && user.id.toString() === String(job.publisher));
   const handleUpdate = async () => {
     try {
       const res = await fetch("/api/jobsDashboard/Recruiter/changeStatus", {
@@ -91,8 +96,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
       if (!res.ok) throw new Error("Failed to update candidate statuses");
 
-      const result = await res.json();
-      console.log("Update success:", result);
+      await res.json();
       const newMap = new Map();
       setUpdatedStatuses(newMap);
 
@@ -113,26 +117,51 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
     if (isPublisher) setShowModal(true);
   };
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this job?"
-    );
-    if (!confirmed) return;
-
-    const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob?jobId=${job._id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.ok) {
-      alert("Job deleted");
-      setShowModal(false);
-      if (onSuccess) onSuccess();
-    } else {
-      alert("Something went wrong");
-    }
-    setShowModal(false);
+  const askDelete = (e?: React.MouseEvent) => {
+    e?.stopPropagation(); // the card itself opens the modal on click
+    setNotice(null);
+    setConfirmingDelete(true);
   };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/jobsDashboard/Recruiter/deleteJob?jobId=${job._id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        setNotice({ kind: "ok", text: "Job deleted" });
+        setShowModal(false);
+        if (onSuccess) onSuccess();
+      } else {
+        setNotice({ kind: "err", text: "Something went wrong" });
+      }
+    } catch {
+      setNotice({ kind: "err", text: "Something went wrong" });
+    } finally {
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  };
+
+  const deletePrompt = confirmingDelete ? (
+    <ConfirmInline
+      text={`Delete "${job.job}"? This cannot be undone.`}
+      confirmLabel="Delete"
+      cancelLabel="Cancel"
+      danger
+      busy={deleting}
+      onConfirm={handleDelete}
+      onCancel={() => setConfirmingDelete(false)}
+    />
+  ) : notice ? (
+    <div onClick={(e) => e.stopPropagation()}>
+      <InlineNotice kind={notice.kind} onDismiss={() => setNotice(null)}>
+        {notice.text}
+      </InlineNotice>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -141,92 +170,73 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
         initial={{ opacity: 0, x: -40 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: jobIndex * 0.05, duration: 0.5 }}
-        className="
-          relative
-          px-4 py-3
-          w-full max-w-[360px]
-          h-[320px] sm:h-[320px]
-          font-outfit
-          border border-[#000000]/10
-          rounded-[30px]
-          m-auto mb-6
-          cursor-pointer
-          hover:scale-105
-          transition-transform
-          overflow-hidden
-          box-border
-          bg-white
-          flex flex-col justify-between
-        "
+        className="jm-card jm-card-hover p-5 h-full flex flex-col gap-4 cursor-pointer"
       >
         {/* כותרת עליונה */}
-        <div>
-          <div className="flex justify-between items-center px-3 pt-3">
-            <h2 className="text-base sm:text-lg font-semibold truncate max-w-[70%]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-semibold text-navy truncate">
               {job.job}
             </h2>
-            <GoogleIcon />
-          </div>
-
-          {/* מיקום וזמן */}
-          <div className="flex justify-between items-center px-3 mt-2 text-sm sm:text-base text-gray-600">
-            <h3 className="truncate">
+            {/* מיקום וזמן */}
+            <p className="text-sm text-ink-600 truncate mt-1">
               {job.city}, {job.country}
-            </h3>
-            <h3 className="whitespace-nowrap">{time}</h3>
+              <span className="text-ink-400"> · {time}</span>
+            </p>
           </div>
-
-          {/* תיאור */}
-          <p className="line-clamp-3 mx-3 mt-4 mb-2 text-[#232323] text-xs sm:text-sm leading-relaxed">
-            {job.description}
-          </p>
-
-          {/* תגיות */}
-          <div className="grid grid-cols-3 gap-2 px-3 mb-4">
-            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-              Project Strategy
-            </span>
-            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-              Cloud
-            </span>
-            <span className="bg-[#F9F9F9] rounded-[20px] text-center py-1 text-[10px] sm:text-xs truncate">
-              AWS
-            </span>
-          </div>
-          <div className="border-b-[1px] border-[#000000]/10 mb-5"></div>
+          <CompanyLogo
+            name={job.company?.companyName ?? ""}
+            domain={job.companyDomain}
+            logoUrl={job.logoUrl}
+            className="h-10 w-10 shrink-0 rounded-xl border border-line p-1"
+          />
         </div>
 
+        {/* תיאור */}
+        <p className="line-clamp-3 text-sm text-ink-600 leading-relaxed">
+          {job.description}
+        </p>
+
+        {/* תגיות */}
+        <div className="flex flex-wrap gap-2">
+          <span className="jm-chip">Project Strategy</span>
+          <span className="jm-chip">Cloud</span>
+          <span className="jm-chip">AWS</span>
+        </div>
+
+        {!showModal && deletePrompt}
+
         {/* כפתורים בתחתית */}
-        <div className="grid grid-cols-2 gap-3 px-3 pb-4 mt-auto">
-          <button 
-          onClick={() => {
+        <div className="grid grid-cols-2 gap-3 pt-4 mt-auto border-t border-line">
+          <button
+          onClick={(e) => {
+                    e.stopPropagation();
                     setShowModal(false);
                     router.push(`/RecruiterDashboard/Edit/${job._id}`);
                   }}
-          className="font-outfit rounded-[14px] border border-[#000000] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-gray-100 transition-colors">
+          className="jm-btn jm-btn-secondary jm-btn-sm">
             Edit Position
           </button>
           <button
-            onClick={handleDelete}
-           className="font-outfit rounded-[14px] text-white bg-[#ff1111] py-2 sm:py-3 px-2 sm:px-4 text-sm sm:text-base hover:bg-[#0d8ed6] transition-colors">
+            onClick={askDelete}
+           className="jm-btn jm-btn-danger jm-btn-sm">
             Delete Job
           </button>
         </div>
       </motion.div>
 
       {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-[#000000]/70 bg-opacity-40 z-[10000]">
-          <div className="bg-white max-h-full p-4 rounded-lg shadow-lg w-[1000px] max-w-full">
+      <Modal open={showModal} onClose={() => setShowModal(false)} label={job.job}>
+          <div className="jm-card w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* כותרת + כפתורים */}
-            <div className="flex justify-between items-center w-full mb-5">
-              <label className="lg:text-2xl text-[16px] font-outfit font-bold">
+            <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-line">
+              <h2 className="jm-h2 truncate">
                 {job.job}
-              </label>
+              </h2>
 
-              <div className="flex gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  className="flex px-2 md:px-4 py-2 bg-[#2563EB] text-white rounded-[8px] hover:bg-green-600"
+                  className="jm-btn jm-btn-secondary jm-btn-sm"
                   onClick={() => {
                     setShowModal(false);
                     router.push(`/RecruiterDashboard/Edit/${job._id}`);
@@ -236,36 +246,34 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
                   {!isMobile&&'Edit Position'}
                 </button>
                 <button
-                  className="flex px-2 md:px-4 py-2 bg-[#16A34A] text-white rounded-[8px] hover:bg-blue-600"
+                  className="jm-btn jm-btn-primary jm-btn-sm"
                   onClick={handleUpdate}
                 >
                   <UpdateIcon />
                   {!isMobile&&'Update Statuses'}
                 </button>
                 <button
-                  className="px-2 md:px-4 py-2 bg-red-500 rounded-[8px] hover:bg-red-600"
-                  onClick={handleDelete}
+                  className="jm-btn jm-btn-danger jm-btn-icon h-9 w-9"
+                  onClick={askDelete}
+                  aria-label="Delete job"
                 >
-                  <DeleteIcon
-                    color="#FFFFFF"
-                    className="bg-red-500 border-[1px] border-red-500"
-                  />
+                  <DeleteIcon className="h-4 w-4" />
                 </button>
                 <button
-                  className="px-4 py-2 text-white"
+                  className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9 text-ink-400"
                   onClick={() => setShowModal(false)}
+                  aria-label="Close"
                 >
-                  <CloseIcon color="#6B7280" className="hover:bg-gray-500" />
+                  <CloseIcon color="currentColor" />
                 </button>
               </div>
             </div>
-            <div className="w-full bg-[#E5E7EB]/20 px-8 py-8">
-              <div className="flex justify-center">
-                <div className="grid grid-cols-2 md:gap-x-20 lg:grid-cols-4 gap-4">
+            <div className="overflow-y-auto jm-scroll bg-canvas p-4 sm:p-5 space-y-5">
+              {deletePrompt}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {
                   tag_json.map((x,idx)=>(<TagComp key={idx} headline={x.headline} number={x.number} />))
                 }
-                </div>
               </div>
               {/* רשימת מועמדים */}
               <JobrecruiterCandidateList
@@ -281,8 +289,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
               />
             </div>
           </div>
-        </div>
-      )}
+      </Modal>
     </>
   );
 };

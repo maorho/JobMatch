@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   HumanMessage,
@@ -76,8 +77,20 @@ function extractMemoryFromText(text: string): ExtractedMemory {
   // ניסיון – משפטים אופייניים
   const experienceRegex =
     /(worked|experience|managed|built|developed|led|ניהלתי|אני עובד|אני עבדתי|יש לי ניסיון|עבדתי כ)[^.!?]{0,120}/gi;
-  const matches = text.match(experienceRegex);
-  memory.experience = matches || [];
+  const matches = text.match(experienceRegex) || [];
+  // Sanitize before persisting: strip control tokens, cap length and count, and
+  // dedupe — this memory is re-injected into later prompts, so bound it to limit
+  // stored prompt-injection and unbounded growth/cost.
+  memory.experience = Array.from(
+    new Set(
+      matches
+        .map((m) =>
+          m.replace(/#{2,}[A-Z_]+#{2,}/g, "").replace(/\s+/g, " ").trim()
+        )
+        .filter((m) => m.length > 0)
+        .map((m) => m.slice(0, 140))
+    )
+  ).slice(0, 5);
 
   // סגנון קורות חיים
   if (lower.includes("ats")) {
@@ -145,10 +158,33 @@ function hasMinimalResumeInfo(user: UserLean | null, mem: ExtractedMemory) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages} = await req.json();
-    const userId = await getUserIdFromRequest(req)
-    console.log('userid:',userId);
-    connectToDatabase();
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
+    try {
+      await consumeQuota(userId, "resume_chat");
+    } catch (e) {
+      const q = quotaResponse(e);
+      if (q) return q;
+      throw e;
+    }
+
+    const { messages } = await req.json();
+    // Bound the input so an authenticated client can't drive unbounded LLM cost.
+    if (!Array.isArray(messages) || messages.length > 50) {
+      return NextResponse.json({ error: "Invalid messages" }, { status: 400 });
+    }
+    const totalChars = messages.reduce(
+      (n: number, m: any) => n + (typeof m?.content === "string" ? m.content.length : 0),
+      0
+    );
+    if (totalChars > 24000) {
+      return NextResponse.json({ error: "Conversation too long" }, { status: 413 });
+    }
+
+    await connectToDatabase();
 
     const lastUserMessage =
       messages.filter((m: any) => m.role === "user").at(-1)?.content || "";
@@ -174,7 +210,6 @@ export async function POST(req: NextRequest) {
       extractedMemory.preferredLanguage;
     const lang =
       langFromMemory || detectLanguage(lastUserMessage || messages[0]?.content);
-    console.log(`user`,user);
     const memorySummary = `
             Known user info:
             - Name: ${user?.fullname || "Unknown"}

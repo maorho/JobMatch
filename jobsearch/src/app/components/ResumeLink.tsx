@@ -11,19 +11,19 @@ const ResumeLink: React.FC<{ resumeKey: string }> = ({ resumeKey }) => {
     }
   }, [resumeKey]);
 
-  if (!resumeKey) return <span>No resume</span>;
+  if (!resumeKey) return <span className="jm-muted">No resume</span>;
 
   return url ? (
     <a
       href={url}
-      className="text-blue-600 underline hover:text-blue-800"
+      className="jm-btn jm-btn-secondary jm-btn-sm"
       target="_blank"
       rel="noopener noreferrer"
     >
       View Resume
     </a>
   ) : (
-    <span>Loading...</span>
+    <span className="jm-muted">Loading...</span>
   );
 };
 
