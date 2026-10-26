@@ -27,6 +27,7 @@ export const DEFAULT_LIMITS: Record<string, number> = {
   mcp_matches: 60, // MCP my_matches (ranks + reranks)
   mcp_prep: 20, // MCP interview_prep (plan generation)
   mcp_apply: 10, // MCP apply_to_job (tailor + Applier)
+  question_answer: 40, // suggested answers to company interview questions (cached per résumé version)
 };
 
 export const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);

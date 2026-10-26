@@ -8,6 +8,7 @@ import { ensureWebQuestions, webQuestionsStatus, webQuestionsAvailable, claimWeb
 import { getUserIdFromToken } from "@/app/lib/getUserIdFromRequest";
 import { breadcrumbJsonLd, faqJsonLd } from "@/app/lib/seo/jsonld";
 import CompanyLogo from "@/app/components/CompanyLogo";
+import SuggestedAnswer from "@/app/components/SuggestedAnswer";
 
 export const dynamic = "force-dynamic"; // the signed-in view differs from the public one
 
@@ -166,6 +167,7 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
                   <li key={i} className="text-ink">
                     <div className="font-medium text-navy" dir="auto">{q.question}</div>
                     <Provenance q={q} />
+                    {userId && <SuggestedAnswer company={bank.company} question={q.question} stage={q.stage} topic={q.topic} />}
                   </li>
                 ))}
               </ol>
@@ -187,7 +189,7 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
             <h3 className="jm-h2 text-base">להתאמן על זה בקול</h3>
             <p className="text-sm text-ink-600 leading-relaxed">המראיין של JobMatch מכיר את {bank.company} ואת השאלות האלה, ומנהל איתך ראיון אמיתי — בשיחה, לא בצ&apos;אט — עם משוב בסוף.</p>
             <Link href={`/?company=${encodeURIComponent(bank.company)}`} className="jm-btn jm-btn-primary w-full">משרות פתוחות ב-{bank.company}</Link>
-            {!userId && <p className="jm-muted text-center">{hidden > 0 ? `${hidden} שאלות נוספות אחרי התחברות` : "ההכנה המלאה למשתמשים רשומים"}</p>}
+            {!userId && <p className="jm-muted text-center">{hidden > 0 ? `${hidden} שאלות נוספות ותשובה מוצעת לכל שאלה, לפי קורות החיים שלך — אחרי התחברות` : "תשובה מוצעת לכל שאלה, לפי קורות החיים שלך — למשתמשים רשומים"}</p>}
           </section>
           <section className="jm-card p-5 space-y-2">
             <h3 className="jm-h2 text-base">מאיפה השאלות</h3>
