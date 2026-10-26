@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
@@ -85,19 +86,28 @@ export function splitForReader(questions: BankQuestion[], signedIn: boolean): { 
 
 function Provenance({ q }: { q: BankQuestion }) {
   const src = q.sources.find((s) => s.url) || q.sources[0];
+  // Each segment is bidi-isolated (English role titles, Hebrew provenance, a URL host) and the
+  // separators live between them, so the line reads in one direction instead of interleaving.
+  const parts: React.ReactNode[] = [];
+  if (q.topic) parts.push(<span key="topic" dir="auto">{q.topic}</span>);
+  if (q.count > 0) parts.push(<span key="count" className="inline-flex items-center gap-1 text-teal" dir="rtl">● {q.count > 1 ? `דווח על ידי ${q.count} מועמדי JobMatch` : "דווח על ידי מועמד/ת JobMatch"}</span>);
+  if (q.web > 0)
+    parts.push(
+      <span key="web" className="inline-flex items-center gap-1" dir="rtl">
+        <span className="text-sky">◆</span> מהרשת
+        {src?.name && (src.url ? <a href={src.url} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline" dir="ltr">({src.name})</a> : <bdi>({src.name})</bdi>)}
+        {q.web > 1 && <bdi>+{q.web - 1}</bdi>}
+      </span>
+    );
+  if (q.roleTitles.length > 0) parts.push(<span key="roles" dir="auto">{q.roleTitles.slice(0, 2).join(", ")}</span>);
   return (
-    <div className="jm-muted flex flex-wrap items-center gap-x-1.5">
-      {q.topic && <span>{q.topic} ·</span>}
-      {q.count > 0 && <span className="inline-flex items-center gap-1 text-teal">● {q.count > 1 ? `דווח על ידי ${q.count} מועמדי JobMatch` : "דווח על ידי מועמד/ת JobMatch"}</span>}
-      {q.count > 0 && q.web > 0 && <span>·</span>}
-      {q.web > 0 && (
-        <span className="inline-flex items-center gap-1">
-          <span className="text-sky">◆</span> מהרשת
-          {src?.name && (src.url ? <a href={src.url} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline">({src.name})</a> : <span>({src.name})</span>)}
-          {q.web > 1 && <span>+{q.web - 1}</span>}
-        </span>
-      )}
-      {q.roleTitles.length > 0 && <span>· {q.roleTitles.slice(0, 2).join(", ")}</span>}
+    <div className="jm-muted flex flex-wrap items-center gap-x-1.5" dir="rtl">
+      {parts.map((p, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span aria-hidden="true">·</span>}
+          {p}
+        </React.Fragment>
+      ))}
     </div>
   );
 }
@@ -161,7 +171,7 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
         <div className="space-y-6">
           {groups.map((g) => (
             <section key={g.stage} className="jm-card p-5 sm:p-6">
-              <h2 className="jm-h2 mb-3">{STAGE_TITLE[g.stage] || g.stage} <span className="jm-muted font-normal">· {g.shown.length + g.hidden} שאלות</span></h2>
+              <h2 className="jm-h2 mb-3"><bdi>{STAGE_TITLE[g.stage] || g.stage}</bdi> <span className="jm-muted font-normal" dir="rtl">· <bdi>{g.shown.length + g.hidden}</bdi> שאלות</span></h2>
               <ol className="space-y-3 list-decimal ps-5">
                 {g.shown.map((q, i) => (
                   <li key={i} className="text-ink">
