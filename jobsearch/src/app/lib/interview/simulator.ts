@@ -142,7 +142,7 @@ Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnsw
   return { ...parsed.data, question: parsed.data.question || input.question };
 }
 
-export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): { system: string; user: string } {
+export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[]; compact?: boolean }): { system: string; user: string } {
   const memory = input.coachMemory
     ? `\nThis candidate has done mock interviews before: ${input.coachMemory}. Add "progress": {"note": one honest paragraph comparing this interview to the previous ones (score, delivery, the recurring themes), "improved": [themes that got better], "stillOpen": [themes still showing]}. Be concrete; "no change" is a valid answer.`
     : "";
@@ -155,16 +155,33 @@ export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & {
 Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance; 50–69 = borderline; below 50 = would not advance), each dimension 0–10, each answer 0–10.
 Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
-${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); copy them into "answerReviews" UNCHANGED and base the rest on them.` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${voice}${memory}
+${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); base the rest on them and return "answerReviews": [] (they are attached afterwards, do not repeat them).` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${input.compact ? "\nKeep it tight: summary ≤ 120 words, ≤ 4 strengths, ≤ 4 improvements, ≤ 4 next steps, each note ≤ 40 words, betterAnswer ≤ 3 sentences." : ""}${voice}${memory}
 Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.`;
   const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}${input.priorReviews?.length ? `\n\nPER-QUESTION REVIEWS (already done):\n${JSON.stringify(input.priorReviews)}` : ""}`;
   return { system, user };
 }
 
+/** Output budget for the debrief. Hebrew costs ~2–3 tokens per word, so a long interview with per-answer reviews can run past 4k. */
+const FEEDBACK_MAX_TOKENS = 8000;
+
 export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): Promise<InterviewFeedback> {
-  const { system, user } = buildFeedbackPrompt(input);
-  const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, maxTokens: 4000, timeout: 90_000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
-  const parsed = feedbackSchema.safeParse(extractJson(contentOf(res)));
+  const ask = async (compact: boolean) => {
+    const { system, user } = buildFeedbackPrompt({ ...input, compact });
+    const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, maxTokens: FEEDBACK_MAX_TOKENS, timeout: 120_000, maxRetries: 1, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+    const raw = contentOf(res);
+    const finish = (res as any)?.response_metadata?.finish_reason ?? (res as any)?.additional_kwargs?.finish_reason;
+    if (finish === "length") throw new Error("truncated");
+    return extractJson(raw);
+  };
+  let json: unknown;
+  try {
+    json = await ask(false);
+  } catch (e) {
+    // A cut-off or malformed JSON (typically a very long interview): one retry asking for a compact debrief.
+    console.warn("[interview] debrief retry (compact):", (e as Error)?.message?.slice(0, 120));
+    json = await ask(true);
+  }
+  const parsed = feedbackSchema.safeParse(json);
   if (!parsed.success) throw new Error("Feedback output invalid: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).slice(0, 5).join("; "));
   // The reviews written live are the source of truth for the per-question part.
   if (input.priorReviews?.length) parsed.data.answerReviews = input.priorReviews;

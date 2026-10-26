@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, cached: false, feedback, delivery: fresh?.delivery || null });
   } catch (err: any) {
     console.error("❌ interview feedback:", err);
-    return NextResponse.json({ error: err?.message || "Could not write the feedback" }, { status: 500 });
+    // The raw model/parse error ("Expected ',' or ']' … in JSON") is for the log, not the candidate.
+    return NextResponse.json({ error: "המשוב לא נכתב הפעם. נסה/י שוב בעוד רגע — הראיון עצמו נשמר." }, { status: 500 });
   }
 }
