@@ -67,7 +67,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             <X className="h-3.5 w-3.5" />
           </button>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <CompanyLogo name={companyName} domain={job.companyDomain} logoUrl={job.logoUrl} className="h-10 w-10 shrink-0 rounded-xl border border-line p-1" />
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-navy leading-snug [overflow-wrap:anywhere]">
