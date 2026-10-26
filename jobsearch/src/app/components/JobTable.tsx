@@ -491,7 +491,7 @@ function JobTable() {
           )}
 
           {loading && page === 1 ? (
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5" aria-busy="true">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="jm-card p-5 space-y-4">
                   <div className="flex items-center gap-3">
@@ -525,7 +525,7 @@ function JobTable() {
             </div>
           ) : (
             <>
-              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 auto-rows-fr">
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 auto-rows-fr">
                 {jobs.map((job, i) => (
                   <JobCard key={jobKey(job, i)} job={job} jobIndex={i} />
                 ))}
