@@ -58,27 +58,27 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       aria-label={`${job.job} at ${companyName}`}
       className="jm-card jm-card-hover jm-reveal p-5 flex flex-col h-full min-w-0 cursor-pointer"
     >
-      {/* Header: the title owns the row; two quiet actions on the end */}
-      <div className="flex items-start gap-3">
-        <CompanyLogo name={companyName} domain={job.companyDomain} logoUrl={job.logoUrl} className="h-10 w-10 shrink-0 rounded-xl border border-line p-1" />
-        <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-navy leading-snug line-clamp-2 min-h-[2.6rem] [overflow-wrap:anywhere]" title={job.job}>
-            {job.job}
-          </h3>
-          <p className="text-sm text-ink-600 truncate">{companyName}</p>
-        </div>
-        <span className="flex items-center gap-0.5 shrink-0 -me-1.5 -mt-1">
+      {/* Actions sit on their own row above the title, so the title keeps the full card width on one line */}
+      <div className="flex items-center justify-end gap-0.5 -me-1.5 -mt-2 mb-1">
           <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-7 w-7 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
             <Bookmark className="h-3.5 w-3.5" fill={isSaved ? "currentColor" : "none"} />
           </button>
           <button type="button" onClick={(e) => act(e, "dismissed")} aria-label="Not relevant" title="לא רלוונטי" className="h-7 w-7 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
             <X className="h-3.5 w-3.5" />
           </button>
-        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <CompanyLogo name={companyName} domain={job.companyDomain} logoUrl={job.logoUrl} className="h-10 w-10 shrink-0 rounded-xl border border-line p-1" />
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-navy leading-snug truncate" title={job.job}>
+            {job.job}
+          </h3>
+          <p className="text-sm text-ink-600 truncate">{companyName}</p>
+        </div>
       </div>
 
       {/* One meta line: where · how · level · when */}
-      <div className="mt-3 flex items-center gap-2 text-sm text-ink-600 min-w-0">
+      <div className="mt-3 flex items-center gap-2 text-xs text-ink-600 min-w-0">
         {meta && (
           <span className="inline-flex items-center gap-1 truncate">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />

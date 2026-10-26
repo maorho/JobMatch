@@ -442,7 +442,18 @@ function JobTable() {
         </div>
 
         {/* Ticker: the first postings on the page (your top matches when signed in), sliding slowly; pauses on hover */}
-        {jobs.length >= 4 && <LogoMarquee />}
+        {jobs.length >= 4 && (
+          <LogoMarquee
+            onPick={(name) => {
+              // Every open posting of that company: clear the other filters, keep the page, scroll to the list.
+              setSearchTerm("");
+              setCompany([name]);
+              setCity([]); setCountry([]); setSeniority([]); setJobType([]);
+              window.history.replaceState(null, "", `/?company=${encodeURIComponent(name)}`);
+              document.getElementById("positions")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          />
+        )}
       </section>
 
       
@@ -455,7 +466,7 @@ function JobTable() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="jm-title">Available positions</h2>
+              <h2 id="positions" className="jm-title scroll-mt-24">Available positions</h2>
               <p className="jm-subtitle">
                 {loading && page === 1 ? "Searching the catalog…" : user && !isSearching && catalogTotal > jobCount ? `Your best ${jobCount.toLocaleString()} matches of ${catalogTotal.toLocaleString()} open jobs · ranked by your resume` : `Showing ${jobCount.toLocaleString()} jobs${user && !isSearching ? " · ranked by your resume" : ""}`}
               </p>
