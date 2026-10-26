@@ -75,7 +75,7 @@ export default function SuggestedAnswer({ company, question, stage, topic }: { c
         </p>
       )}
       {state.tips.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-xs text-ink-600 list-disc ps-4">
+        <ul className="mt-2 space-y-0.5 text-xs text-ink-600 list-disc list-inside px-1">
           {state.tips.map((t, i) => (
             <li key={i} dir="auto">
               {t}
