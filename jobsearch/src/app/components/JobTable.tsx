@@ -399,7 +399,7 @@ function JobTable() {
             The tech job you&apos;re <span className="italic text-teal">actually</span> a fit for.
           </h1>
           <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-xl mx-auto leading-relaxed">
-            Live postings from companies&apos; own careers pages, ranked against your résumé, with interview prep, real interview questions and auto-apply built in.
+            Live postings from companies&apos; own careers pages, ranked against your resume, with interview prep, real interview questions and auto-apply built in.
           </p>
 
           <form
@@ -442,34 +442,10 @@ function JobTable() {
         </div>
 
         {/* Ticker: the first postings on the page (your top matches when signed in), sliding slowly; pauses on hover */}
-        {jobs.length >= 4 && (
-          <div className="relative mt-10 sm:mt-14 jm-marquee -mx-5 sm:-mx-10" aria-hidden="true">
-            <div className="jm-marquee-track flex w-max gap-4 animate-marquee [animation-duration:60s]">
-              {[0, 1].map((copy) =>
-                jobs.slice(0, 8).map((job, i) => {
-                  const name = (job as any).company?.companyName || (job as any).company || "";
-                  return (
-                    <div key={`${copy}-${jobKey(job, i)}`} className="jm-card w-[280px] shrink-0 p-4 flex items-center gap-3">
-                      <CompanyLogo name={name} domain={(job as any).companyDomain} logoUrl={(job as any).logoUrl} className="h-10 w-10 rounded-xl border border-line p-1 shrink-0" />
-                      <div className="min-w-0 flex-1 text-start">
-                        <div className="font-semibold text-navy text-sm truncate">{job.job}</div>
-                        <div className="text-xs text-ink-600 truncate">{[name, (job as any).city].filter(Boolean).join(" · ")}</div>
-                      </div>
-                      {typeof (job as any).matchScore === "number" ? (
-                        <span className="jm-chip jm-chip-teal shrink-0">{(job as any).matchScore}%</span>
-                      ) : getSeniorityLevel(job) ? (
-                        <span className="jm-chip jm-chip-sky shrink-0">{getSeniorityLevel(job)}</span>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
+        {jobs.length >= 4 && <LogoMarquee />}
       </section>
 
-      <LogoMarquee />
+      
 
       {/* Filters + results */}
       <section className="mt-8 lg:mt-10 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-6 lg:gap-8 items-start">
