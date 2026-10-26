@@ -73,6 +73,7 @@ ${input.companyBrief || "(no brief)"}
 """
 ROLE SUMMARY: ${input.plan.roleSummary || "(see title)"}
 CANDIDATE'S RÉSUMÉ (ask about specifics from it): """${(input.resumeText || "").slice(0, 3000)}"""
+RÉSUMÉ GAPS: read the résumé like a real interviewer and, if you notice a MATERIAL gap, ask about it once as one of your main questions, neutrally and without accusation — e.g. an unexplained break of months or more between roles or after studies, a very short stint, overlapping jobs, studies with no dates or no degree, a listed skill or title with nothing in the experience to back it, or a switch of field. Phrase it as curiosity ("I see about a year between X and Y — what were you doing then?"), listen, and move on; do not probe it more than once unless the answer was evasive. If nothing in the résumé is genuinely surprising, do not invent a gap.
 ${input.coachMemory ? `WHAT THE COACH REMEMBERS FROM THEIR PREVIOUS MOCK INTERVIEWS (use it to probe the weak spots again — naturally, never mention that you know): ${input.coachMemory}` : ""}
 QUESTION BANK FOR THIS STAGE (adapt, don't read verbatim; you may add your own): ${stage.likelyQuestions.map((q) => q.question).slice(0, 10).join(" | ")}
 
