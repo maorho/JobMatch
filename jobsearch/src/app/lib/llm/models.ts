@@ -7,6 +7,14 @@
  *   quality — writing the person reads (résumés, articles, research)
  *   coach   — the interview coach: the interviewer's turns, the debrief, the
  *             model answers. The product's core; gets the strongest model.
+ *             Chosen on 2026-10-29 by replaying one real HR interview on four
+ *             Claude models (scripts/interviewer-models.ts): Opus 5.5 was the
+ *             only one that was warm and professional, asked one question per
+ *             turn, re-asked an unanswered question once and then moved on,
+ *             corrected the candidate's misattributions, and never stated a
+ *             fact that wasn't in the brief. Fable 5.1 probed hardest but
+ *             invented two facts and was slowest; Sonnet 5.5 turned curt;
+ *             Haiku 4.5 wrote broken Hebrew and ignored the résumé mismatch.
  *
  * Provider: `LLM_PROVIDER=anthropic|openai`; default anthropic when
  * ANTHROPIC_API_KEY is set, else openai. Any role can be pinned with
