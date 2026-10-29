@@ -1,5 +1,6 @@
 // src/app/lib/agentJobSplitter.ts
 import OpenAI from "openai";
+import { modelFor } from "@/app/lib/llm/models";
 
 export type SplitResult = {
   companyDescription: string | null;
@@ -22,7 +23,7 @@ export async function agentSplitJobText(raw: string): Promise<SplitResult> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
   const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: modelFor("fast", "openai"), // OpenAI function calling; see llm/models.ts
     temperature: 0.2,
     messages: [
       {

@@ -1,9 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { extractJson } from "@/app/lib/resume/tailor";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
-export const OUTREACH_MODEL = "gpt-4o-mini";
+export const OUTREACH_MODEL = modelFor("fast");
 
 export type OutreachInput = {
   me: { fullname: string; currentJob?: string; resumeSummary?: string };
@@ -41,7 +42,7 @@ ROLE SUMMARY: ${(input.job.description || "").slice(0, 800) || "(none)"}`;
 
 export async function composeOutreach(input: OutreachInput): Promise<Outreach> {
   const { system, user } = buildOutreachPrompt(input);
-  const llm = new ChatOpenAI({ modelName: OUTREACH_MODEL, temperature: 0.5, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  const llm = chatModel("fast", { temperature: 0.5, json: true });
   const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
   const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
   const parsed = outreachSchema.safeParse(extractJson(text));

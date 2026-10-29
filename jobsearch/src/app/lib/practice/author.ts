@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
@@ -6,6 +5,8 @@ import PracticeTask from "@/app/models/PracticeTask";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { ROLE_INFO, LEVEL_HE, codingMinutes, assignmentHours, type PracticeRole, type PracticeLevel, type TaskKind } from "./roles";
 import { SEEDS } from "./seeds";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Task authoring for the two practice agents. The Examiner writes timed
@@ -13,7 +14,7 @@ import { SEEDS } from "./seeds";
  * through `authorTasks`, which asks gpt-4o-mini for fresh tasks (JSON,
  * validated) and falls back to the built-in seeds when there is no key.
  */
-export const AUTHOR_MODEL = process.env.PRACTICE_MODEL || "gpt-4o-mini";
+export const AUTHOR_MODEL = modelFor("fast");
 export const MIN_TASKS = 3;
 
 type LLM = { invoke: (m: any[]) => Promise<{ content: unknown }> };
@@ -67,7 +68,7 @@ export async function authorTasks(kind: TaskKind, role: PracticeRole, level: Pra
   const useLLM = !!opts.client || (!!process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
   if (!useLLM) return [];
   // Three full questions with starter code run past 12k characters; the budget must cover that or the JSON is cut mid-array.
-  const client = opts.client || new ChatOpenAI({ modelName: AUTHOR_MODEL, temperature: 0.7, maxTokens: 10_000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  const client = opts.client || chatModel("fast", { temperature: 0.7, maxTokens: 10_000, json: true });
   const ask = async (n: number) => {
     const { system, user } = buildAuthorPrompt(kind, role, level, n, opts.avoidTitles || []);
     const res = await client.invoke([new SystemMessage(system), new HumanMessage(user)]);

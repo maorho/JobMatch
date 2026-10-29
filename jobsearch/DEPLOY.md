@@ -14,7 +14,7 @@
 **משתני סביבה** (Settings → Environment Variables, לכל סביבה שרלוונטית — Production וגם Preview):
 
 - חובה: `MONGO_URI`, `JWT_SECRET`, `CRON_SECRET` (32+ תווים בפרודקשן), `APP_URL` (https, בלי `/` בסוף; ב-Preview ראו למטה).
-- מומלץ: `OPENAI_API_KEY` (בלעדיו אין התאמה/סוכנים/ראיונות), S3 (`AWS_*`, `S3_BUCKET_NAME`), מייל (`RESEND_API_KEY` או `SMTP_*` + `EMAIL_FROM` — ראו "מייל" למטה).
+- מומלץ: `OPENAI_API_KEY` (embeddings/התאמה, ראיון קולי, מחקר ברשת) ו‑`ANTHROPIC_API_KEY` (כל יצירת הטקסט: המראיין, המשוב, קו"ח, הסוכנים — ראו `src/app/lib/llm/models.ts`; בלעדיו הטקסט רץ על OpenAI), S3 (`AWS_*`, `S3_BUCKET_NAME`), מייל (`RESEND_API_KEY` או `SMTP_*` + `EMAIL_FROM` — ראו "מייל" למטה).
 - לפי פיצ'ר: Google (`GOOGLE_CLIENT_ID/SECRET` + `TOKEN_ENCRYPTION_KEY`), WhatsApp/Telegram (כולל `WHATSAPP_APP_SECRET` / `TELEGRAM_WEBHOOK_SECRET`), Puppeteer (`PUPPETEER_SERVER_URL` + `SCRAPER_TOKEN`).
 
 `src/app/lib/env.ts` נבדק בעליית השרת. **רק** ארבעת מפתחות החובה (`MONGO_URI`, `JWT_SECRET`, `CRON_SECRET`, `APP_URL`) מפילים פריסת פרודקשן **בעלייה** (ולא ב-cron הראשון). כל השאר אופציונלי: מפתח-שותף חסר (למשל `TELEGRAM_BOT_TOKEN` בלי `TELEGRAM_WEBHOOK_SECRET`, `PUPPETEER_SERVER_URL` בלי `SCRAPER_TOKEN`) או ערך לא תקין מייצרים אזהרת `⚠️ env:` בלוג, הערך מתעלם והפיצ'ר מכבה את עצמו (webhook מחזיר 503, auto-apply כבוי וכו'). ערך ריק (`KEY=`) נחשב לא מוגדר; דגלי `FEATURE_*` מקבלים `1`/`0` וגם `true`/`false`. משתנה עם שם שגוי (`SERPAPI-KEY` במקום `SERPAPI_KEY`) מקבל אזהרה בלוג.

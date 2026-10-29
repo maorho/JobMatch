@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { modelFor } from "@/app/lib/llm/models";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import CompanyBrief from "@/app/models/CompanyBrief";
@@ -20,7 +21,8 @@ export const safeJson = (text: string): unknown => {
  * the Responses API and falls back to the model's own knowledge (flagged
  * low-confidence) when search isn't available. Cached per company for a week.
  */
-export const RESEARCH_MODEL = process.env.COMPANY_RESEARCH_MODEL || "gpt-4o";
+// Web search runs through the OpenAI Responses API; the model id follows the registry's "quality" tier for OpenAI.
+export const RESEARCH_MODEL = process.env.COMPANY_RESEARCH_MODEL || modelFor("quality", "openai");
 export const BRIEF_TTL_DAYS = 7;
 
 /** Models sometimes return {name, description} objects where we asked for strings — flatten them. */
@@ -80,7 +82,7 @@ export function researchClient(): Client | null {
 
 /** Web search can't run in JSON mode; when the free-text answer isn't clean JSON, a cheap second pass converts it. */
 export async function repairJsonAs(client: Client, text: string, shape: string): Promise<string> {
-  const res = await client.responses.create({ model: "gpt-4o-mini", input: `Convert the following text into STRICT JSON with exactly this shape: ${shape}. Drop citation markers. Text:\n\n${text.slice(0, 12000)}`, text: { format: { type: "json_object" } }, max_output_tokens: 2500 });
+  const res = await client.responses.create({ model: modelFor("fast", "openai"), input: `Convert the following text into STRICT JSON with exactly this shape: ${shape}. Drop citation markers. Text:\n\n${text.slice(0, 12000)}`, text: { format: { type: "json_object" } }, max_output_tokens: 2500 });
   return res.output_text || "";
 }
 

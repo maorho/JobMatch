@@ -1,8 +1,8 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { extractJson } from "@/app/lib/resume/tailor";
 import type { GmailMessage } from "./gmail";
+import { chatModel } from "@/app/lib/llm/chat";
 
 /** The application statuses the product tracks (Candidates.status enum). */
 export const APPLICATION_STATUSES = [
@@ -48,7 +48,7 @@ export async function classifyEmails(messages: GmailMessage[]): Promise<EmailCla
   for (let i = 0; i < messages.length; i += BATCH) {
     const batch = messages.slice(i, i + BATCH);
     const { system, user } = buildClassifyPrompt(batch);
-    const llm = new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+    const llm = chatModel("fast", { temperature: 0, json: true });
     const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
     const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
     const parsed = extractJson(text) as any;

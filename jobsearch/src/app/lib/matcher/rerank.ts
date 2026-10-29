@@ -1,9 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import MatchCache from "@/app/models/MatchCache";
 import { extractJson } from "@/app/lib/resume/tailor";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Second-stage ranking of a candidate's top matches. Embeddings find the
@@ -11,7 +12,7 @@ import { extractJson } from "@/app/lib/resume/tailor";
  * says how realistic each one is (0–100), why, and what's missing — the
  * numbers the feed shows and the Applier trusts. Cached per résumé version.
  */
-export const RERANK_MODEL = "gpt-4o-mini";
+export const RERANK_MODEL = modelFor("fast");
 export const RERANK_BATCH = 12;
 
 export type RerankCandidate = { _id: string; job: string; company: string; description: string; city?: string; country?: string; seniority?: string[] | string };
@@ -63,7 +64,7 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
   await Promise.all(batches.map(async (batch) => {
     try {
       const { system, user } = buildRerankPrompt(opts.resumeSummary, opts.level, batch, opts.language || "he");
-      const res = await new ChatOpenAI({ modelName: RERANK_MODEL, temperature: 0, maxTokens: 2500, timeout: 45_000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+      const res = await chatModel("fast", { temperature: 0, maxTokens: 2500, timeout: 45_000, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
       const parsed = verdictSchema.safeParse(extractJson(contentOf(res)));
       if (!parsed.success) return;
       const ops = [];

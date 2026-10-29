@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { modelFor } from "@/app/lib/llm/models";
 import { connectToDatabase } from "@/app/lib/db";
 import LocationAlias from "@/app/models/LocationAlias";
 import { normalizeLocation, type NormalizedLocation } from "./normalizeLocation";
@@ -80,7 +81,7 @@ export async function resolveRawLocations(
 ): Promise<Map<string, ResolvedLocation>> {
   await connectToDatabase();
   const useLLM = opts.useLLM ?? true;
-  const model = opts.model ?? "gpt-4o-mini";
+  const model = opts.model ?? modelFor("fast", "openai"); // OpenAI SDK + JSON mode; see llm/models.ts
 
   // Rules pass (also produces the canonical raw key for each input).
   const byRaw = new Map<string, NormalizedLocation>();

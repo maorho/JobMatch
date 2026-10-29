@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
@@ -6,6 +5,8 @@ import PracticeAttempt from "@/app/models/PracticeAttempt";
 import PracticeTask from "@/app/models/PracticeTask";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { ROLE_INFO, LEVEL_HE } from "./roles";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Grading for the practice agents: the Examiner grades code against the
@@ -13,7 +14,7 @@ import { ROLE_INFO, LEVEL_HE } from "./roles";
  * description. gpt-4o-mini with a strict JSON verdict; without a key a
  * transparent heuristic so the flow still completes (tests, offline).
  */
-export const GRADE_MODEL = process.env.PRACTICE_MODEL || "gpt-4o-mini";
+export const GRADE_MODEL = modelFor("fast");
 export const LATE_GRACE_SEC = 60;
 
 type LLM = { invoke: (m: any[]) => Promise<{ content: unknown }> };
@@ -92,7 +93,7 @@ export function heuristicVerdict(task: any, attempt: any): Verdict {
 export async function gradeWithModel(task: any, attempt: any, client?: LLM): Promise<Verdict | null> {
   const useLLM = !!client || (!!process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
   if (!useLLM) return null;
-  const llm = client || new ChatOpenAI({ modelName: GRADE_MODEL, temperature: 0, maxTokens: 2500, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  const llm = client || chatModel("fast", { temperature: 0, maxTokens: 2500, json: true });
   const { system, user } = buildGradePrompt(task, attempt);
   const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
   const content = typeof res.content === "string" ? res.content : JSON.stringify(res.content);

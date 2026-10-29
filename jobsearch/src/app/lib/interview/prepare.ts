@@ -1,9 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import type { CompanyContext } from "./companyContext";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Interview-prep agent: turns everything we know (posting, company context,
@@ -54,7 +55,7 @@ export type PrepInput = {
 };
 
 const MAX = 6000;
-export const PREP_MODEL = "gpt-4o";
+export const PREP_MODEL = modelFor("quality");
 
 export function buildPrepPrompt(input: PrepInput): { system: string; user: string } {
   const lang = input.language === "en" ? "English" : "Hebrew";
@@ -95,7 +96,7 @@ Return the JSON plan.`;
 }
 
 function llm(temperature: number) {
-  return new ChatOpenAI({ modelName: PREP_MODEL, maxTokens: 8000, timeout: 90_000, temperature, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  return chatModel("quality", { maxTokens: 8000, timeout: 90_000, json: true });
 }
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
 
@@ -128,6 +129,6 @@ Candidate résumé (for personalised follow-ups): """${(opts.resumeText || "").s
 If the transcript is empty, open with a one-line intro and the first question.`.trim();
   const msgs = [new SystemMessage(system), ...opts.transcript.slice(-20).map((t) => (t.role === "user" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (opts.transcript.length === 0) msgs.push(new HumanMessage("Let's start."));
-  const res = await new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.5, openAIApiKey: process.env.OPENAI_API_KEY }).invoke(msgs);
+  const res = await chatModel("coach", { temperature: 0.5 }).invoke(msgs);
   return contentOf(res).trim();
 }

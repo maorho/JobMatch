@@ -1,10 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import InterviewSession from "@/app/models/InterviewSession";
 import { extractJson } from "@/app/lib/resume/tailor";
+import { chatModel } from "@/app/lib/llm/chat";
 
 /**
  * The coach's memory of a candidate across mock interviews: scores and
@@ -72,7 +72,7 @@ async function extractThemes(feedbacks: { at: string; improvements: string[]; st
   const system = `You cluster interview-feedback "improvements" from the same candidate across several mock interviews (oldest first) into 3–6 recurring themes. For each theme: a short label in the same language as the input, how many interviews it appeared in, and a status: "persistent" (still appears in the latest interview), "improving" (appeared earlier, not in the latest), "new" (only in the latest). Return STRICT JSON: {"themes":[{"theme","count","status"}]}.`;
   const user = feedbacks.map((f, i) => `INTERVIEW ${i + 1} (${f.at.slice(0, 10)}):\n- improvements: ${f.improvements.join(" | ")}\n- strengths: ${f.strengths.join(" | ")}`).join("\n\n");
   try {
-    const res = await new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0, maxTokens: 600, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+    const res = await chatModel("fast", { temperature: 0, maxTokens: 600, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
     const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
     const parsed = themeSchema.safeParse(extractJson(text));
     if (parsed.success) return parsed.data.themes;

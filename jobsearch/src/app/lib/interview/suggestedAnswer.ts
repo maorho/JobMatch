@@ -1,13 +1,14 @@
 import crypto from "node:crypto";
-import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import SuggestedAnswer from "@/app/models/SuggestedAnswer";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
-export const ANSWER_MODEL = process.env.PRACTICE_MODEL || "gpt-4o-mini";
+export const ANSWER_MODEL = modelFor("coach");
 
 export const answerKey = (company: string, question: string) =>
   crypto.createHash("sha256").update(`${company.trim().toLowerCase()}|${question.trim()}`).digest("hex");
@@ -66,7 +67,7 @@ QUESTION: ${opts.question}
 CANDIDATE RÉSUMÉ:
 """${resumeText.slice(0, 6000)}"""`;
 
-  const res = await new ChatOpenAI({ modelName: ANSWER_MODEL, temperature: 0.4, maxTokens: 700, timeout: 45_000, maxRetries: 1, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(userMsg)]);
+  const res = await chatModel("coach", { temperature: 0.4, maxTokens: 700, timeout: 45_000, maxRetries: 1, json: true }).invoke([new SystemMessage(system), new HumanMessage(userMsg)]);
   const raw = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
   const parsed = outSchema.parse(JSON.parse(raw));
   const placeholders = (parsed.answer.match(/\[[^\]]{2,}\]/g) || []).length;

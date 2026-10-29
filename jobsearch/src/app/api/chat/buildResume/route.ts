@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import User from "@/app/models/User";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
@@ -8,6 +7,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
 import { announceResumeUpdate } from "@/app/lib/agents/triggers";
 import { structuredToText } from "@/app/lib/resume/structuredToText";
+import { chatModel } from "@/app/lib/llm/chat";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -205,11 +205,7 @@ RULES
 
 
 
-    const llm = new ChatOpenAI({
-      modelName: "gpt-4o",
-      temperature: 0.2,
-      openAIApiKey: process.env.OPENAI_API_KEY,
-    });
+    const llm = chatModel("quality", { temperature: 0.2 });
 
     const response = await llm.invoke([
       new SystemMessage(systemPrompt),

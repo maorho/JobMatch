@@ -1,7 +1,7 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { structuredToText, isStructuredResume, type StructuredResume } from "./structuredToText";
+import { chatModel } from "@/app/lib/llm/chat";
 
 /**
  * The "tailor my résumé to this job" agent.
@@ -107,12 +107,7 @@ export async function tailorResumeToJob(input: TailorInput): Promise<TailorResul
     throw Object.assign(new Error("No résumé to tailor"), { code: "NO_RESUME" });
   }
   const { system, user } = buildTailorPrompt(input);
-  const llm = new ChatOpenAI({
-    modelName: "gpt-4o",
-    temperature: 0.2,
-    openAIApiKey: process.env.OPENAI_API_KEY,
-    modelKwargs: { response_format: { type: "json_object" } },
-  });
+  const llm = chatModel("quality", { temperature: 0.2, json: true });
   const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
   const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
   const parsed = tailorResultSchema.safeParse(extractJson(text));

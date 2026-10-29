@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
-import { ChatOpenAI } from "@langchain/openai";
 import {
   HumanMessage,
   AIMessage,
@@ -9,6 +8,7 @@ import {
 import User, { IUser } from "@/app/models/User";
 import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
+import { chatModel } from "@/app/lib/llm/chat";
 
 type ExtractedMemory = {
   skills?: string[];
@@ -316,11 +316,7 @@ export async function POST(req: NextRequest) {
 
     const systemText = lang === "he" ? SYSTEM_PROMPT_HE : SYSTEM_PROMPT_EN;
 
-    const llm = new ChatOpenAI({
-      modelName: "gpt-4o",
-      temperature: 0.3,
-      openAIApiKey: process.env.OPENAI_API_KEY,
-    });
+    const llm = chatModel("quality", { temperature: 0.3 });
 
     const formattedMessages = [
       new SystemMessage(systemText),

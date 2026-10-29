@@ -35,6 +35,7 @@ import { POST as prepPOST, GET as prepGET } from "@/app/api/interview/prep/route
 import { POST as practicePOST } from "@/app/api/interview/practice/route";
 import { mineTechSignals, gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import { buildPrepPrompt } from "@/app/lib/interview/prepare";
+import { modelFor } from "@/app/lib/llm/models";
 
 setupTestDb();
 
@@ -118,7 +119,7 @@ describe("POST /api/interview/practice", () => {
     expect(first.body.reply).toContain("ספר/י");
     const second = await j(await practicePOST(new NextRequest(`${O}/api/interview/practice`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId: String(prep._id), stage: "hr", transcript: [{ role: "assistant", content: first.body.reply }, { role: "user", content: "אני מפתחת React" }] }) })));
     expect(second.body.reply).toContain("משוב");
-    expect(calls.filter((m) => m === "gpt-4o-mini")).toHaveLength(2);
+    expect(calls.slice(-2)).toEqual([modelFor("coach"), modelFor("coach")]); // the practice interviewer is part of the coach tier
     expect((await practicePOST(new NextRequest(`${O}/api/interview/practice`, { method: "POST", headers: await cookie(other), body: JSON.stringify({ prepId: String(prep._id), stage: "hr", transcript: [] }) }))).status).toBe(404); // not their plan
   });
 });

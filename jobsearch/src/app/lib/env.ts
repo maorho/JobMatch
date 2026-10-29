@@ -42,7 +42,13 @@ export const envShape = z.object({
     VERCEL_BRANCH_URL: z.string().optional(),
     // Matcher (embeddings). Optional: without it the feed falls back to recency.
     OPENAI_API_KEY: z.string().min(1).optional(),
-    // Model-name overrides (defaults live next to each caller).
+    // Text models (lib/llm/models.ts): provider + per-tier overrides. Anthropic is used when its key is set.
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    LLM_PROVIDER: z.enum(["openai", "anthropic"]).optional(),
+    LLM_MODEL_FAST: z.string().min(1).optional(),
+    LLM_MODEL_QUALITY: z.string().min(1).optional(),
+    LLM_MODEL_COACH: z.string().min(1).optional(),
+    // Model-name overrides for the OpenAI-only paths (realtime voice, web-search research, apply server).
     OPENAI_REALTIME_MODEL: z.string().min(1).optional(),
     OPENAI_REALTIME_VOICE: z.string().min(1).optional(),
     PRACTICE_MODEL: z.string().min(1).optional(),
@@ -223,7 +229,9 @@ export function checkEnv(source: EnvSource = process.env): EnvReport {
 
   // 4. Hygiene + optional services.
   for (const [actual, intended] of misspelledKeys(source)) warn(`${actual} looks like a misspelling of ${intended} (the app reads ${intended}; rename it)`);
-  if (!env.OPENAI_API_KEY) warn("OPENAI_API_KEY missing: résumé matching is disabled (feed falls back to recency)");
+  if (!env.OPENAI_API_KEY) warn("OPENAI_API_KEY missing: embeddings/matching, voice interviews and web research are disabled (feed falls back to recency)");
+  if (env.LLM_PROVIDER === "anthropic" && !env.ANTHROPIC_API_KEY) warn("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is missing: text features will fail");
+  if (!env.ANTHROPIC_API_KEY && !env.OPENAI_API_KEY) warn("No LLM key at all: the interviewer, résumé tools and every agent that writes text are off");
   if (!env.PUPPETEER_SERVER_URL) warn("PUPPETEER_SERVER_URL missing: ATS auto-detection/capture and auto-apply will be skipped");
   if (!effective.APP_URL && !prod) warn("APP_URL missing: links fall back to http://localhost:3000 (required in production)");
 

@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
@@ -7,6 +6,7 @@ import WebInterviewQuestion from "@/app/models/WebInterviewQuestion";
 import ApplicationOutcome from "@/app/models/ApplicationOutcome";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { companyKey } from "./outcomes";
+import { chatModel } from "@/app/lib/llm/chat";
 
 /**
  * "What did they ask?" — turn the candidate's free-text recollection of a
@@ -47,7 +47,7 @@ export function splitQuestionsHeuristic(text: string): CapturedQuestion[] {
 export async function structureQuestions(text: string, ctx: { company: string; roleTitle: string; stage: QuestionStage; language?: "he" | "en"; client?: { invoke: (m: any[]) => Promise<{ content: unknown }> } }): Promise<CapturedQuestion[]> {
   const useLLM = !!ctx.client || (!!process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
   if (!useLLM) return splitQuestionsHeuristic(text);
-  const client = ctx.client || new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0, maxTokens: 1500, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  const client = ctx.client || chatModel("fast", { temperature: 0, maxTokens: 1500, json: true });
   const system = `You turn a candidate's recollection of a real job interview into a clean list of the questions they were asked.
 Return JSON: {"questions":[{"question":"...","topic":"short label","stage":"hr|technical|final|other","note":"what the candidate said about it, if anything"}]}.
 Rules: one entry per distinct question, in the candidate's language (${ctx.language === "en" ? "English" : "Hebrew unless the text is English"}); keep the question wording close to the original; never invent questions that are not in the text; a topic is 1–3 words (e.g. "React hooks", "system design", "salary expectations", "background"); if the text contains no questions return {"questions":[]}.`;

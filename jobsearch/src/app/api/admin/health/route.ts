@@ -15,6 +15,7 @@ import { mailTransportName } from "@/app/lib/email/send";
 import { channelConfigured } from "@/app/lib/messaging/channels";
 import { featureSnapshot } from "@/app/lib/flags";
 import { siteUrl } from "@/app/lib/seo/site";
+import { describeModels } from "@/app/lib/llm/models";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +87,8 @@ export async function GET(req: NextRequest) {
   const appUrl = siteUrl();
   out.checks.config = {
     openai: !!process.env.OPENAI_API_KEY,
+    llm: describeModels(),
+    anthropic: !!process.env.ANTHROPIC_API_KEY,
     email: mailTransportName(),
     whatsapp: channelConfigured("whatsapp"),
     telegram: channelConfigured("telegram"),

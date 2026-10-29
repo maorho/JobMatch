@@ -1,4 +1,3 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
@@ -7,6 +6,8 @@ import Article from "@/app/models/Article";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { mineTechSignals } from "@/app/lib/interview/companyContext";
 import { ARTICLES } from "@/app/content/articles";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * The Writer agent's brain: grounds every article in live catalog numbers
@@ -14,8 +15,8 @@ import { ARTICLES } from "@/app/content/articles";
  * proposes topics that aren't covered yet, and writes a complete, structured
  * Hebrew article with its own SEO metadata.
  */
-export const WRITER_MODEL = "gpt-4o";
-export const TOPIC_MODEL = "gpt-4o-mini";
+export const WRITER_MODEL = modelFor("quality");
+export const TOPIC_MODEL = modelFor("fast");
 
 export type CatalogFacts = {
   totalJobs: number;
@@ -74,7 +75,7 @@ const contentOf = (res: any): string => (typeof res.content === "string" ? res.c
 
 export async function suggestTopics(facts: CatalogFacts, existingTitles: string[], count = 3): Promise<TopicIdea[]> {
   const { system, user } = buildTopicPrompt(facts, existingTitles, count);
-  const res = await new ChatOpenAI({ modelName: TOPIC_MODEL, temperature: 0.7, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+  const res = await chatModel("fast", { temperature: 0.7, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
   const parsed = topicSchema.safeParse(extractJson(contentOf(res)));
   if (!parsed.success) throw new Error("Topic output invalid");
   return parsed.data.topics.slice(0, count);
@@ -118,7 +119,7 @@ export const MIN_WORDS = 450; // Hebrew is dense: ~450 Hebrew words ≈ a 900-wo
 
 export async function generateArticle(input: { topic: string; angle?: string; audience?: string; facts: CatalogFacts; existingSlugs: string[] }): Promise<GeneratedArticle & { readMinutes: number; words: number }> {
   const { system, user } = buildArticlePrompt(input);
-  const llm = new ChatOpenAI({ modelName: WRITER_MODEL, temperature: 0.6, maxTokens: 6000, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+  const llm = chatModel("quality", { temperature: 0.6, maxTokens: 6000, json: true });
   const parse = (text: string) => {
     const parsed = articleSchema.safeParse(extractJson(text));
     if (!parsed.success) throw new Error("Article output invalid: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).slice(0, 5).join("; "));

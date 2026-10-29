@@ -4,6 +4,7 @@ import CompanyProfile from "@/app/models/CompanyProfile";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { companyKey } from "@/app/lib/outcomes/companyKey";
 import { callWithSearch, repairJsonAs, researchClient, safeJson, type ResearchClient } from "@/app/lib/interview/companyResearch";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Company profiles for the Companies page: "what does this company do?" in
@@ -14,7 +15,7 @@ import { callWithSearch, repairJsonAs, researchClient, safeJson, type ResearchCl
  * the company description the ATS ships with the postings.
  */
 export const PROFILE_TTL_DAYS = 60;
-export const PROFILE_MODEL = process.env.COMPANY_PROFILE_MODEL || "gpt-4o-mini";
+export const PROFILE_MODEL = process.env.COMPANY_PROFILE_MODEL || modelFor("fast", "openai");
 
 const str = z.preprocess((v) => (v == null ? "" : typeof v === "string" ? v : String(v)), z.string());
 const profileSchema = z.object({

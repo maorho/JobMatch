@@ -1,7 +1,8 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { extractJson } from "@/app/lib/resume/tailor";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * Answers the extra questions an ATS form asks (country, city, LinkedIn,
@@ -17,7 +18,7 @@ export type AnswerContext = {
   job: { title: string; company: string };
 };
 
-export const FORM_MODEL = "gpt-4o-mini";
+export const FORM_MODEL = modelFor("fast");
 
 const pick = (options: string[] | undefined, candidates: (string | RegExp)[]): string | undefined => {
   if (!options?.length) return undefined;
@@ -80,7 +81,7 @@ export async function answerFormFields(fields: FormField[], ctx: AnswerContext, 
   if (open.length && useLLM) {
     try {
       const { system, user } = buildFormPrompt(open, ctx);
-      const llm = new ChatOpenAI({ modelName: FORM_MODEL, temperature: 0, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } });
+      const llm = chatModel("fast", { temperature: 0, json: true });
       const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
       const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
       const parsed = llmSchema.safeParse(extractJson(text));

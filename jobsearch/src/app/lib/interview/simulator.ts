@@ -1,9 +1,10 @@
-import { ChatOpenAI } from "@langchain/openai";
 import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { extractJson } from "@/app/lib/resume/tailor";
 import type { InterviewPlan, StageKey } from "./prepare";
 import type { CompanyContext } from "./companyContext";
+import { chatModel } from "@/app/lib/llm/chat";
+import { modelFor } from "@/app/lib/llm/models";
 
 /**
  * The mock-interview agent. Unlike the old "practice" chat it behaves like a
@@ -14,8 +15,8 @@ import type { CompanyContext } from "./companyContext";
 export type SessionTurn = { role: "interviewer" | "candidate"; content: string };
 
 export const END_MARK = "<<END>>";
-export const INTERVIEWER_MODEL = "gpt-4o-mini";
-export const FEEDBACK_MODEL = "gpt-4o";
+export const INTERVIEWER_MODEL = modelFor("coach");
+export const FEEDBACK_MODEL = modelFor("coach");
 
 const PERSONA: Record<string, { he: string; en: string }> = {
   hr: { he: "מגייס/ת HR", en: "HR recruiter" },
@@ -93,7 +94,7 @@ const contentOf = (res: any): string => (typeof res.content === "string" ? res.c
 export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean }> {
   const msgs = [new SystemMessage(buildInterviewerPrompt(input)), ...input.transcript.slice(-30).map((t) => (t.role === "candidate" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (input.transcript.length === 0) msgs.push(new HumanMessage(input.language === "en" ? "(The candidate has joined the call.)" : "(המועמד/ת נכנס/ה לשיחה.)"));
-  const res = await new ChatOpenAI({ modelName: INTERVIEWER_MODEL, temperature: 0.6, openAIApiKey: process.env.OPENAI_API_KEY }).invoke(msgs);
+  const res = await chatModel("coach", { temperature: 0.6 }).invoke(msgs);
   const raw = contentOf(res).trim();
   const done = raw.includes(END_MARK);
   return { message: raw.replace(END_MARK, "").trim(), done };
@@ -136,7 +137,7 @@ export async function reviewAnswer(input: { question: string; answer: string; jo
   const system = `You are an interviewer at ${input.job.company} reviewing one answer from a "${input.stage}" interview for ${input.job.title}. Write in ${lang}. Be specific and fair; quote what they said. Score 0–10 (7+ = solid). "betterAnswer": a stronger version in the candidate's own voice, 3–5 sentences, using ONLY their real experience from the résumé — never invent. The answer is a speech transcript: ignore small transcription slips.
 Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.`;
   const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\nQUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
-  const res = await new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0.2, maxTokens: 900, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+  const res = await chatModel("quality", { temperature: 0.2, maxTokens: 900, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
   const parsed = answerReviewSchema.safeParse(extractJson(contentOf(res)));
   if (!parsed.success) throw new Error("Answer review invalid");
   return { ...parsed.data, question: parsed.data.question || input.question };
@@ -167,10 +168,10 @@ const FEEDBACK_MAX_TOKENS = 8000;
 export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): Promise<InterviewFeedback> {
   const ask = async (compact: boolean) => {
     const { system, user } = buildFeedbackPrompt({ ...input, compact });
-    const res = await new ChatOpenAI({ modelName: FEEDBACK_MODEL, temperature: 0.2, maxTokens: FEEDBACK_MAX_TOKENS, timeout: 120_000, maxRetries: 1, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+    const res = await chatModel("coach", { temperature: 0.2, maxTokens: FEEDBACK_MAX_TOKENS, timeout: 120_000, maxRetries: 1, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
     const raw = contentOf(res);
     const finish = (res as any)?.response_metadata?.finish_reason ?? (res as any)?.additional_kwargs?.finish_reason;
-    if (finish === "length") throw new Error("truncated");
+    if (finish === "length" || (res as any)?.response_metadata?.stop_reason === "max_tokens") throw new Error("truncated");
     return extractJson(raw);
   };
   let json: unknown;
