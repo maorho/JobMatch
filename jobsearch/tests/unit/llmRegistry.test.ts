@@ -47,9 +47,10 @@ describe("chatModel factory", () => {
     delete process.env.LLM_PROVIDER;
     const { chatModel, withProvider, activeProvider } = await import("@/app/lib/llm/chat");
     const claude: any = chatModel("coach", { maxTokens: 123, temperature: 0.1 });
-    expect(claude.constructor.name).toBe("ChatAnthropic");
+    expect(claude.constructor.name).toBe("AnthropicChat");
     expect(claude.model).toBe("claude-opus-5-5");
-    expect(claude.maxTokens).toBe(123);
+    expect(claude.maxTokens).toBe(1500); // Anthropic floor: thinking shares the output budget
+    expect((chatModel("coach", { maxTokens: 8000 }) as any).maxTokens).toBe(8000);
     const forced: any = chatModel("fast", { provider: "openai", json: true });
     expect(forced.constructor.name).toBe("ChatOpenAI");
     expect(forced.modelName ?? forced.model).toBe("gpt-4o-mini");

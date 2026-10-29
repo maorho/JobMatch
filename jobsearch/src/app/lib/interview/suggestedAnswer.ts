@@ -5,6 +5,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import SuggestedAnswer from "@/app/models/SuggestedAnswer";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
+import { extractJson } from "@/app/lib/resume/tailor";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
 
@@ -67,9 +68,9 @@ QUESTION: ${opts.question}
 CANDIDATE RÉSUMÉ:
 """${resumeText.slice(0, 6000)}"""`;
 
-  const res = await chatModel("coach", { temperature: 0.4, maxTokens: 700, timeout: 45_000, maxRetries: 1, json: true }).invoke([new SystemMessage(system), new HumanMessage(userMsg)]);
+  const res = await chatModel("coach", { temperature: 0.4, maxTokens: 1500, timeout: 60_000, maxRetries: 1, json: true }).invoke([new SystemMessage(system), new HumanMessage(userMsg)]);
   const raw = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
-  const parsed = outSchema.parse(JSON.parse(raw));
+  const parsed = outSchema.parse(extractJson(raw));
   const placeholders = (parsed.answer.match(/\[[^\]]{2,}\]/g) || []).length;
 
   await SuggestedAnswer.updateOne(
