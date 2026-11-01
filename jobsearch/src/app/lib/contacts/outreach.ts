@@ -15,6 +15,8 @@ export type OutreachInput = {
   job: { title: string; company: string; url?: string; description?: string };
   /** How the sender knows the contact, in their own words (optional): the opening line is built from it. */
   relationship?: string;
+  /** What we know about the company (the cached research brief): products, recent news. For ONE true, specific line. */
+  companyNotes?: string;
   language: "he" | "en";
   /** "linkedin" → DM; "note" → the 300-character note on a connection request; "email" → subject + longer body. */
   channel: OutreachChannel;
@@ -25,6 +27,8 @@ export const outreachSchema = z.object({
   message: z.string().min(20),
   /** One line explaining the angle the message takes (shown to the user). */
   angle: z.string().default(""),
+  /** 3 lines the contact can paste to a recruiter or into a referral form: who, why a fit, links. Makes "yes" cost a minute. */
+  forwardNote: z.string().default(""),
 });
 export type Outreach = z.infer<typeof outreachSchema>;
 
@@ -62,17 +66,20 @@ Rules:
 - Language: ${lang}. ${length}
 - ${opening}
 - Structure${input.channel === "note" ? " (compressed to fit)" : ""}: the opening → the role and ONE specific reason it fits the sender → the sender's single strongest, true, relevant credential → the ask.
-- The credential: pick from the sender's background the one thing most relevant to THIS role — prefer a shipped project or system the sender built (with its link when the background gives one) over job titles or dates. State it as a fact, not a boast. No numbers, metrics or claims that are not in the background text.
+- The credential: pick from the sender's background the one thing most relevant to THIS role — prefer a shipped project or system the sender built (with its link when the background gives one) over job titles or dates. State it as a fact, not a boast. Proof beats claims: a live link, a repo, or one real figure from the background text. No numbers, metrics or claims that are not in the background text.
+- Show you understood the role, in one sentence: name the core problem the ROLE SUMMARY describes (who the users are, what makes it hard) and tie it to something the sender actually did. Never "sounds interesting" — that is what every other candidate writes.${input.companyNotes ? `
+- Personalise with ONE specific, true item from COMPANY NOTES (a product, a recent announcement) only when it fits the role naturally; otherwise leave it out. Never invent news or facts about the company or the contact's team.` : ""}
 - The ask, in this order: first a 10-minute chat about the team and the day-to-day; then, only if it seems like a fit, a referral. A referral is a heavy ask of someone who does not know you yet, so it comes second and conditional. Offer to send the CV${input.job.url ? " and include the job link given below so they need not search for it" : ""}.
 - Speak well of the role and the company; never phrase the sender's interest as a criticism of how others work.
 - Never invent experience, mutual history, or facts about the contact. One ask, not a list of options.
 - No flattery, no "I hope this finds you well", no emojis, no bullet lists. Sound like a person, not a template.${hebrewRules}
-- Return STRICT JSON: {"subject": string, "message": string, "angle": string}. Nothing else.`;
+- Also write "forwardNote": 3 short lines in ${lang}, in the THIRD person, that the contact can paste to a recruiter or into a referral form with no editing: line 1 who the sender is (name, current role, one credential), line 2 why they fit this role, line 3 "קורות חיים: [קישור]" / "CV: [link]" plus the sender's project or profile link when the background gives one. Placeholders in square brackets for anything you do not have.
+- Return STRICT JSON: {"subject": string, "message": string, "angle": string, "forwardNote": string}. Nothing else.`;
   const user = `SENDER: ${input.me.fullname}${input.me.currentJob ? ` — ${input.me.currentJob}` : ""}
 SENDER BACKGROUND (résumé text; the only source of facts about the sender): ${(input.me.resumeSummary || "").slice(0, 3000) || "(none)"}
 CONTACT: ${input.contact.fullName}${input.contact.position ? `, ${input.contact.position}` : ""} at ${input.contact.company}${connected ? ` (LinkedIn connection since ${connected})` : ""}
 ${input.relationship?.trim() ? `HOW THE SENDER KNOWS THE CONTACT: ${input.relationship.trim().slice(0, 300)}\n` : ""}ROLE: ${input.job.title} at ${input.job.company}${input.job.url ? ` — link: ${input.job.url}` : ""}
-ROLE SUMMARY: ${(input.job.description || "").slice(0, 800) || "(none)"}`;
+ROLE SUMMARY: ${(input.job.description || "").slice(0, 1200) || "(none)"}${input.companyNotes ? `\nCOMPANY NOTES (researched; may be stale — use at most one item, and only if it fits): ${input.companyNotes.slice(0, 1200)}` : ""}`;
   return { system, user };
 }
 

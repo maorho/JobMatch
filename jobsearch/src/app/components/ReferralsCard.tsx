@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Users, Copy, ExternalLink, Sparkles } from "lucide-react";
 
 type Contact = { _id: string; fullName: string; position: string; company: string; url: string; email: string };
-type Draft = { subject: string; message: string; angle: string };
+type Draft = { subject: string; message: string; angle: string; forwardNote: string };
 
 /** Job page sidebar: who you know at this company + an AI-drafted referral request. */
 export default function ReferralsCard({ company, jobId, source, jobUrl }: { company: string; jobId: string; source: "internal" | "external"; jobUrl?: string }) {
@@ -41,7 +41,7 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
       const r = await fetch("/api/contacts/outreach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c._id, jobId, source, channel: ch, language: lang, url: jobUrl, relationship: rel || undefined }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "הניסוח נכשל"));
-      setDraft({ subject: d.subject, message: d.message, angle: d.angle });
+      setDraft({ subject: d.subject, message: d.message, angle: d.angle, forwardNote: d.forwardNote || "" });
     } catch (e: any) {
       setErr(e?.message || "הניסוח נכשל");
     } finally {
@@ -49,12 +49,21 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
     }
   };
 
+  const [copiedNote, setCopiedNote] = useState(false);
   const copy = async () => {
     if (!draft) return;
     try {
       await navigator.clipboard.writeText(draft.subject ? `${draft.subject}\n\n${draft.message}` : draft.message);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+  const copyNote = async () => {
+    if (!draft?.forwardNote) return;
+    try {
+      await navigator.clipboard.writeText(draft.forwardNote);
+      setCopiedNote(true);
+      setTimeout(() => setCopiedNote(false), 2000);
     } catch {}
   };
 
@@ -132,6 +141,22 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
                 {active.url && <a href={active.url} target="_blank" rel="noreferrer" className="jm-btn jm-btn-secondary jm-btn-sm">פתח בלינקדאין</a>}
                 {draft.angle && <span className="jm-muted" dir="auto">{draft.angle}</span>}
               </div>
+              {draft.forwardNote && (
+                <div className="rounded-control bg-canvas border border-line p-3 space-y-2">
+                  <p className="text-xs font-semibold text-navy">{'טקסט מוכן שהוא יכול להעביר למגייס/ת או להדביק בטופס ההפניה (כדי ש"כן" יעלה לו דקה):'}</p>
+                  <textarea readOnly value={draft.forwardNote} rows={3} dir="auto" className="jm-input text-sm leading-relaxed" />
+                  <button type="button" onClick={copyNote} className="jm-btn jm-btn-secondary jm-btn-sm"><Copy className="h-4 w-4" /> {copiedNote ? "הועתק!" : "העתק את הטקסט להעברה"}</button>
+                </div>
+              )}
+              <details className="text-xs text-ink-600">
+                <summary className="cursor-pointer font-medium text-navy">{"לפני ששולחים: צ'קליסט מוכנות"}</summary>
+                <ul className="list-disc ps-5 mt-1 space-y-0.5">
+                  <li>הגשת מועמדות באתר החברה, או מספר המשרה מוכן ביד.</li>
+                  <li>קורות החיים מעודכנים: הפרויקט החזק ביותר למעלה, תאריכים מדויקים, קישור חי.</li>
+                  <li>{'תשובה מוכנה ל"מה בנית ואיך?" ב-2 דקות.'}</li>
+                  <li>{'אם יענו "בוא נדבר", פנוי/ה לשיחה באותו שבוע.'}</li>
+                </ul>
+              </details>
             </>
           )}
         </div>

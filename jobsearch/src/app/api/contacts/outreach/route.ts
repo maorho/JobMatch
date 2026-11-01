@@ -8,6 +8,21 @@ import { loadJobForPrep } from "@/app/lib/interview/ensurePlan";
 import { composeOutreach } from "@/app/lib/contacts/outreach";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
+import CompanyBrief from "@/app/models/CompanyBrief";
+
+/** The cached research brief for a company, flattened for the prompt; nothing is fetched here (the prep page fills the cache). */
+async function companyNotesFor(company: string): Promise<string | undefined> {
+  const doc: any = await CompanyBrief.findOne({ key: (company || "").trim().toLowerCase() }).select("brief").lean().catch(() => null);
+  const b = doc?.brief;
+  if (!b) return undefined;
+  const lines = [
+    b.summary && `About: ${b.summary}`,
+    b.products?.length && `Products: ${b.products.slice(0, 5).join(", ")}`,
+    b.recentNews?.length && `Recent: ${b.recentNews.slice(0, 4).map((n: any) => `${n.title}${n.date ? ` (${n.date})` : ""}`).join("; ")}`,
+    b.cultureSignals?.length && `Culture: ${b.cultureSignals.slice(0, 3).join("; ")}`,
+  ].filter(Boolean);
+  return lines.length ? lines.join("\n") : undefined;
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +60,7 @@ export async function POST(req: NextRequest) {
       loadJobForPrep(source, jobId),
       User.findById(userId).select("+resumeText +resumeStructured fullname currentJob").lean(),
     ]);
+    const companyNotes = job ? await companyNotesFor(job.company) : undefined;
     if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
     // The whole résumé (within reason): the strongest credential for a role is often a project further down the page.
@@ -54,6 +70,7 @@ export async function POST(req: NextRequest) {
       contact: { fullName: contact.fullName, position: contact.position, company: contact.company, connectedOn: contact.connectedOn },
       job: { title: job.title, company: job.company, description: job.description, url: body?.url ? String(body.url) : undefined },
       relationship: relationship || undefined,
+      companyNotes,
       language,
       channel,
     });

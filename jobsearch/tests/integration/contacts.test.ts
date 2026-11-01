@@ -131,7 +131,11 @@ describe("routes", () => {
     expect(warm.system).toMatch(/at most 280 characters/);
     expect(warm.system).toMatch(/include the job link/);
     expect(warm.user).toContain("https://acme.jobs/1");
-    const dated = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme" }, language: "en", channel: "email" });
+    const dated = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme" }, language: "en", channel: "email", companyNotes: "Products: Acme Cloud" });
     expect(dated.system).toMatch(/LinkedIn connections since March 2024/);
+    expect(dated.system).toMatch(/forwardNote/); // the paste-to-recruiter blurb is always requested
+    expect(dated.system).toMatch(/Personalise with ONE specific, true item/); // only when notes exist
+    expect(dated.user).toContain("COMPANY NOTES");
+    expect(warm.system).not.toMatch(/Personalise with ONE/);
   });
 });
