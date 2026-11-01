@@ -20,22 +20,56 @@ export async function suggestRoleAndLevel(userId: string): Promise<{ role: Pract
   return { role: inferRole(`${user?.currentJob || ""}\n${resumeText}`), level };
 }
 
-/** Tasks for a role × level, making sure each kind has its floor (authored by the agents when missing). */
-export async function tasksFor(role: PracticeRole, level: PracticeLevel, opts: { kinds?: TaskKind[]; author?: boolean } = {}) {
+/** How many tasks of a kind a person should always have waiting that they have not tried yet. */
+export const FRESH_TASKS_MIN = 3;
+
+/** Ask the agents (on the bus) for `count` more tasks of a kind, avoiding what the bank already has. */
+async function authorMore(kind: TaskKind, role: PracticeRole, level: PracticeLevel, count: number) {
+  const type = kind === "coding" ? "coding.author" : "assignment.author";
+  const { runId } = await startFlow(type, { role, level, count }, { from: "user", title: `${kind === "coding" ? "Coding questions" : "Home assignments"}: ${role}/${level}`, says: `${kind === "coding" ? "Examiner" : "Assigner"} — we need ${count} more ${kind === "coding" ? "timed question" : "take-home"}${count === 1 ? "" : "s"} for a ${level} ${role}.` });
+  await processQueue({ runId, budgetMs: 90_000 });
+}
+
+/** Ids of the tasks this person has handed in (any outcome): those should not be the only thing on offer. */
+export async function attemptedTaskIds(userId: string): Promise<Set<string>> {
+  await connectToDatabase();
+  const rows: any[] = await PracticeAttempt.find({ userId, status: { $ne: "in_progress" } }).select("taskId").lean();
+  return new Set(rows.map((r) => String(r.taskId)));
+}
+
+/**
+ * Tasks for a role × level, making sure each kind has its floor and — when a
+ * person is given — at least FRESH_TASKS_MIN they have not tried yet, so
+ * someone who answered everything gets new questions, not the same ones.
+ * Fresh tasks come first; answered ones follow, marked `done`.
+ */
+export async function tasksFor(role: PracticeRole, level: PracticeLevel, opts: { kinds?: TaskKind[]; author?: boolean; userId?: string } = {}) {
   await connectToDatabase();
   const kinds = opts.kinds || ["coding", "assignment"];
+  const done = opts.userId ? await attemptedTaskIds(opts.userId) : new Set<string>();
   if (opts.author !== false) {
     for (const kind of kinds) {
-      const have = await PracticeTask.countDocuments({ kind, role, level, active: true });
-      if (have >= 3) continue;
+      const ids: any[] = await PracticeTask.find({ kind, role, level, active: true }).select("_id").lean();
+      const fresh = ids.filter((t) => !done.has(String(t._id))).length;
+      const need = Math.max(3 - ids.length, FRESH_TASKS_MIN - fresh);
+      if (need <= 0) continue;
       // Through the bus so the authoring shows up in the agents' conversation; processed right away.
-      const type = kind === "coding" ? "coding.author" : "assignment.author";
-      const { runId } = await startFlow(type, { role, level, count: 3 - have }, { from: "user", title: `${kind === "coding" ? "Coding questions" : "Home assignments"}: ${role}/${level}`, says: `${kind === "coding" ? "Examiner" : "Assigner"} — we need ${3 - have} more ${kind === "coding" ? "timed question" : "take-home"}${3 - have === 1 ? "" : "s"} for a ${level} ${role}.` });
-      await processQueue({ runId, budgetMs: 90_000 });
+      await authorMore(kind, role, level, Math.min(need, 3));
     }
   }
   const tasks: any[] = await PracticeTask.find({ role, level, active: true, kind: { $in: kinds } }).sort({ difficulty: 1, createdAt: 1 }).lean();
-  return tasks;
+  const withDone = tasks.map((t) => ({ ...t, done: done.has(String(t._id)) }));
+  return [...withDone.filter((t) => !t.done), ...withDone.filter((t) => t.done)];
+}
+
+/** One more task of a kind, on request ("a new question"). Returns the new task, or null when nothing could be authored. */
+export async function newTask(kind: TaskKind, role: PracticeRole, level: PracticeLevel): Promise<any | null> {
+  await connectToDatabase();
+  const before: any[] = await PracticeTask.find({ kind, role, level, active: true }).select("_id").lean();
+  const seen = new Set(before.map((t) => String(t._id)));
+  await authorMore(kind, role, level, 1);
+  const after: any[] = await PracticeTask.find({ kind, role, level, active: true }).sort({ createdAt: -1 }).limit(5).lean();
+  return after.find((t) => !seen.has(String(t._id))) || null;
 }
 
 export async function startAttempt(userId: string, taskId: string): Promise<any | null> {

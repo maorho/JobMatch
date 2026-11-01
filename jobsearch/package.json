@@ -46,6 +46,7 @@
     "react-dom": "^19.2.4",
     "react-icons": "^5.5.0",
     "swr": "^2.3.3",
+    "typescript": "^5.8.3",
     "unpdf": "^1.7.0",
     "ws": "^8.22.0",
     "zod": "^3.25.76"
@@ -67,7 +68,6 @@
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3",
     "vitest": "^2.1.9"
   }
 }

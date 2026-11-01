@@ -27,6 +27,9 @@ export default function AttemptPage() {
   const [left, setLeft] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // The compile check that runs before a coding submission; the candidate decides whether to go back.
+  const [check, setCheck] = useState<{ issues: { line: number; column: number; message: string }[]; checker: string } | null>(null);
+  const [checking, setChecking] = useState(false);
   const autoSubmitted = useRef(false);
   const skewRef = useRef(0);
 
@@ -48,8 +51,30 @@ export default function AttemptPage() {
     }
   }, [data, answer]);
 
+  /** Before the Examiner grades a coding answer: does it compile? Errors are shown, and the person chooses to fix or submit anyway. */
+  const checkThenSubmit = async () => {
+    if (!data || submitting || checking) return;
+    if (data.task.kind !== "coding") return submit();
+    setChecking(true);
+    setError("");
+    try {
+      const r = await fetch(`/api/practice/attempts/${attemptId}/check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answer: answer || "" }) });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.supported && !j.ok && Array.isArray(j.issues) && j.issues.length) {
+        setCheck({ issues: j.issues, checker: j.checker });
+        return; // the person decides
+      }
+    } catch {
+      /* a failed check never blocks a submission */
+    } finally {
+      setChecking(false);
+    }
+    await submit();
+  };
+
   const submit = async (auto = false) => {
     if (!data || submitting) return;
+    setCheck(null);
     setSubmitting(true);
     setError("");
     const r = await fetch(`/api/practice/attempts/${attemptId}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answer: answer || "", repoUrl }) });
@@ -182,9 +207,24 @@ export default function AttemptPage() {
               />
               {!coding && <input value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} dir="ltr" className="jm-input w-full" placeholder="https://github.com/you/repo (אופציונלי אבל מומלץ)" />}
               {error && <p className="text-sm text-red-600">{error}</p>}
+              {check && (
+                <div className="rounded-control border border-amber-300 bg-amber-50 p-3 space-y-2" role="alertdialog" aria-label="שגיאות קומפילציה">
+                  <p className="font-semibold text-amber-800 inline-flex items-center gap-1"><AlertTriangle className="h-4 w-4" /> הקוד לא עובר קומפילציה ({check.issues.length} {check.issues.length === 1 ? "שגיאה" : "שגיאות"})</p>
+                  <ul className="text-sm font-mono space-y-0.5 max-h-40 overflow-y-auto" dir="ltr">
+                    {check.issues.map((i, k) => (
+                      <li key={k}><span className="text-ink-400">{i.line ? `L${i.line}${i.column ? `:${i.column}` : ""}` : "—"}</span> {i.message}</li>
+                    ))}
+                  </ul>
+                  <p className="jm-muted">השעון ממשיך לרוץ. אפשר לחזור לעריכה ולתקן, או להגיש בכל זאת ולהיבדק על הקוד כמו שהוא.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setCheck(null)} className="jm-btn jm-btn-primary jm-btn-sm">חזרה לעריכה</button>
+                    <button type="button" onClick={() => submit()} disabled={submitting} className="jm-btn jm-btn-secondary jm-btn-sm">הגש בכל זאת</button>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3">
-                <p className="jm-muted">{coding ? "הבוחן בודק נכונות, סיבוכיות, קריאות ומקרי קצה." : "מנהל הגיוס בודק עמידה בדרישות, ארכיטקטורה, איכות קוד, בדיקות ו-README."}</p>
-                <button onClick={() => submit()} disabled={submitting || !(answer || "").trim()} className="jm-btn jm-btn-primary">{submitting ? (coding ? "הבוחן בודק…" : "מנהל הגיוס קורא…") : "הגשה"}</button>
+                <p className="jm-muted">{coding ? "לפני הבדיקה הקוד עובר קומפילציה; הבוחן בודק נכונות, סיבוכיות, קריאות ומקרי קצה." : "מנהל הגיוס בודק עמידה בדרישות, ארכיטקטורה, איכות קוד, בדיקות ו-README."}</p>
+                <button onClick={checkThenSubmit} disabled={submitting || checking || !(answer || "").trim()} className="jm-btn jm-btn-primary">{checking ? "בודק קומפילציה…" : submitting ? (coding ? "הבוחן בודק…" : "מנהל הגיוס קורא…") : "הגשה"}</button>
               </div>
             </div>
           ) : (

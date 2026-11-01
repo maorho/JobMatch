@@ -15,8 +15,9 @@ import { weightedScore, heuristicVerdict, gradeWithModel, buildGradePrompt, LATE
 import { tasksFor, startAttempt, submitAttempt, listAttempts, suggestRoleAndLevel } from "@/app/lib/practice/attempts";
 import { readRun, listAgents } from "@/app/lib/agents";
 import AgentRun from "@/app/models/AgentRun";
-import { GET as tasksGET } from "@/app/api/practice/tasks/route";
+import { GET as tasksGET, POST as tasksPOST } from "@/app/api/practice/tasks/route";
 import { POST as attemptsPOST } from "@/app/api/practice/attempts/route";
+import { POST as checkPOST } from "@/app/api/practice/attempts/[id]/check/route";
 import { GET as attemptGET } from "@/app/api/practice/attempts/[id]/route";
 import { POST as submitPOST } from "@/app/api/practice/attempts/[id]/submit/route";
 
@@ -151,13 +152,14 @@ describe("attempt lifecycle through the agents", () => {
     const list = await (await tasksGET(authed("/api/practice/tasks"))).json();
     expect(list).toMatchObject({ role: "frontend", level: "junior" });
     expect(list.coding.length).toBe(2);
-    expect(list.coding[0].best).toBeGreaterThanOrEqual(55); // the graded attempt from above
+    expect(list.coding.find((t: any) => t.done).best).toBeGreaterThanOrEqual(55); // the graded attempt from above (answered tasks sort last)
     expect(list.roles.find((r: any) => r.key === "data").codingMinutes).toBe(35);
     const other = await (await tasksGET(authed("/api/practice/tasks?role=qa&level=mid"))).json(); // seeds another role on demand
     expect(other.coding.length).toBeGreaterThanOrEqual(2);
     expect(other.assignments.length).toBe(1);
 
-    const started = await (await attemptsPOST(authed("/api/practice/attempts", { method: "POST", body: JSON.stringify({ taskId: list.coding[0]._id }) }))).json(); // the seed with hints; a second attempt on a graded task is allowed
+    const seedWithHints = list.coding.find((t: any) => t.done); // the debounce seed graded above; a second attempt on a graded task is allowed
+    const started = await (await attemptsPOST(authed("/api/practice/attempts", { method: "POST", body: JSON.stringify({ taskId: seedWithHints._id }) }))).json();
     expect(started.ok).toBe(true);
     const read = await (await attemptGET(authed(`/api/practice/attempts/${started.attemptId}`), { params: Promise.resolve({ id: started.attemptId }) })).json();
     expect(read.attempt.status).toBe("in_progress");
@@ -167,5 +169,36 @@ describe("attempt lifecycle through the agents", () => {
     const after = await (await attemptGET(authed(`/api/practice/attempts/${started.attemptId}`), { params: Promise.resolve({ id: started.attemptId }) })).json();
     expect(after.task.hints.length).toBeGreaterThan(0);
     expect((await tasksGET(new NextRequest("http://localhost/api/practice/tasks"))).status).toBe(401);
+  });
+});
+
+describe("compile check before grading, and fresh questions", () => {
+  it("flags a TypeScript answer that does not compile, passes a sound one, and never blocks", async () => {
+    const list = await (await tasksGET(authed("/api/practice/tasks"))).json();
+    const task = list.coding.find((t: any) => t.language === "typescript") || list.coding[0];
+    const started = await (await attemptsPOST(authed("/api/practice/attempts", { method: "POST", body: JSON.stringify({ taskId: task._id }) }))).json();
+    const ctx = { params: Promise.resolve({ id: started.attemptId }) };
+    const bad = await (await checkPOST(authed(`/api/practice/attempts/${started.attemptId}/check`, { method: "POST", body: JSON.stringify({ answer: "export function f(a: number) {\n  const x = a +;\n  return y;\n}" }) }), ctx)).json();
+    expect(bad.supported).toBe(true);
+    expect(bad.ok).toBe(false);
+    expect(bad.issues.map((i: any) => i.line)).toEqual([2, 3]);
+    expect(bad.issues[1].message).toMatch(/Cannot find name 'y'/);
+    const good = await (await checkPOST(authed(`/api/practice/attempts/${started.attemptId}/check`, { method: "POST", body: JSON.stringify({ answer: "export function f(a: number) { return a + 1; }" }) }), ctx)).json();
+    expect(good).toMatchObject({ supported: true, ok: true, issues: [] });
+    const read = await (await attemptGET(authed(`/api/practice/attempts/${started.attemptId}`), ctx)).json();
+    expect(read.attempt.status).toBe("in_progress"); // a check changes nothing
+    expect((await checkPOST(new NextRequest(`http://localhost/api/practice/attempts/${started.attemptId}/check`, { method: "POST", body: "{}" }), ctx)).status).toBe(401);
+  });
+
+  it("answered tasks are marked and sorted after the fresh ones; a new question can be requested", async () => {
+    const list = await (await tasksGET(authed("/api/practice/tasks"))).json();
+    const done = list.coding.filter((t: any) => t.done);
+    expect(done.length).toBeGreaterThanOrEqual(1); // graded earlier in this file
+    const firstDone = list.coding.findIndex((t: any) => t.done);
+    expect(list.coding.slice(firstDone).every((t: any) => t.done)).toBe(true); // fresh first, answered last
+    // Under test there is no model and the seeds for this role are already in the bank: the request fails cleanly, not with a 500.
+    const r = await tasksPOST(authed("/api/practice/tasks", { method: "POST", body: JSON.stringify({ kind: "coding" }) }));
+    expect([200, 503]).toContain(r.status);
+    expect((await tasksPOST(new NextRequest("http://localhost/api/practice/tasks", { method: "POST", body: "{}" }))).status).toBe(401);
   });
 });

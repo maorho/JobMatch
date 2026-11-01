@@ -7,7 +7,7 @@ import { Timer, FileCode2, Briefcase, Trophy } from "lucide-react";
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
 import { PageHeader, Spinner, SignInGate } from "@/app/components/ui";
 
-type TaskCard = { _id: string; kind: "coding" | "assignment"; title: string; excerpt: string; language: string; tags: string[]; difficulty: number; timeLimitMin: number; estimatedHours: number; deliverables: number; attempts: number; avgScore: number | null; best: number | null; openAttemptId: string | null };
+type TaskCard = { _id: string; done: boolean; kind: "coding" | "assignment"; title: string; excerpt: string; language: string; tags: string[]; difficulty: number; timeLimitMin: number; estimatedHours: number; deliverables: number; attempts: number; avgScore: number | null; best: number | null; openAttemptId: string | null };
 type Data = {
   role: string;
   level: string;
@@ -38,7 +38,26 @@ export default function PracticePage() {
   const [level, setLevel] = useState<string>("");
   const [starting, setStarting] = useState("");
   const qs = new URLSearchParams({ ...(role ? { role } : {}), ...(level ? { level } : {}) }).toString();
-  const { data, isLoading } = useSWR<Data>(user ? `/api/practice/tasks${qs ? `?${qs}` : ""}` : null, fetcher, { revalidateOnFocus: false });
+  const { data, isLoading, mutate } = useSWR<Data>(user ? `/api/practice/tasks${qs ? `?${qs}` : ""}` : null, fetcher, { revalidateOnFocus: false });
+  const [authoring, setAuthoring] = useState<"" | "coding" | "assignment">("");
+  const [authorErr, setAuthorErr] = useState("");
+
+  /** "A new question": the Examiner / Assigner writes one more, different from everything in the bank. */
+  const newTask = async (kind: "coding" | "assignment") => {
+    if (!data || authoring) return;
+    setAuthoring(kind);
+    setAuthorErr("");
+    try {
+      const r = await fetch("/api/practice/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, role: role || data.role, level: level || data.level }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(j?.message || j?.error || (r.status === 429 ? "הגעת למכסה היומית של שאלות חדשות." : "לא הצלחתי לכתוב שאלה חדשה."));
+      await mutate();
+    } catch (e: any) {
+      setAuthorErr(e?.message || "לא הצלחתי לכתוב שאלה חדשה.");
+    } finally {
+      setAuthoring("");
+    }
+  };
   const { data: history } = useSWR<History>(user ? "/api/practice/attempts" : null, fetcher);
 
   if (!loading && !user) {
@@ -60,10 +79,13 @@ export default function PracticePage() {
   };
 
   const Card = ({ t }: { t: TaskCard }) => (
-    <div className="jm-card jm-card-hover jm-reveal p-5 flex flex-col gap-3">
+    <div className={`jm-card jm-card-hover jm-reveal p-5 flex flex-col gap-3 ${t.done ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-semibold text-navy leading-snug" dir="auto">{t.title}</h3>
-        <Difficulty n={t.difficulty} />
+        <div className="flex items-center gap-2 shrink-0">
+          {t.done && <span className="jm-chip jm-chip-teal">ענית</span>}
+          <Difficulty n={t.difficulty} />
+        </div>
       </div>
       <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir="auto">{t.excerpt}</p>
       <div className="flex flex-wrap gap-1.5">
@@ -79,7 +101,7 @@ export default function PracticePage() {
           {t.best !== null ? <span className="text-teal font-medium">הציון שלך: {t.best}</span> : t.avgScore !== null ? `ממוצע ${t.avgScore} · ${t.attempts} ניסיונות` : t.attempts ? `${t.attempts} ניסיונות` : "עדיין לא נוסה"}
         </div>
         <button onClick={() => start(t)} disabled={starting === t._id} className={`jm-btn jm-btn-sm ${t.openAttemptId ? "jm-btn-secondary" : "jm-btn-primary"}`}>
-          {starting === t._id ? "פותח…" : t.openAttemptId ? "המשך" : t.kind === "coding" ? "התחל (השעון רץ)" : "קח את המשימה"}
+          {starting === t._id ? "פותח…" : t.openAttemptId ? "המשך" : t.done ? "נסה שוב" : t.kind === "coding" ? "התחל (השעון רץ)" : "קח את המשימה"}
         </button>
       </div>
     </div>
@@ -121,12 +143,19 @@ export default function PracticePage() {
         <div className="space-y-8">
           <section>
             <h2 className="jm-h2 mb-1 inline-flex items-center gap-2"><FileCode2 className="h-5 w-5 text-teal" /> שאלות קוד עם שעון</h2>
-            <p className="jm-muted mb-4">{data.roles.find((r) => r.key === data.role)?.codingMinutes} דקות לשאלה ל{data.levels.find((l) => l.key === data.level)?.label} {data.roles.find((r) => r.key === data.role)?.label}. השעון מתחיל בלחיצה; הגשה מאוחרת נבדקת ומסומנת.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <p className="jm-muted">{data.roles.find((r) => r.key === data.role)?.codingMinutes} דקות לשאלה ל{data.levels.find((l) => l.key === data.level)?.label} {data.roles.find((r) => r.key === data.role)?.label}. השעון מתחיל בלחיצה; הגשה מאוחרת נבדקת ומסומנת. שאלות שענית עליהן נשארות למטה; תמיד יש שאלות חדשות למעלה.</p>
+              <button type="button" onClick={() => newTask("coding")} disabled={!!authoring} className="jm-btn jm-btn-secondary jm-btn-sm shrink-0">{authoring === "coding" ? "הבוחן כותב…" : "+ שאלה חדשה"}</button>
+            </div>
+            {authorErr && <p className="jm-alert jm-alert-err mb-3">{authorErr}</p>}
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{data.coding.map((t) => <Card key={t._id} t={t} />)}</div>
           </section>
           <section>
             <h2 className="jm-h2 mb-1 inline-flex items-center gap-2"><Briefcase className="h-5 w-5 text-teal" /> עבודות בית</h2>
-            <p className="jm-muted mb-4">כ-{data.roles.find((r) => r.key === data.role)?.assignmentHours} שעות עבודה, כמו בתהליך גיוס אמיתי. מגישים תיאור של מה בניתם ואיך החלטתם, וקישור לריפו.</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <p className="jm-muted">כ-{data.roles.find((r) => r.key === data.role)?.assignmentHours} שעות עבודה, כמו בתהליך גיוס אמיתי. מגישים תיאור של מה בניתם ואיך החלטתם, וקישור לריפו.</p>
+              <button type="button" onClick={() => newTask("assignment")} disabled={!!authoring} className="jm-btn jm-btn-secondary jm-btn-sm shrink-0">{authoring === "assignment" ? "מנהל הגיוס כותב…" : "+ משימה חדשה"}</button>
+            </div>
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{data.assignments.map((t) => <Card key={t._id} t={t} />)}</div>
           </section>
         </div>

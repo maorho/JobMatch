@@ -60,6 +60,8 @@ const nextConfig: NextConfig = {
   // Keys are picomatch route globs (next/dist/build/collect-build-traces.js), so "/api/**" covers them all.
   outputFileTracingIncludes: {
     "/api/**": FONT_GLOB,
+    // The practice compile check (lib/practice/syntaxCheck.ts) loads TypeScript's lib.*.d.ts at runtime.
+    "/api/practice/**": [...FONT_GLOB, "./node_modules/typescript/lib/lib.*.d.ts"],
   },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
