@@ -107,7 +107,7 @@ export async function tailorResumeToJob(input: TailorInput): Promise<TailorResul
     throw Object.assign(new Error("No résumé to tailor"), { code: "NO_RESUME" });
   }
   const { system, user } = buildTailorPrompt(input);
-  const llm = chatModel("quality", { temperature: 0.2, json: true });
+  const llm = chatModel("quality", { temperature: 0.2, maxTokens: 8000, timeout: 120_000, json: true }); // the full résumé comes back, plus Hebrew notes
   const res = await llm.invoke([new SystemMessage(system), new HumanMessage(user)]);
   const text = typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join("");
   const parsed = tailorResultSchema.safeParse(extractJson(text));

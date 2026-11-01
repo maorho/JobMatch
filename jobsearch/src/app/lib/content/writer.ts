@@ -119,7 +119,7 @@ export const MIN_WORDS = 450; // Hebrew is dense: ~450 Hebrew words ≈ a 900-wo
 
 export async function generateArticle(input: { topic: string; angle?: string; audience?: string; facts: CatalogFacts; existingSlugs: string[] }): Promise<GeneratedArticle & { readMinutes: number; words: number }> {
   const { system, user } = buildArticlePrompt(input);
-  const llm = chatModel("quality", { temperature: 0.6, maxTokens: 6000, json: true });
+  const llm = chatModel("quality", { temperature: 0.6, maxTokens: 10_000, timeout: 120_000, json: true }); // a 1,500-word Hebrew article ≈ 6k tokens on Claude
   const parse = (text: string) => {
     const parsed = articleSchema.safeParse(extractJson(text));
     if (!parsed.success) throw new Error("Article output invalid: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).slice(0, 5).join("; "));

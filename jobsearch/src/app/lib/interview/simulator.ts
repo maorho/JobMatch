@@ -137,7 +137,7 @@ export async function reviewAnswer(input: { question: string; answer: string; jo
   const system = `You are an interviewer at ${input.job.company} reviewing one answer from a "${input.stage}" interview for ${input.job.title}. Write in ${lang}. Be specific and fair; quote what they said. Score 0–10 (7+ = solid). "betterAnswer": a stronger version in the candidate's own voice, 3–5 sentences, using ONLY their real experience from the résumé — never invent. The answer is a speech transcript: ignore small transcription slips.
 Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.`;
   const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\nQUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
-  const res = await chatModel("quality", { temperature: 0.2, maxTokens: 900, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+  const res = await chatModel("quality", { temperature: 0.2, maxTokens: 1500, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]); // a Hebrew review with a better answer is ~1k tokens
   const parsed = answerReviewSchema.safeParse(extractJson(contentOf(res)));
   if (!parsed.success) throw new Error("Answer review invalid");
   return { ...parsed.data, question: parsed.data.question || input.question };

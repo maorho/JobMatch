@@ -79,17 +79,59 @@ export function chatModel(role: LlmRole, opts: ChatOptions = {}): ChatLike {
   const maxTokens = opts.maxTokens ?? 4096;
   const timeout = opts.timeout ?? 60_000;
   const maxRetries = opts.maxRetries ?? 1;
-  // Claude's thinking shares the output budget, so a budget sized for the visible answer alone would cut it off.
-  if (provider === "anthropic") return new AnthropicChat({ model, maxTokens: Math.max(maxTokens, 1500), temperature, timeout, maxRetries });
-  return new ChatOpenAI({
-    modelName: model,
-    temperature,
-    maxTokens,
-    timeout,
-    maxRetries,
-    openAIApiKey: process.env.OPENAI_API_KEY,
-    ...(opts.json ? { modelKwargs: { response_format: { type: "json_object" } } } : {}),
-  }) as unknown as ChatLike;
+  const build = (budget: number): ChatLike => {
+    // Claude's thinking shares the output budget, so a budget sized for the visible answer alone would cut it off.
+    if (provider === "anthropic") return new AnthropicChat({ model, maxTokens: Math.max(budget, 1500), temperature, timeout, maxRetries });
+    return new ChatOpenAI({
+      modelName: model,
+      temperature,
+      maxTokens: budget,
+      timeout,
+      maxRetries,
+      openAIApiKey: process.env.OPENAI_API_KEY,
+      ...(opts.json ? { modelKwargs: { response_format: { type: "json_object" } } } : {}),
+    }) as unknown as ChatLike;
+  };
+  // A reply the caller will parse is useless when cut off: grow the budget and ask again rather than fail on a half JSON.
+  return opts.json ? new GrowOnTruncate(build, maxTokens, OUTPUT_CEILING[provider], model) : build(maxTokens);
+}
+
+/** Output caps a retry may grow to: gpt-4o's hard limit; Claude's is far higher but minutes of generation time out first. */
+export const OUTPUT_CEILING: Record<LlmProvider, number> = { openai: 16_384, anthropic: 16_000 };
+
+export class LlmTruncatedError extends Error {
+  constructor(public readonly model: string, public readonly maxTokens: number) {
+    super(`${model} output was cut off at ${maxTokens} tokens`);
+    this.name = "LlmTruncatedError";
+  }
+}
+export const isTruncated = (r: ChatReply | any): boolean => r?.response_metadata?.stop_reason === "max_tokens" || r?.response_metadata?.finish_reason === "length" || r?.additional_kwargs?.finish_reason === "length";
+
+/**
+ * Every JSON-producing call goes through this: Hebrew costs Claude ~1.7
+ * characters per token, so budgets sized for English (or for GPT-4o) cut
+ * replies mid-array — "Expected ',' or ']' after array element" — in the
+ * debrief, the suggested answers and the prep plan before this existed.
+ * A cut-off reply is retried with double the budget (up to the ceiling);
+ * a reply still cut off is a clear LlmTruncatedError, never a parse error.
+ */
+export class GrowOnTruncate implements ChatLike {
+  readonly inner: ChatLike;
+  constructor(private readonly build: (maxTokens: number) => ChatLike, readonly maxTokens: number, readonly ceiling: number, readonly model: string) {
+    this.inner = build(maxTokens);
+  }
+  async invoke(messages: BaseMessage[]): Promise<ChatReply> {
+    let budget = this.maxTokens;
+    let res = await this.inner.invoke(messages);
+    while (isTruncated(res) && budget < this.ceiling) {
+      const grown = Math.min(budget * 2, this.ceiling);
+      console.warn(`[llm] ${this.model} output cut at ${budget} tokens; retrying with ${grown}`);
+      budget = grown;
+      res = await this.build(budget).invoke(messages);
+    }
+    if (isTruncated(res)) throw new LlmTruncatedError(this.model, budget);
+    return res;
+  }
 }
 
 /** True when the active provider has a key, i.e. LLM features can run. */

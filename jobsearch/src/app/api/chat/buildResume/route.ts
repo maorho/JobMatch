@@ -205,7 +205,8 @@ RULES
 
 
 
-    const llm = chatModel("quality", { temperature: 0.2 });
+    // A whole structured résumé: ~6k tokens on Claude for a two-page Hebrew/English CV. `json` adds the cut-off guard.
+    const llm = chatModel("quality", { temperature: 0.2, maxTokens: 8000, timeout: 120_000, json: true });
 
     const response = await llm.invoke([
       new SystemMessage(systemPrompt),

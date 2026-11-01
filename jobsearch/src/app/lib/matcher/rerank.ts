@@ -64,7 +64,7 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
   await Promise.all(batches.map(async (batch) => {
     try {
       const { system, user } = buildRerankPrompt(opts.resumeSummary, opts.level, batch, opts.language || "he");
-      const res = await chatModel("fast", { temperature: 0, maxTokens: 2500, timeout: 45_000, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
+      const res = await chatModel("fast", { temperature: 0, maxTokens: 4000, timeout: 45_000, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]); // 12 verdicts with Hebrew "why" ≈ 2k tokens
       const parsed = verdictSchema.safeParse(extractJson(contentOf(res)));
       if (!parsed.success) return;
       const ops = [];

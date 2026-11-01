@@ -52,13 +52,49 @@ describe("chatModel factory", () => {
     expect(claude.maxTokens).toBe(1500); // Anthropic floor: thinking shares the output budget
     expect((chatModel("coach", { maxTokens: 8000 }) as any).maxTokens).toBe(8000);
     const forced: any = chatModel("fast", { provider: "openai", json: true });
-    expect(forced.constructor.name).toBe("ChatOpenAI");
-    expect(forced.modelName ?? forced.model).toBe("gpt-4o-mini");
-    expect(forced.modelKwargs?.response_format?.type).toBe("json_object");
+    expect(forced.constructor.name).toBe("GrowOnTruncate"); // JSON replies are guarded against cut-offs
+    expect(forced.inner.constructor.name).toBe("ChatOpenAI");
+    expect(forced.inner.modelName ?? forced.inner.model).toBe("gpt-4o-mini");
+    expect(forced.inner.modelKwargs?.response_format?.type).toBe("json_object");
     await withProvider("openai", async () => {
       expect(activeProvider()).toBe("openai");
       expect((chatModel("quality") as any).constructor.name).toBe("ChatOpenAI");
     });
     expect(activeProvider()).toBe("anthropic");
+  });
+});
+
+describe("JSON replies that get cut off", () => {
+  it("retries with a doubled budget and fails clearly when the ceiling is not enough", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    delete process.env.LLM_PROVIDER;
+    const seen: number[] = [];
+    let cutUntil = 1;
+    const build = (maxTokens: number) => ({
+      async invoke() {
+        seen.push(maxTokens);
+        const cut = seen.length <= cutUntil;
+        return { content: cut ? '{"a":[1,2' : '{"a":[1,2,3]}', response_metadata: { stop_reason: cut ? "max_tokens" : "end_turn" } };
+      },
+    });
+    const { GrowOnTruncate, LlmTruncatedError } = await import("@/app/lib/llm/chat");
+    const ok = await new GrowOnTruncate(build, 1000, 16_000, "m").invoke([]);
+    expect(ok.content).toBe('{"a":[1,2,3]}');
+    expect(seen).toEqual([1000, 2000]);
+
+    seen.length = 0;
+    cutUntil = 99; // never fits
+    await expect(new GrowOnTruncate(build, 1000, 4000, "m").invoke([])).rejects.toBeInstanceOf(LlmTruncatedError);
+    expect(seen).toEqual([1000, 2000, 4000]); // grew to the ceiling, then gave up with a clear error
+  });
+
+  it("the guard wraps every json call, on both providers, and reads OpenAI's finish_reason too", async () => {
+    const { chatModel, isTruncated } = await import("@/app/lib/llm/chat");
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    expect((chatModel("quality", { json: true }) as any).constructor.name).toBe("GrowOnTruncate");
+    expect((chatModel("quality") as any).constructor.name).toBe("AnthropicChat"); // free text: no guard
+    expect(isTruncated({ content: "", response_metadata: { finish_reason: "length" } })).toBe(true);
+    expect(isTruncated({ content: "", response_metadata: { finish_reason: "stop" } })).toBe(false);
+    expect(isTruncated({ content: "" })).toBe(false); // test doubles without metadata
   });
 });
