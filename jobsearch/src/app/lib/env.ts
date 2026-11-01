@@ -48,6 +48,7 @@ export const envShape = z.object({
     LLM_MODEL_FAST: z.string().min(1).optional(),
     LLM_MODEL_QUALITY: z.string().min(1).optional(),
     LLM_MODEL_COACH: z.string().min(1).optional(),
+    LLM_MODEL_INTERVIEWER: z.string().min(1).optional(),
     // Model-name overrides for the OpenAI-only paths (realtime voice, web-search research, apply server).
     OPENAI_REALTIME_MODEL: z.string().min(1).optional(),
     OPENAI_REALTIME_VOICE: z.string().min(1).optional(),

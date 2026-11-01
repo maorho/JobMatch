@@ -120,7 +120,7 @@ describe("POST /api/interview/practice", () => {
     expect(first.body.reply).toContain("ספר/י");
     const second = await j(await practicePOST(new NextRequest(`${O}/api/interview/practice`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId: String(prep._id), stage: "hr", transcript: [{ role: "assistant", content: first.body.reply }, { role: "user", content: "אני מפתחת React" }] }) })));
     expect(second.body.reply).toContain("משוב");
-    expect(calls.slice(-2)).toEqual([modelFor("coach"), modelFor("coach")]); // the practice interviewer is part of the coach tier
+    expect(calls.slice(-2)).toEqual([modelFor("interviewer"), modelFor("interviewer")]); // the practice chat is the live interviewer
     expect((await practicePOST(new NextRequest(`${O}/api/interview/practice`, { method: "POST", headers: await cookie(other), body: JSON.stringify({ prepId: String(prep._id), stage: "hr", transcript: [] }) }))).status).toBe(404); // not their plan
   });
 });

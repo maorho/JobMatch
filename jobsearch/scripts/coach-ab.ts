@@ -70,7 +70,7 @@ async function main() {
         done = r.done;
       }
     });
-    report.interview[provider] = { model: modelFor("coach", provider), seconds: Math.round((ms() - t0) / 100) / 10, turns, interviewerTurns: turns.filter((t) => t.role === "interviewer").length };
+    report.interview[provider] = { model: modelFor("interviewer", provider), seconds: Math.round((ms() - t0) / 100) / 10, turns, interviewerTurns: turns.filter((t) => t.role === "interviewer").length };
     save();
   }
 

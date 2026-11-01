@@ -58,7 +58,7 @@ async function main() {
 
   const runs: Record<string, Run> = {};
   for (const { provider, model } of specs) {
-    process.env.LLM_MODEL_COACH = model;
+    process.env.LLM_MODEL_INTERVIEWER = model;
     const turns: Run["turns"] = [];
     const usage = { input: 0, output: 0 };
     const stop = onLlmUsage((u: LlmUsage) => { usage.input += u.inputTokens; usage.output += u.outputTokens; });
@@ -87,7 +87,7 @@ async function main() {
     console.log(`\n=== ${provider}:${model} ${r.error ? "ERROR: " + r.error : `| ${lat.length} turns | avg ${Math.round(lat.reduce((a, b) => a + b, 0) / Math.max(1, lat.length))}ms/turn | in ${r.inputTokens} out ${r.outputTokens} tokens | $${r.cost.toFixed(4)}`}`);
     for (const t of r.turns) if (t.role === "interviewer") console.log(`  [${t.ms}ms] ${t.content.replace(/\s+/g, " ").slice(0, 400)}`);
   }
-  delete process.env.LLM_MODEL_COACH;
+  delete process.env.LLM_MODEL_INTERVIEWER;
 
   const models = specs.map((s) => s.model);
   const cols = models.map((m) => { const r = runs[m]; const lat = r.turns.filter((t) => t.ms).map((t) => t.ms!); return `<div class="card"><h3>${esc(m)}<br><small>${r.error ? `<span class="err">${esc(r.error)}</span>` : `${lat.length} תורות · ממוצע ${Math.round(lat.reduce((a, b) => a + b, 0) / Math.max(1, lat.length)) / 1000}s לתור · ${r.inputTokens.toLocaleString()} קלט / ${r.outputTokens.toLocaleString()} פלט · <b>$${r.cost.toFixed(3)}</b> לראיון`}</small></h3>${r.turns.map((t) => `<div class="t ${t.role}"><b>${t.role === "interviewer" ? "מראיין" : "מועמד"}${t.ms ? ` <small>${(t.ms / 1000).toFixed(1)}s</small>` : ""}:</b> ${esc(t.content)}</div>`).join("")}</div>`; }).join("");

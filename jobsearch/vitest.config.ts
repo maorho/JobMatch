@@ -26,6 +26,8 @@ export default defineConfig({
       JWT_SECRET: "test-jwt-secret-at-least-32-characters-long",
       // The Applier is gated on an apply server in prod; the suites stub it.
       FEATURE_AUTO_APPLY: "1",
+      // The interviewer defaults to a GPT-5+ id (raw SDK adapter); the suites fake the LangChain client, so pin a gpt-4o-family id.
+      LLM_MODEL_INTERVIEWER: "gpt-4o",
     },
   },
 });

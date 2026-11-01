@@ -5,31 +5,35 @@
  * serves it. Three tiers:
  *   fast    — high-volume, mechanical work (classification, normalisation, drafts)
  *   quality — writing the person reads (résumés, articles, research)
- *   coach   — the interview coach: the interviewer's turns, the debrief, the
- *             model answers. The product's core; gets the strongest model.
- *             Chosen on 2026-10-29 by replaying one real HR interview on four
- *             Claude models (scripts/interviewer-models.ts): Opus 5.5 was the
- *             only one that was warm and professional, asked one question per
- *             turn, re-asked an unanswered question once and then moved on,
- *             corrected the candidate's misattributions, and never stated a
- *             fact that wasn't in the brief. Fable 5.1 probed hardest but
- *             invented two facts and was slowest; Sonnet 5.5 turned curt;
- *             Haiku 4.5 wrote broken Hebrew and ignored the résumé mismatch.
+ *   coach   — the debrief and the model answers: the coach's written work.
+ *   interviewer — the live turns of the mock interview (simulator and the
+ *             practice chat). Chosen on 2026-11-01 by replaying one real HR
+ *             interview (scripts/interviewer-models.ts) with cost per run:
+ *             Opus 5.5 was the warmest and most persistent ($0.24/interview,
+ *             7 s/turn); gpt-6.1-sol kept every rule (one question per turn,
+ *             corrected the candidate's misattributions, invented nothing) at
+ *             a quarter of the price ($0.06, 4.5 s/turn) and was picked;
+ *             gpt-6.1-terra repeated itself; gpt-6-luna invented a fact.
+ *             An earlier Claude-only round (2026-10-29): Sonnet 5.5 curt,
+ *             Haiku 4.5 broken Hebrew, Fable 5.1 invented facts.
+ *             The default is the same GPT id under both providers: a pinned
+ *             or default id picks its own provider (providerFor).
  *
  * Provider: `LLM_PROVIDER=anthropic|openai`; default anthropic when
  * ANTHROPIC_API_KEY is set, else openai. Any role can be pinned with
- * LLM_MODEL_<ROLE>=<model id> regardless of provider (the id must belong to
- * the active provider).
+ * LLM_MODEL_<ROLE>=<model id>; a claude-* id runs on Anthropic and a gpt-* id
+ * on OpenAI whatever the ambient provider is (providerFor), so one role can
+ * move without the others.
  *
  * Not here on purpose: embeddings (text-embedding-3-small), realtime voice
  * (gpt-realtime-mini) and transcription — OpenAI-only capabilities.
  */
 export type LlmProvider = "openai" | "anthropic";
-export type LlmRole = "fast" | "quality" | "coach";
+export type LlmRole = "fast" | "quality" | "coach" | "interviewer";
 
 export const MODEL_IDS: Record<LlmProvider, Record<LlmRole, string>> = {
-  openai: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4o" },
-  anthropic: { fast: "claude-haiku-4-5-20251001", quality: "claude-sonnet-5-5", coach: "claude-opus-5-5" },
+  openai: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4o", interviewer: "gpt-6.1-sol" },
+  anthropic: { fast: "claude-haiku-4-5-20251001", quality: "claude-sonnet-5-5", coach: "claude-opus-5-5", interviewer: "gpt-6.1-sol" },
 };
 
 const clean = (v: string | undefined) => (v && v.trim() ? v.trim() : undefined);
@@ -57,14 +61,13 @@ export function providerOfModel(model: string): LlmProvider | null {
  * stays on Claude), otherwise the ambient provider.
  */
 export function providerFor(role: LlmRole, ambient: LlmProvider = llmProvider()): LlmProvider {
-  const pinned = clean(process.env[`LLM_MODEL_${role.toUpperCase()}`]);
-  return (pinned && providerOfModel(pinned)) || ambient;
+  return providerOfModel(modelFor(role, ambient)) || ambient; // pinned id, else the role's default under the ambient provider
 }
 
 /** What a health check / admin page shows. */
 export function describeModels(): { provider: LlmProvider; models: Record<LlmRole, string>; providers: Record<LlmRole, LlmProvider> } {
   const provider = llmProvider();
-  const roles: LlmRole[] = ["fast", "quality", "coach"];
+  const roles: LlmRole[] = ["fast", "quality", "coach", "interviewer"];
   const models = Object.fromEntries(roles.map((r) => [r, modelFor(r, providerFor(r, provider))])) as Record<LlmRole, string>;
   const providers = Object.fromEntries(roles.map((r) => [r, providerFor(r, provider)])) as Record<LlmRole, LlmProvider>;
   return { provider, models, providers };

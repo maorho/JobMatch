@@ -220,6 +220,6 @@ Candidate résumé (for personalised follow-ups): """${(opts.resumeText || "").s
 If the transcript is empty, open with a one-line intro and the first question.`.trim();
   const msgs = [new SystemMessage(system), ...opts.transcript.slice(-20).map((t) => (t.role === "user" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (opts.transcript.length === 0) msgs.push(new HumanMessage("Let's start."));
-  const res = await chatModel("coach", { temperature: 0.5 }).invoke(msgs);
+  const res = await chatModel("interviewer", { temperature: 0.5 }).invoke(msgs);
   return contentOf(res).trim();
 }

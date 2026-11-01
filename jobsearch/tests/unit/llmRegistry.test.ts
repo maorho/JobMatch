@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 
-const ENV = ["ANTHROPIC_API_KEY", "LLM_PROVIDER", "LLM_MODEL_FAST", "LLM_MODEL_QUALITY", "LLM_MODEL_COACH"] as const;
+const ENV = ["ANTHROPIC_API_KEY", "LLM_PROVIDER", "LLM_MODEL_FAST", "LLM_MODEL_QUALITY", "LLM_MODEL_COACH", "LLM_MODEL_INTERVIEWER"] as const;
 const saved: Record<string, string | undefined> = {};
 for (const k of ENV) saved[k] = process.env[k];
 afterEach(() => {
@@ -27,6 +27,9 @@ describe("LLM registry", () => {
     expect(m.modelFor("fast")).toMatch(/^claude-haiku/);
     expect(m.modelFor("quality")).toBe("claude-sonnet-5-5");
     expect(m.modelFor("coach")).toBe("claude-opus-5-5");
+    delete process.env.LLM_MODEL_INTERVIEWER; // vitest pins gpt-4o for the fakes
+    expect(m.modelFor("interviewer")).toBe("gpt-6.1-sol"); // the same under both providers
+    expect(m.providerFor("interviewer")).toBe("openai");
   });
 
   it("honours LLM_PROVIDER and per-tier pins", async () => {
@@ -37,7 +40,7 @@ describe("LLM registry", () => {
     expect(m.llmProvider()).toBe("openai");
     expect(m.modelFor("coach")).toBe("gpt-4.1");
     expect(m.modelFor("fast")).toBe("gpt-4o-mini");
-    expect(m.describeModels()).toEqual({ provider: "openai", models: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4.1" }, providers: { fast: "openai", quality: "openai", coach: "openai" } });
+    expect(m.describeModels()).toEqual({ provider: "openai", models: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4.1", interviewer: "gpt-4o" }, providers: { fast: "openai", quality: "openai", coach: "openai", interviewer: "openai" } });
   });
 
   it("a pinned model id picks its own provider, so one role can run on OpenAI while the rest stays on Claude", async () => {
@@ -48,7 +51,7 @@ describe("LLM registry", () => {
     expect(m.providerOfModel("gpt-6.1-sol")).toBe("openai");
     expect(m.providerOfModel("claude-opus-5-5")).toBe("anthropic");
     expect(m.providerOfModel("mystery")).toBeNull();
-    expect(m.describeModels()).toEqual({ provider: "anthropic", models: { fast: "claude-haiku-4-5-20251001", quality: "claude-sonnet-5-5", coach: "gpt-6.1-sol" }, providers: { fast: "anthropic", quality: "anthropic", coach: "openai" } });
+    expect(m.describeModels()).toEqual({ provider: "anthropic", models: { fast: "claude-haiku-4-5-20251001", quality: "claude-sonnet-5-5", coach: "gpt-6.1-sol", interviewer: "gpt-4o" }, providers: { fast: "anthropic", quality: "anthropic", coach: "openai", interviewer: "openai" } });
     const { chatModel } = await import("@/app/lib/llm/chat");
     expect((chatModel("coach") as any).constructor.name).toBe("OpenAIChat"); // GPT-5+ ids go through the SDK adapter
     expect((chatModel("quality") as any).constructor.name).toBe("AnthropicChat");

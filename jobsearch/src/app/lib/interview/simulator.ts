@@ -15,7 +15,7 @@ import { modelFor } from "@/app/lib/llm/models";
 export type SessionTurn = { role: "interviewer" | "candidate"; content: string };
 
 export const END_MARK = "<<END>>";
-export const INTERVIEWER_MODEL = modelFor("coach");
+export const INTERVIEWER_MODEL = modelFor("interviewer");
 export const FEEDBACK_MODEL = modelFor("coach");
 
 const PERSONA: Record<string, { he: string; en: string }> = {
@@ -94,7 +94,7 @@ const contentOf = (res: any): string => (typeof res.content === "string" ? res.c
 export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean }> {
   const msgs = [new SystemMessage(buildInterviewerPrompt(input)), ...input.transcript.slice(-30).map((t) => (t.role === "candidate" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (input.transcript.length === 0) msgs.push(new HumanMessage(input.language === "en" ? "(The candidate has joined the call.)" : "(המועמד/ת נכנס/ה לשיחה.)"));
-  const res = await chatModel("coach", { temperature: 0.6 }).invoke(msgs);
+  const res = await chatModel("interviewer", { temperature: 0.6 }).invoke(msgs);
   const raw = contentOf(res).trim();
   const done = raw.includes(END_MARK);
   return { message: raw.replace(END_MARK, "").trim(), done };
