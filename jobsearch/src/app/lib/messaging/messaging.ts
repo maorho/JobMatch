@@ -6,6 +6,7 @@ import Job from "@/app/models/Job";
 import Candidates from "@/app/models/Candidates";
 import User from "@/app/models/User";
 import { notify } from "@/app/lib/notifications/notify";
+import type { MessageAttachment } from "./attachments";
 
 export class MessagingError extends Error {
   constructor(public status: number, message: string) {
@@ -57,20 +58,29 @@ export async function openConversation(me: string, other: string, jobId: string)
   }
 }
 
-export async function sendMessage(me: string, conversationId: string, body: string) {
+/** The thread you may write in, or a MessagingError. */
+export async function assertParticipant(me: string, conversationId: string): Promise<{ convo: any; other: string }> {
   await connectToDatabase();
-  const text = (body || "").trim();
-  if (!text) throw new MessagingError(400, "Empty message");
-  if (text.length > 4000) throw new MessagingError(413, "Message too long");
   if (!mongoose.isValidObjectId(conversationId)) throw new MessagingError(400, "Invalid conversation");
   const convo: any = await Conversation.findById(conversationId);
   if (!convo) throw new MessagingError(404, "Conversation not found");
   const ids = convo.participants.map(String);
   if (!ids.includes(me)) throw new MessagingError(403, "Not a participant");
-  const other = ids.find((id: string) => id !== me)!;
+  return { convo, other: ids.find((id: string) => id !== me)! };
+}
 
-  const msg = await Message.create({ conversationId: convo._id, senderId: oid(me), body: text });
-  convo.lastMessage = text.slice(0, 200);
+/** What a thread list / notification shows for a message that is only files. */
+const preview = (text: string, attachments: MessageAttachment[]) =>
+  (text || (attachments.length ? `📎 ${attachments.map((a) => a.name).join(", ")}` : "")).slice(0, 200);
+
+export async function sendMessage(me: string, conversationId: string, body: string, attachments: MessageAttachment[] = []) {
+  const text = (body || "").trim();
+  if (!text && !attachments.length) throw new MessagingError(400, "Empty message");
+  if (text.length > 4000) throw new MessagingError(413, "Message too long");
+  const { convo, other } = await assertParticipant(me, conversationId);
+
+  const msg = await Message.create({ conversationId: convo._id, senderId: oid(me), body: text, attachments });
+  convo.lastMessage = preview(text, attachments);
   convo.lastMessageAt = msg.createdAt;
   convo.lastSenderId = oid(me);
   convo.unread.set(other, (convo.unread.get(other) || 0) + 1);
@@ -80,7 +90,7 @@ export async function sendMessage(me: string, conversationId: string, body: stri
   await notify(other, {
     type: "new_message",
     title: `הודעה חדשה מ-${sender?.fullname || "משתמש"}`,
-    body: text.slice(0, 200),
+    body: preview(text, attachments),
     link: `/messages?c=${convo._id}`,
     meta: { conversationId: String(convo._id) },
   });

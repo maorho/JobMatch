@@ -18,7 +18,25 @@ type Thread = {
   lastSenderId: string | null;
   unread: number;
 };
-type Msg = { _id: string; senderId: string; body: string; createdAt: string; readAt: string | null };
+type Attachment = { name: string; size: number; mime: string; url: string };
+type Msg = { _id: string; senderId: string; body: string; attachments?: Attachment[]; createdAt: string; readAt: string | null };
+
+const ACCEPT = ".pdf,.doc,.docx,.xlsx,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,.zip";
+const MAX_FILES = 3;
+const MAX_BYTES = 10 * 1024 * 1024;
+const isAllowed = (f: File) => /\.(pdf|docx?|xlsx|pptx|txt|md|png|jpe?g|gif|webp|zip)$/i.test(f.name);
+const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const PaperclipGlyph = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+const FileGlyph = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+  </svg>
+);
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
@@ -34,6 +52,27 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Files picked for the next message.
+  const [pending, setPending] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const addFiles = (files: FileList | File[] | null | undefined) => {
+    if (!files) return;
+    const problems: string[] = [];
+    setPending((prev) => {
+      const next = [...prev];
+      for (const f of Array.from(files)) {
+        if (!isAllowed(f)) { problems.push(`${f.name}: סוג קובץ לא נתמך`); continue; }
+        if (f.size > MAX_BYTES) { problems.push(`${f.name}: גדול מ-10MB`); continue; }
+        if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
+        if (next.length >= MAX_FILES) { problems.push(`עד ${MAX_FILES} קבצים בהודעה`); break; }
+        next.push(f);
+      }
+      return next;
+    });
+    setError(problems.join(" · "));
+  };
 
   // Poll only while the tab is visible (SWR also pauses polling in hidden tabs; this covers the open thread explicitly).
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
@@ -74,14 +113,24 @@ export default function MessagesPage() {
 
   const send = async () => {
     const body = draft.trim();
-    if (!body || !active) return;
+    if ((!body && !pending.length) || !active) return;
     setSending(true);
     setError("");
     try {
-      const r = await fetch(`/api/messages/${active}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+      let r: Response;
+      if (pending.length) {
+        const fd = new FormData();
+        fd.append("body", body);
+        for (const f of pending) fd.append("files", f);
+        r = await fetch(`/api/messages/${active}`, { method: "POST", body: fd });
+      } else {
+        r = await fetch(`/api/messages/${active}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+      }
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error || "השליחה נכשלה");
       setDraft("");
+      setPending([]);
+      if (fileRef.current) fileRef.current.value = "";
       mutateChat();
       mutateList();
     } catch (e) {
@@ -147,8 +196,18 @@ export default function MessagesPage() {
           )}
         </aside>
 
-        {/* Chat */}
-        <section className={`min-w-0 flex-col ${showThread ? "flex" : "hidden md:flex"}`}>
+        {/* Chat: files can be dropped anywhere on it */}
+        <section
+          className={`min-w-0 flex-col relative ${showThread ? "flex" : "hidden md:flex"} ${dragOver ? "bg-teal-50/30" : ""}`}
+          onDragOver={(e) => { if (!active) return; e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+          onDrop={(e) => { if (!active) return; e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+        >
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-navy font-semibold">
+              שחרר/י כדי לצרף לשיחה
+            </div>
+          )}
           {!active ? (
             <div className="flex-1 p-6 flex items-center justify-center">
               <EmptyState icon="💬" title="בחר/י שיחה" text="בחר/י שיחה מהרשימה כדי לקרוא ולהשיב." />
@@ -176,6 +235,30 @@ export default function MessagesPage() {
                         className={`max-w-[80%] px-4 py-2 text-sm whitespace-pre-line ${mine ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line text-ink rounded-2xl rounded-es-sm"}`}
                         dir="auto"
                       >
+                        {m.attachments?.length ? (
+                          <div className={`flex flex-col gap-1.5 ${m.body ? "mb-2" : ""}`}>
+                            {m.attachments.map((a) => (
+                              a.mime.startsWith("image/") ? (
+                                <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" className="block" title={`${a.name} · ${fmtSize(a.size)}`}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={a.url} alt={a.name} className="max-h-48 max-w-full rounded-xl border border-white/20" loading="lazy" />
+                                </a>
+                              ) : (
+                                <a
+                                  key={a.url}
+                                  href={a.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs border ${mine ? "bg-white/10 border-white/25 hover:bg-white/20" : "bg-surface border-line hover:border-teal"}`}
+                                >
+                                  <FileGlyph />
+                                  <span dir="ltr" className="max-w-[220px] truncate underline-offset-2 hover:underline">{a.name}</span>
+                                  <span className={mine ? "text-white/70" : "text-ink-400"}>{fmtSize(a.size)}</span>
+                                </a>
+                              )
+                            ))}
+                          </div>
+                        ) : null}
                         {m.body}
                         <div className={`text-[10px] mt-1 ${mine ? "text-white/70" : "text-ink-400"}`}>{dayjs(m.createdAt).format("HH:mm · D.M")}{mine && m.readAt ? " · נקרא" : ""}</div>
                       </div>
@@ -184,18 +267,44 @@ export default function MessagesPage() {
                 })}
                 <div ref={bottomRef} />
               </div>
-              <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex gap-2 bg-surface">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="כתוב/י הודעה…"
-                  maxLength={4000}
-                  className="jm-input flex-1"
-                  dir="auto"
-                />
-                <button type="submit" disabled={sending || !draft.trim()} className="jm-btn jm-btn-primary shrink-0">
-                  {sending ? "שולח…" : "שלח"}
-                </button>
+              <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex flex-col gap-2 bg-surface">
+                {pending.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {pending.map((f, i) => (
+                      <span key={`${f.name}-${f.size}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-ink">
+                        <FileGlyph />
+                        <span dir="ltr" className="max-w-[200px] truncate">{f.name}</span>
+                        <span className="text-ink-400">{fmtSize(f.size)}</span>
+                        <button type="button" onClick={() => setPending((p) => p.filter((_, k) => k !== i))} className="ms-1 text-ink-400 hover:text-navy" aria-label={`הסר ${f.name}`}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input type="file" multiple accept={ACCEPT} ref={fileRef} onChange={(e) => addFiles(e.target.files)} className="hidden" />
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={sending || chat?.filesEnabled === false}
+                    className="jm-btn jm-btn-ghost px-3 shrink-0"
+                    title={chat?.filesEnabled === false ? "שליחת קבצים אינה זמינה" : "צרף קובץ (PDF, Word, תמונה…)"}
+                    aria-label="צרף קובץ"
+                  >
+                    <PaperclipGlyph />
+                  </button>
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onPaste={(e) => { if (e.clipboardData.files?.length) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
+                    placeholder={pending.length ? "הוסף/י הודעה לקבצים (לא חובה)…" : "כתוב/י הודעה…"}
+                    maxLength={4000}
+                    className="jm-input flex-1"
+                    dir="auto"
+                  />
+                  <button type="submit" disabled={sending || (!draft.trim() && !pending.length)} className="jm-btn jm-btn-primary shrink-0">
+                    {sending ? "שולח…" : "שלח"}
+                  </button>
+                </div>
               </form>
             </>
           )}

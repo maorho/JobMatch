@@ -9,6 +9,7 @@ import Notification from "@/app/models/Notification";
 import { signJwt } from "@/app/lib/jwt";
 import { GET as listGET, POST as openPOST } from "@/app/api/messages/route";
 import { GET as threadGET, POST as sendPOST } from "@/app/api/messages/[conversationId]/route";
+import { GET as fileGET } from "@/app/api/messages/[conversationId]/files/route";
 
 setupTestDb();
 
@@ -20,6 +21,13 @@ const ctx = (conversationId: string) => ({ params: Promise.resolve({ conversatio
 const open = async (me: string, userId: string, job: string) => j(await openPOST(new NextRequest(`${O}/api/messages`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ userId, jobId: job }) })));
 const send = async (me: string, c: string, body: string) => j(await sendPOST(new NextRequest(`${O}/api/messages/${c}`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ body }) }), ctx(c)));
 const read = async (me: string, c: string) => j(await threadGET(new NextRequest(`${O}/api/messages/${c}`, { headers: await cookie(me) }), ctx(c)));
+const sendFiles = async (me: string, c: string, body: string, files: { name: string; bytes: Uint8Array | string; type?: string }[]) => {
+  const fd = new FormData();
+  fd.append("body", body);
+  for (const f of files) fd.append("files", new File([typeof f.bytes === "string" ? f.bytes : new Uint8Array(f.bytes)], f.name, { type: f.type || "application/octet-stream" }));
+  return j(await sendPOST(new NextRequest(`${O}/api/messages/${c}`, { method: "POST", headers: { cookie: `token=${await signJwt({ id: me })}` }, body: fd } as any), ctx(c)));
+};
+const fileUrl = async (me: string, c: string, url: string) => fileGET(new NextRequest(`${O}${url}`, { headers: { cookie: `token=${await signJwt({ id: me })}` } }), ctx(c));
 const list = async (me: string) => j(await listGET(new NextRequest(`${O}/api/messages`, { headers: await cookie(me) })));
 
 beforeAll(async () => {
@@ -100,5 +108,41 @@ describe("sending, reading, unread counters, notifications", () => {
     const mine = await list(rec);
     expect(mine.body.items.map((x: any) => x._id).slice(0, 2)).toEqual([c1, c2]);
     expect((await send(rec, c1, "x".repeat(4001))).status).toBe(413);
+  });
+});
+
+describe("files in a thread", () => {
+  it("sends files with or without text, lists them on the message, and serves them to participants only", async () => {
+    const c = (await open(cand, rec, jobId)).body.conversationId;
+    const pdf = "%PDF-1.4 fake résumé bytes";
+    const r = await sendFiles(cand, c, "מצרף קורות חיים", [{ name: "Maor CV.pdf", bytes: pdf, type: "application/pdf" }, { name: "shot.png", bytes: new Uint8Array([137, 80, 78, 71]), type: "image/png" }]);
+    expect(r.status).toBe(200);
+    expect(r.body.message.attachments.map((a: any) => [a.name, a.mime])).toEqual([["Maor CV.pdf", "application/pdf"], ["shot.png", "image/png"]]);
+    expect(r.body.message.attachments[0].url).toMatch(new RegExp(`^/api/messages/${c}/files\\?key=`));
+
+    const onlyFile = await sendFiles(cand, c, "", [{ name: "notes.txt", bytes: "hello" }]);
+    expect(onlyFile.status).toBe(200);
+    expect(onlyFile.body.message.body).toBe("");
+    const t = (await list(rec)).body.items.find((x: any) => x._id === c);
+    expect(t.lastMessage).toBe("📎 notes.txt"); // the thread list shows the file when there is no text
+    const n: any = await Notification.findOne({ userId: rec, type: "new_message" }).sort({ createdAt: -1 }).lean();
+    expect(n.body).toBe("📎 notes.txt");
+
+    const thread = await read(rec, c);
+    const withFiles = thread.body.messages.filter((m: any) => m.attachments.length);
+    expect(withFiles).toHaveLength(2);
+    expect(thread.body.filesEnabled).toBe(true);
+    const url = withFiles[0].attachments[0].url;
+    const ok = await fileUrl(rec, c, url);
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get("location")).toMatch(/^data:application\/pdf;base64,/); // the in-memory stand-in under test
+    expect((await fileUrl(stranger, c, url)).status).toBe(403);
+    expect((await fileUrl(rec, c, `/api/messages/${c}/files?key=messages/other/x.pdf`)).status).toBe(404);
+
+    expect((await sendFiles(cand, c, "", [])).status).toBe(400); // nothing at all
+    expect((await sendFiles(cand, c, "", [{ name: "virus.exe", bytes: "x" }])).status).toBe(415);
+    expect((await sendFiles(cand, c, "", [{ name: "big.pdf", bytes: new Uint8Array(10 * 1024 * 1024 + 1) }])).status).toBe(413);
+    expect((await sendFiles(cand, c, "", [1, 2, 3, 4].map((i) => ({ name: `f${i}.txt`, bytes: "x" })))).status).toBe(400);
+    expect((await sendFiles(stranger, c, "", [{ name: "a.txt", bytes: "x" }])).status).toBe(403);
   });
 });
