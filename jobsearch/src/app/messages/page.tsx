@@ -25,6 +25,20 @@ const ACCEPT = ".pdf,.doc,.docx,.xlsx,.pptx,.txt,.md,.png,.jpg,.jpeg,.gif,.webp,
 const MAX_FILES = 3;
 const MAX_BYTES = 10 * 1024 * 1024;
 const isAllowed = (f: File) => /\.(pdf|docx?|xlsx|pptx|txt|md|png|jpe?g|gif|webp|zip)$/i.test(f.name);
+/** fetch() cannot report upload progress; a 5 MB file on a slow uplink takes long enough that people need to see it moving. */
+const postForm = (url: string, fd: FormData, onProgress: (pct: number) => void) =>
+  new Promise<{ ok: boolean; status: number; data: any }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let data: any = {};
+      try { data = JSON.parse(xhr.responseText || "{}"); } catch {}
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+    };
+    xhr.onerror = () => reject(new Error("השליחה נכשלה"));
+    xhr.send(fd);
+  });
 const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const PaperclipGlyph = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -54,6 +68,7 @@ export default function MessagesPage() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   // Files picked for the next message.
   const [pending, setPending] = useState<File[]>([]);
+  const [progress, setProgress] = useState<number | null>(null); // upload % while files are on their way
   const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -117,17 +132,19 @@ export default function MessagesPage() {
     setSending(true);
     setError("");
     try {
-      let r: Response;
+      let ok: boolean, d: any;
       if (pending.length) {
         const fd = new FormData();
         fd.append("body", body);
         for (const f of pending) fd.append("files", f);
-        r = await fetch(`/api/messages/${active}`, { method: "POST", body: fd });
+        setProgress(0);
+        const r = await postForm(`/api/messages/${active}`, fd, setProgress);
+        ok = r.ok; d = r.data;
       } else {
-        r = await fetch(`/api/messages/${active}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+        const r = await fetch(`/api/messages/${active}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+        ok = r.ok; d = await r.json().catch(() => ({}));
       }
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error || "השליחה נכשלה");
+      if (!ok) throw new Error(d?.error || "השליחה נכשלה");
       setDraft("");
       setPending([]);
       if (fileRef.current) fileRef.current.value = "";
@@ -137,6 +154,7 @@ export default function MessagesPage() {
       setError((e as Error).message);
     } finally {
       setSending(false);
+      setProgress(null);
     }
   };
 
@@ -268,6 +286,11 @@ export default function MessagesPage() {
                 <div ref={bottomRef} />
               </div>
               <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex flex-col gap-2 bg-surface">
+                {progress !== null && (
+                  <div className="h-1.5 w-full rounded-full bg-line overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="העלאת קבצים">
+                    <div className="h-full rounded-full bg-teal transition-[width] duration-200" style={{ width: `${progress}%` }} />
+                  </div>
+                )}
                 {pending.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     {pending.map((f, i) => (
@@ -302,7 +325,7 @@ export default function MessagesPage() {
                     dir="auto"
                   />
                   <button type="submit" disabled={sending || (!draft.trim() && !pending.length)} className="jm-btn jm-btn-primary shrink-0">
-                    {sending ? "שולח…" : "שלח"}
+                    {progress !== null ? (progress < 100 ? `מעלה… ${progress}%` : "שומר…") : sending ? "שולח…" : "שלח"}
                   </button>
                 </div>
               </form>
