@@ -4,6 +4,7 @@ import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
 import { signJwt, sessionClaims, SESSION_COOKIE } from "@/app/lib/jwt";
 import { clientIp, checkRateLimits, recordRateLimitHits, MINUTE_MS } from "@/app/lib/ops/rateLimit";
+import { scheduleFeedWarm } from "@/app/lib/matcher/rankedFeed";
 
 export const runtime = "nodejs";
 
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
   });
 
   response.cookies.set({ ...SESSION_COOKIE, value: token });
+  if (!recruiter) scheduleFeedWarm(String(user._id)); // matched jobs ready before the jobs page is opened
 
   return response;
 }

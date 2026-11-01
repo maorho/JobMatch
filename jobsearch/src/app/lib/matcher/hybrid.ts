@@ -11,6 +11,7 @@ import { candidateSearchVector, profileReject, hasSearchProfile, type SearchProf
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { memo, ttl } from "@/app/lib/cache";
 import { hiddenIds, dismissedIds } from "@/app/lib/jobs/signals";
+import { loadRankedFeed, saveRankedFeed } from "./rankedFeed";
 
 /**
  * The matching pipeline:
@@ -101,8 +102,18 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
   const cacheable = !!profile.userId;
   const pool = cacheable ? MAX_POOL : Math.min(Math.max((skip + limit) * 3, 150), MAX_POOL);
   const compute = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
+  // Two layers for signed-in people: this instance's memo, then the list persisted in Mongo —
+  // computed in the background at sign-in (warmFeedForUser) so the jobs page opens on it from any instance.
+  const key = `rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
+  const isDefault = !opts.query && !opts.filter && !opts.language && minScore === 0; // the plain feed, the one worth warming
   const final = cacheable
-    ? await memo(`rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`, ttl(RANK_TTL_MS), compute)
+    ? await memo(key, ttl(RANK_TTL_MS), async () => {
+        const stored = await loadRankedFeed(profile.userId!, key).catch(() => null);
+        if (stored) return stored;
+        const list = await compute();
+        await saveRankedFeed(profile.userId!, key, list, isDefault).catch((e) => console.warn("[feed] persist failed:", (e as Error)?.message));
+        return list;
+      })
     : await compute();
   // "Not relevant" is final for that person, and an applied posting lives under Applications now: neither comes back, in any page or total.
   const hidden = profile.userId ? await (opts.includeApplied ? dismissedIds(profile.userId) : hiddenIds(profile.userId)) : null;

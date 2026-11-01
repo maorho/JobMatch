@@ -3,6 +3,7 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { PRIVATE_CACHE, invalidate } from "@/app/lib/cache";
 import { getSearchProfile, saveSearchProfile, PROFILE_ROLE_OPTIONS, EMPTY_PROFILE } from "@/app/lib/matcher/searchProfile";
 import { WORK_MODES } from "@/app/lib/jobTaxonomy";
+import { invalidateRankedFeed, scheduleFeedWarm } from "@/app/lib/matcher/rankedFeed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,5 +22,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const profile = await saveSearchProfile(userId, body);
   invalidate(`rank:${userId}:`); // this instance's cached feed; the memo key also carries the profile version
+  await invalidateRankedFeed(userId).catch(() => {}); // and the persisted one, so the warm-up ranks against the new profile
+  scheduleFeedWarm(userId);
   return NextResponse.json({ ok: true, profile }, { headers: PRIVATE_CACHE });
 }

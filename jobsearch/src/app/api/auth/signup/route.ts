@@ -4,6 +4,7 @@ import { signJwt, sessionClaims, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
 import { clientIp, checkRateLimits, recordRateLimitHits, HOUR_MS } from "@/app/lib/ops/rateLimit";
 import { embedAndStoreResume } from "@/app/lib/matcher/candidateProfile";
+import { scheduleFeedWarm } from "@/app/lib/matcher/rankedFeed";
 import User from "@/app/models/User";
 import Company from "@/app/models/Company";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({ message: "Signup successful", recruiter });
   response.cookies.set({ ...SESSION_COOKIE, value: token });
+  if (!recruiter) scheduleFeedWarm(String(newUser._id)); // no-op until a résumé is embedded; cheap otherwise
 
   return response;
 }

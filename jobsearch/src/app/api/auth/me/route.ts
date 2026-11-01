@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { verifyJwt, signJwt, sessionClaims, tokenVersionMatches, JWT_REFRESH_BELOW_SEC, SESSION_COOKIE } from "@/app/lib/jwt";
 import { connectToDatabase } from "@/app/lib/db";
 import User from "@/app/models/User";
+import { scheduleFeedWarm } from "@/app/lib/matcher/rankedFeed";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,9 @@ export async function GET(req: NextRequest) {
     };
 
     const res = NextResponse.json(userData);
+    // Every app open hits this route: have the person's matched jobs ready in the
+    // background before they reach the jobs page (a no-op when a fresh list exists).
+    if (!user.recruiter) scheduleFeedWarm(String(user._id));
     // Sliding session: once less than half the token's life is left, issue a
     // fresh one (same payload shape as login) so active people never get
     // logged out mid-session.

@@ -3,6 +3,8 @@ import User from "@/app/models/User";
 import { embedText } from "./embeddings";
 import { buildCandidateText } from "./text";
 import { inferCandidateLevel } from "./level";
+import { invalidate } from "@/app/lib/cache";
+import { invalidateRankedFeed, scheduleFeedWarm } from "./rankedFeed";
 
 /**
  * Build the candidate's profile text (résumé + memory), embed it, and store the
@@ -31,6 +33,10 @@ export async function embedAndStoreResume(
       $unset: { searchVectorKey: 1 },
     }
   );
+  // The persisted feed belongs to the old résumé; drop it and rank against the new one in the background.
+  invalidate(`rank:${userId}:`);
+  await invalidateRankedFeed(userId).catch(() => {});
+  scheduleFeedWarm(userId);
   return vec;
 }
 

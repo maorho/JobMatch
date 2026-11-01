@@ -3,6 +3,7 @@ import { exchangeCode, fetchProfile, isProvider, redirectUri, safeNext } from "@
 import { findOrCreateOAuthUser } from "@/app/lib/oauth/users";
 import { attachPartner, REF_COOKIE } from "@/app/lib/partners/partners";
 import { signJwt, sessionClaims, SESSION_COOKIE } from "@/app/lib/jwt";
+import { scheduleFeedWarm } from "@/app/lib/matcher/rankedFeed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     if (target.origin !== req.nextUrl.origin) target = new URL("/", req.nextUrl.origin);
     const res = NextResponse.redirect(target);
     res.cookies.set({ ...SESSION_COOKIE, value: token });
+    if (!user.recruiter) scheduleFeedWarm(String(user._id)); // matched jobs ready before the jobs page is opened
     res.cookies.delete(STATE_COOKIE);
     if (ref) res.cookies.delete(REF_COOKIE);
     return res;

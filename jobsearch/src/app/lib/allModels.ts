@@ -20,6 +20,7 @@ import InterviewPrepModel from "@/app/models/InterviewPrep";
 import InterviewQuestionModel from "@/app/models/InterviewQuestion";
 import InterviewSessionModel from "@/app/models/InterviewSession";
 import SuggestedAnswerModel from "@/app/models/SuggestedAnswer";
+import RankedFeedModel from "@/app/models/RankedFeed";
 import JobModel from "@/app/models/Job";
 import JobSignalModel from "@/app/models/JobSignal";
 import LocationAliasModel from "@/app/models/LocationAlias";
@@ -69,6 +70,7 @@ export const ALL_MODELS: Record<string, Model<any>> = {
   InterviewQuestion: InterviewQuestionModel,
   InterviewSession: InterviewSessionModel,
   SuggestedAnswer: SuggestedAnswerModel,
+  RankedFeed: RankedFeedModel,
   Job: JobModel,
   JobSignal: JobSignalModel,
   LocationAlias: LocationAliasModel,
