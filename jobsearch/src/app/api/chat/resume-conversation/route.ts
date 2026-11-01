@@ -9,6 +9,22 @@ import User, { IUser } from "@/app/models/User";
 import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { chatModel } from "@/app/lib/llm/chat";
+import { ATTACHMENT_MAX_CHARS, ATTACHMENT_MAX_FILES, ATTACHMENT_MAX_TOTAL_CHARS, withAttachments, type ChatAttachment } from "@/app/lib/files/extractText";
+
+const ATTACHMENT_RULES_HE = `
+            קבצים מצורפים:
+            - כשמופיע בהודעה "[קובץ מצורף: שם]" ואחריו טקסט, זה תוכן הקובץ שהמשתמש העלה. קרא אותו ותתייחס אליו.
+            - אם זה קורות חיים: סכם בקצרה מה ראית (תפקידים, ניסיון, השכלה, כישורים), ציין 2-3 דברים שאפשר לחזק, ושאל אם לשפר את הגרסה הזו או לבנות חדשה. התייחס למידע שבקובץ כאל הפרופיל של המשתמש.
+            - אם זה תיאור משרה: שאל אם להתאים את קורות החיים אליו, וציין אילו דרישות חסרות בפרופיל.
+            - כל קובץ אחר: השתמש בו כהקשר לשיחה.
+            - אל תצטט את הקובץ בחזרה באורכו המלא.`;
+const ATTACHMENT_RULES_EN = `
+            Attached files:
+            - A block "[קובץ מצורף: name]" followed by text is the content of a file the user uploaded. Read it and respond to it.
+            - A résumé: briefly summarize what you see (roles, experience, education, skills), name 2-3 things to strengthen, and ask whether to improve this version or build a new one. Treat its facts as the user's profile.
+            - A job description: ask whether to tailor the résumé to it, and point out requirements the profile lacks.
+            - Anything else: use it as context.
+            - Never quote the file back in full.`;
 
 type ExtractedMemory = {
   skills?: string[];
@@ -183,11 +199,24 @@ export async function POST(req: NextRequest) {
     if (totalChars > 24000) {
       return NextResponse.json({ error: "Conversation too long" }, { status: 413 });
     }
+    // Files attached to messages (/api/chat/attachments extracted their text): their own budget, apart from the typed text.
+    const attachmentsOf = (m: any): ChatAttachment[] =>
+      Array.isArray(m?.attachments)
+        ? m.attachments
+            .filter((a: any) => a && typeof a.name === "string" && typeof a.text === "string")
+            .slice(0, ATTACHMENT_MAX_FILES)
+            .map((a: any) => ({ name: String(a.name).slice(0, 120), text: String(a.text).slice(0, ATTACHMENT_MAX_CHARS) }))
+        : [];
+    const attachmentChars = messages.reduce((n: number, m: any) => n + attachmentsOf(m).reduce((k, a) => k + a.text.length, 0), 0);
+    if (attachmentChars > ATTACHMENT_MAX_TOTAL_CHARS) {
+      return NextResponse.json({ error: "Too much attached text" }, { status: 413 });
+    }
+    const hasAttachments = attachmentChars > 0;
 
     await connectToDatabase();
 
-    const lastUserMessage =
-      messages.filter((m: any) => m.role === "user").at(-1)?.content || "";
+    const lastUser = messages.filter((m: any) => m.role === "user").at(-1);
+    const lastUserMessage = lastUser ? withAttachments(lastUser.content || "", attachmentsOf(lastUser)) : ""; // skills in an attached résumé land in memory too
 
     const extractedMemory = lastUserMessage
       ? extractMemoryFromText(lastUserMessage)
@@ -275,6 +304,7 @@ export async function POST(req: NextRequest) {
             - לא להזכיר למשתמש את המילה READY_TO_BUILD.
             - לא להחזיר JSON.
             - לא לבנות קורות חיים אם *אין מספיק מידע* – גם אם המשתמש כותב "פשוט תבנה".
+            ${hasAttachments ? ATTACHMENT_RULES_HE : ""}
             `.trim();
 
                 const SYSTEM_PROMPT_EN = `
@@ -312,6 +342,7 @@ export async function POST(req: NextRequest) {
             - Mention the existence of the READY_TO_BUILD token.
             - Return JSON or machine-readable output.
             - Append the token if there is still not enough information, even if the user insists.
+            ${hasAttachments ? ATTACHMENT_RULES_EN : ""}
             `.trim();
 
     const systemText = lang === "he" ? SYSTEM_PROMPT_HE : SYSTEM_PROMPT_EN;
@@ -321,7 +352,7 @@ export async function POST(req: NextRequest) {
     const formattedMessages = [
       new SystemMessage(systemText),
       ...messages.map((m: any) => {
-        if (m.role === "user") return new HumanMessage(m.content);
+        if (m.role === "user") return new HumanMessage(withAttachments(m.content, attachmentsOf(m)));
         if (m.role === "assistant") return new AIMessage(m.content);
         if (m.role === "system") return new SystemMessage(m.content);
         return new HumanMessage(m.content);

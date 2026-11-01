@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { PageHeader } from "../components/ui";
 
 type Role = "user" | "assistant" | "system";
 
+/** A file attached to a message: its text was extracted by /api/chat/attachments and travels with the message. */
+type Attachment = { name: string; text: string; chars: number; kind: "pdf" | "docx" | "text"; looksLikeResume: boolean; truncated?: boolean };
+
 type Message = {
   role: Role;
   content: string;
+  attachments?: Attachment[];
 };
+
+const ACCEPT = ".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown";
+const MAX_FILES = 3;
+const MAX_BYTES = 8 * 1024 * 1024;
 
 const PdfGlyph = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -18,13 +26,33 @@ const PdfGlyph = () => (
     <path d="M9 13h6M9 17h6" />
   </svg>
 );
+const PaperclipGlyph = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+const FileGlyph = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+  </svg>
+);
+
+const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const isAcceptedFile = (f: File) => /\.(pdf|docx|txt|md)$/i.test(f.name);
+
+/** What the résumé builder sees: the typed text plus each attached file, since it reads the conversation as plain text. */
+const flatten = (m: Message): Message => ({
+  role: m.role,
+  content: m.attachments?.length ? `${m.content}\n\n${m.attachments.map((a) => `[קובץ מצורף: ${a.name}]\n${a.text}`).join("\n\n")}` : m.content,
+});
 
 export default function ResumeAIPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "היי, אני ResumeAI 🤖\nאני אעזור לך לבנות או לשפר קורות חיים – גם אם אין לך קובץ מוכן.\nתוכל לספר לי קצת על עצמך, או להעלות קובץ קורות חיים קיים.",
+        "היי, אני ResumeAI 🤖\nאני אעזור לך לבנות או לשפר קורות חיים – גם אם אין לך קובץ מוכן.\nתוכל לספר לי קצת על עצמך, או לצרף לשיחה קובץ: קורות חיים קיימים, תיאור משרה, או כל מסמך רלוונטי (PDF, Word או טקסט).",
     },
   ]);
   const [input, setInput] = useState("");
@@ -37,6 +65,12 @@ export default function ResumeAIPage() {
   // True once the résumé is stored for matching → the feed is personalized.
   const [matchReady, setMatchReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Files picked for the next chat message (not sent yet).
+  const [pending, setPending] = useState<File[]>([]);
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const chatFileRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // מושך את המשתמש המחובר (בהנחה ש /api/auth/me מחזיר user._id)
   useEffect(() => {
@@ -55,22 +89,76 @@ export default function ResumeAIPage() {
     fetchMe();
   }, []);
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, loading]);
+
   const appendMessage = (msg: Message) =>
     setMessages((prev) => [...prev, msg]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMessage: Message = { role: "user", content: input.trim() };
-    const newMessages = [...messages, userMessage];
+  /** Add files to the next message, with the same limits the server applies. */
+  const addFiles = useCallback((files: FileList | File[] | null | undefined) => {
+    if (!files) return;
+    const list = Array.from(files);
+    const problems: string[] = [];
+    setPending((prev) => {
+      const next = [...prev];
+      for (const f of list) {
+        if (!isAcceptedFile(f)) { problems.push(`${f.name}: רק PDF, Word (docx) או טקסט`); continue; }
+        if (f.size > MAX_BYTES) { problems.push(`${f.name}: גדול מ-8MB`); continue; }
+        if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
+        if (next.length >= MAX_FILES) { problems.push(`עד ${MAX_FILES} קבצים להודעה`); break; }
+        next.push(f);
+      }
+      return next;
+    });
+    setPendingError(problems.length ? problems.join(" · ") : null);
+  }, []);
+  const removePending = (i: number) => setPending((prev) => prev.filter((_, k) => k !== i));
 
-    setMessages(newMessages);
-    setInput("");
+  /** Upload the pending files and get their text back; the message carries it from here on. */
+  const extractPending = async (): Promise<Attachment[] | null> => {
+    if (!pending.length) return [];
+    const fd = new FormData();
+    for (const f of pending) fd.append("files", f);
+    const res = await fetch("/api/chat/attachments", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    const errs: { name: string; error: string }[] = Array.isArray(data?.errors) ? data.errors : [];
+    if (errs.length) {
+      const why: Record<string, string> = { too_large: "גדול מדי", unsupported: "סוג קובץ לא נתמך", empty: "לא נמצא בו טקסט (סרוק כתמונה?)", unreadable: "לא הצלחתי לקרוא אותו" };
+      appendMessage({ role: "assistant", content: `⚠️ לא הצלחתי לצרף: ${errs.map((e) => `${e.name} (${why[e.error] || e.error})`).join(", ")}` });
+    }
+    if (!res.ok && !Array.isArray(data?.files)) return null;
+    return (data.files || []) as Attachment[];
+  };
+
+  const handleSend = async () => {
+    if (loading) return;
+    if (!input.trim() && !pending.length) return;
     setLoading(true);
     setDownloadUrl(null); // אם יש PDF קודם – נסתיר אותו
     setScore(null);
     setIssues([]);
+    setPendingError(null);
 
     try {
+      const attachments = await extractPending();
+      if (attachments === null) {
+        appendMessage({ role: "assistant", content: "⚠️ לא הצלחתי לקרוא את הקבצים. נסה קובץ אחר או שלח בלי קבצים." });
+        return;
+      }
+      if (!attachments.length && !input.trim()) return; // only unreadable files were attached
+      setPending([]);
+      if (chatFileRef.current) chatFileRef.current.value = "";
+      // A résumé attached in the chat becomes the base for the next build, like one dropped on the upload card.
+      const cv = attachments.find((a) => a.looksLikeResume);
+      if (cv) setRawResumeText(cv.text);
+
+      const userMessage: Message = { role: "user", content: input.trim(), attachments: attachments.length ? attachments : undefined };
+      const newMessages = [...messages, userMessage];
+      setMessages(newMessages);
+      setInput("");
+
       // 1️⃣ שיחת AI
       const res = await fetch("/api/chat/resume-conversation", {
         method: "POST",
@@ -82,7 +170,7 @@ export default function ResumeAIPage() {
       if (data.error) {
         appendMessage({
           role: "assistant",
-          content: "⚠️ אירעה שגיאה. נסה שוב בעוד רגע.",
+          content: res.status === 429 ? "⚠️ הגעת למכסה היומית של השיחה. נמשיך מחר." : "⚠️ אירעה שגיאה. נסה שוב בעוד רגע.",
         });
         return;
       }
@@ -123,7 +211,7 @@ export default function ResumeAIPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
-          messages: conversation,
+          messages: conversation.map(flatten),
           rawResumeText,
         }),
       });
@@ -365,9 +453,19 @@ export default function ResumeAIPage() {
           )}
         </section>
 
-        {/* Chat card */}
-        <section className="jm-card p-5 sm:p-6 flex flex-col">
-          <div className="jm-scroll max-h-[60vh] min-h-[320px] overflow-y-auto space-y-3 pe-1">
+        {/* Chat card: files can be dropped anywhere on it */}
+        <section
+          className={`jm-card p-5 sm:p-6 flex flex-col relative transition-colors ${dragOver ? "ring-2 ring-teal bg-teal-50/30" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false); }}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+        >
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-card bg-white/70 text-navy font-semibold">
+              שחרר כדי לצרף לשיחה
+            </div>
+          )}
+          <div ref={scrollRef} className="jm-scroll max-h-[60vh] min-h-[320px] overflow-y-auto space-y-3 pe-1">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
@@ -378,6 +476,17 @@ export default function ResumeAIPage() {
                       : "bg-canvas border border-line text-ink rounded-2xl rounded-es-sm"
                   }`}
                 >
+                  {msg.attachments?.length ? (
+                    <div className={`flex flex-wrap gap-1.5 ${msg.content ? "mb-2" : ""}`}>
+                      {msg.attachments.map((a) => (
+                        <span key={a.name} className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2.5 py-0.5 text-xs" title={`${a.chars.toLocaleString()} תווים${a.truncated ? " (קוצר)" : ""}`}>
+                          <FileGlyph />
+                          <span dir="ltr" className="max-w-[180px] truncate">{a.name}</span>
+                          {a.looksLikeResume && <span className="opacity-80">· קו״ח</span>}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   {msg.content}
                 </div>
               </div>
@@ -386,22 +495,62 @@ export default function ResumeAIPage() {
             {loading && (
               <div className="flex items-center gap-2 text-sm text-ink-400" role="status">
                 <span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" />
-                המערכת חושבת…
+                {pending.length ? "קורא את הקבצים…" : "המערכת חושבת…"}
               </div>
             )}
           </div>
 
+          {/* Files waiting to go with the next message */}
+          {(pending.length > 0 || pendingError) && (
+            <div className="mt-3 space-y-2">
+              {pending.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {pending.map((f, i) => (
+                    <span key={`${f.name}-${f.size}`} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-canvas px-3 py-1 text-xs text-ink">
+                      <FileGlyph />
+                      <span dir="ltr" className="max-w-[200px] truncate">{f.name}</span>
+                      <span className="text-ink-400">{fmtSize(f.size)}</span>
+                      <button type="button" onClick={() => removePending(i)} className="ms-1 text-ink-400 hover:text-navy" aria-label={`הסר ${f.name}`}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {pendingError && <p className="text-xs text-red-600" role="alert">{pendingError}</p>}
+            </div>
+          )}
+
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
             <input
-              className="jm-input flex-1"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              type="file"
+              multiple
+              accept={ACCEPT}
+              ref={chatFileRef}
+              onChange={(e) => addFiles(e.target.files)}
+              className="hidden"
             />
+            <div className="flex flex-1 gap-2">
+              <button
+                type="button"
+                onClick={() => chatFileRef.current?.click()}
+                disabled={loading}
+                className="jm-btn jm-btn-ghost px-3 shrink-0"
+                title="צרף קובץ (PDF, Word, טקסט)"
+                aria-label="צרף קובץ"
+              >
+                <PaperclipGlyph />
+              </button>
+              <input
+                className="jm-input flex-1"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPaste={(e) => { if (e.clipboardData.files?.length) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
+                placeholder={pending.length ? "הוסף הודעה לקבצים (לא חובה)…" : "כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              />
+            </div>
             <button
               onClick={handleSend}
-              disabled={loading}
+              disabled={loading || (!input.trim() && !pending.length)}
               className="jm-btn jm-btn-primary"
             >
               שלח
