@@ -80,11 +80,12 @@ describe("POST /api/interview/prep", () => {
     expect(r.body.job).toEqual({ title: "Junior Frontend Developer", company: "Acme" });
     expect(r.body.plan.stages.map((s: any) => s.key)).toEqual(["hr", "technical"]);
     expect(r.body.context.techSignals[0].term).toBe("kubernetes");
-    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(1);
+    expect(r.body.plan.stages[0].likelyQuestions[0].question).toBe("ספר/י על עצמך"); // filled in by the per-stage call
+    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(4); // stages, then the overview + one call per stage in parallel
 
     const again = await j(await prepPOST(new NextRequest(`${O}/api/interview/prep`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ jobId, source: "external" }) })));
     expect(again.body.cached).toBe(true);
-    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(1); // no second LLM call
+    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(4); // no further LLM calls
     expect(await InterviewPrep.countDocuments({ userId: me })).toBe(1);
 
     const get = await j(await prepGET(new NextRequest(`${O}/api/interview/prep?jobId=${jobId}&source=external`, { headers: await cookie(me) })));
@@ -93,7 +94,7 @@ describe("POST /api/interview/prep", () => {
 
     const forced = await j(await prepPOST(new NextRequest(`${O}/api/interview/prep`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ jobId, source: "external", force: true }) })));
     expect(forced.body.cached).toBe(false);
-    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(2);
+    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(8); // regenerated: stages + overview + two stages again
   });
 
   it("validates input and auth", async () => {
