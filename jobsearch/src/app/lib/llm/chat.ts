@@ -3,7 +3,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { BaseMessage } from "@langchain/core/messages";
-import { llmProvider, modelFor, type LlmProvider, type LlmRole } from "./models";
+import { llmProvider, modelFor, providerFor, type LlmProvider, type LlmRole } from "./models";
 
 export type ChatOptions = {
   temperature?: number;
@@ -130,7 +130,8 @@ class Metered implements ChatLike {
  * keep their `invoke([...messages])`.
  */
 export function chatModel(role: LlmRole, opts: ChatOptions = {}): ChatLike {
-  const provider = opts.provider || activeProvider();
+  // A pinned model id picks its own provider (LLM_MODEL_COACH=gpt-6.1-sol next to Claude for the rest); a harness override wins.
+  const provider = opts.provider || (providerOverride.getStore() ? activeProvider() : providerFor(role, activeProvider()));
   const model = modelFor(role, provider);
   const temperature = opts.temperature ?? 0.3;
   const maxTokens = opts.maxTokens ?? 4096;

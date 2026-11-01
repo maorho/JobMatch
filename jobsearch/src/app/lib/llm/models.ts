@@ -44,8 +44,28 @@ export function modelFor(role: LlmRole, provider: LlmProvider = llmProvider()): 
   return clean(process.env[`LLM_MODEL_${role.toUpperCase()}`]) || MODEL_IDS[provider][role];
 }
 
+/** The provider a model id belongs to, when the id says so (claude-* / gpt-*, o-series); null for an unknown pattern. */
+export function providerOfModel(model: string): LlmProvider | null {
+  if (/^claude-/.test(model)) return "anthropic";
+  if (/^(gpt-|o\d|chatgpt-)/.test(model)) return "openai";
+  return null;
+}
+
+/**
+ * The provider that serves a role: a pinned LLM_MODEL_<ROLE> decides by its
+ * id (so LLM_MODEL_COACH=gpt-6.1-sol runs the coach on OpenAI while the rest
+ * stays on Claude), otherwise the ambient provider.
+ */
+export function providerFor(role: LlmRole, ambient: LlmProvider = llmProvider()): LlmProvider {
+  const pinned = clean(process.env[`LLM_MODEL_${role.toUpperCase()}`]);
+  return (pinned && providerOfModel(pinned)) || ambient;
+}
+
 /** What a health check / admin page shows. */
-export function describeModels(): { provider: LlmProvider; models: Record<LlmRole, string> } {
+export function describeModels(): { provider: LlmProvider; models: Record<LlmRole, string>; providers: Record<LlmRole, LlmProvider> } {
   const provider = llmProvider();
-  return { provider, models: { fast: modelFor("fast", provider), quality: modelFor("quality", provider), coach: modelFor("coach", provider) } };
+  const roles: LlmRole[] = ["fast", "quality", "coach"];
+  const models = Object.fromEntries(roles.map((r) => [r, modelFor(r, providerFor(r, provider))])) as Record<LlmRole, string>;
+  const providers = Object.fromEntries(roles.map((r) => [r, providerFor(r, provider)])) as Record<LlmRole, LlmProvider>;
+  return { provider, models, providers };
 }

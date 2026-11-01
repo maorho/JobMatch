@@ -37,7 +37,21 @@ describe("LLM registry", () => {
     expect(m.llmProvider()).toBe("openai");
     expect(m.modelFor("coach")).toBe("gpt-4.1");
     expect(m.modelFor("fast")).toBe("gpt-4o-mini");
-    expect(m.describeModels()).toEqual({ provider: "openai", models: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4.1" } });
+    expect(m.describeModels()).toEqual({ provider: "openai", models: { fast: "gpt-4o-mini", quality: "gpt-4o", coach: "gpt-4.1" }, providers: { fast: "openai", quality: "openai", coach: "openai" } });
+  });
+
+  it("a pinned model id picks its own provider, so one role can run on OpenAI while the rest stays on Claude", async () => {
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    delete process.env.LLM_PROVIDER;
+    process.env.LLM_MODEL_COACH = "gpt-6.1-sol";
+    const m = await load();
+    expect(m.providerOfModel("gpt-6.1-sol")).toBe("openai");
+    expect(m.providerOfModel("claude-opus-5-5")).toBe("anthropic");
+    expect(m.providerOfModel("mystery")).toBeNull();
+    expect(m.describeModels()).toEqual({ provider: "anthropic", models: { fast: "claude-haiku-4-5-20251001", quality: "claude-sonnet-5-5", coach: "gpt-6.1-sol" }, providers: { fast: "anthropic", quality: "anthropic", coach: "openai" } });
+    const { chatModel } = await import("@/app/lib/llm/chat");
+    expect((chatModel("coach") as any).constructor.name).toBe("OpenAIChat"); // GPT-5+ ids go through the SDK adapter
+    expect((chatModel("quality") as any).constructor.name).toBe("AnthropicChat");
   });
 });
 
