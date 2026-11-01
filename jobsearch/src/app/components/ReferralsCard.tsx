@@ -10,7 +10,9 @@ type Draft = { subject: string; message: string; angle: string };
 export default function ReferralsCard({ company, jobId, source, jobUrl }: { company: string; jobId: string; source: "internal" | "external"; jobUrl?: string }) {
   const [data, setData] = useState<{ total: number; contacts: Contact[] } | null>(null);
   const [active, setActive] = useState<Contact | null>(null);
-  const [channel, setChannel] = useState<"linkedin" | "email">("linkedin");
+  const [channel, setChannel] = useState<"linkedin" | "note" | "email">("linkedin");
+  // How the sender knows this contact, in their words: the opening line of the message. Kept per contact.
+  const [relationship, setRelationship] = useState("");
   const [language, setLanguage] = useState<"he" | "en">("he");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -28,14 +30,15 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
       .catch(() => {});
   }, [company]);
 
-  const compose = async (c: Contact, ch = channel, lang = language) => {
+  const compose = async (c: Contact, ch = channel, lang = language, rel = relationship) => {
+    if (active?._id !== c._id) { setRelationship(""); rel = ""; }
     setActive(c);
     setBusy(true);
     setErr("");
     setDraft(null);
     setCopied(false);
     try {
-      const r = await fetch("/api/contacts/outreach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c._id, jobId, source, channel: ch, language: lang, url: jobUrl }) });
+      const r = await fetch("/api/contacts/outreach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contactId: c._id, jobId, source, channel: ch, language: lang, url: jobUrl, relationship: rel || undefined }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "הניסוח נכשל"));
       setDraft({ subject: d.subject, message: d.message, angle: d.angle });
@@ -96,13 +99,28 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
         <div className="rounded-control border border-line p-3 space-y-2">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="jm-muted">הודעה ל{active.fullName}:</span>
-            {(["linkedin", "email"] as const).map((ch) => (
-              <button key={ch} type="button" onClick={() => { setChannel(ch); compose(active, ch, language); }} className={`jm-chip ${channel === ch ? "jm-chip-navy" : ""}`}>{ch === "linkedin" ? "LinkedIn" : "אימייל"}</button>
+            {(["linkedin", "note", "email"] as const).map((ch) => (
+              <button key={ch} type="button" onClick={() => { setChannel(ch); compose(active, ch, language); }} className={`jm-chip ${channel === ch ? "jm-chip-navy" : ""}`} title={ch === "note" ? "הערה קצרה לבקשת חיבור (עד 280 תווים)" : undefined}>{ch === "linkedin" ? "הודעה" : ch === "note" ? "בקשת חיבור" : "אימייל"}</button>
             ))}
             {(["he", "en"] as const).map((l) => (
               <button key={l} type="button" onClick={() => { setLanguage(l); compose(active, channel, l); }} className={`jm-chip ${language === l ? "jm-chip-navy" : ""}`}>{l === "he" ? "עברית" : "English"}</button>
             ))}
           </div>
+          <form
+            onSubmit={(e) => { e.preventDefault(); compose(active, channel, language, relationship); }}
+            className="flex gap-2"
+          >
+            <input
+              value={relationship}
+              onChange={(e) => setRelationship(e.target.value)}
+              maxLength={300}
+              dir="auto"
+              placeholder="איך אתם מכירים? (למשל: למדנו יחד בטכניון / עבדנו ב-X / ראיתי את הפוסט שלו על…)"
+              className="jm-input text-sm flex-1"
+              aria-label="איך אתם מכירים"
+            />
+            <button type="submit" disabled={busy} className="jm-btn jm-btn-secondary jm-btn-sm shrink-0">נסח מחדש</button>
+          </form>
           {busy && <p className="jm-muted">מנסח…</p>}
           {err && <p className="jm-alert jm-alert-err">{err}</p>}
           {draft && (

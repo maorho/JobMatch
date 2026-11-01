@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * POST { contactId, jobId, source, channel?, language? } → a personal
- * referral request to that contact about that job.
+ * POST { contactId, jobId, source, channel?, language?, relationship? } → a personal
+ * referral request to that contact about that job. `relationship` is how the
+ * sender knows the contact, in their words; it becomes the opening line.
  */
 export async function POST(req: NextRequest) {
   const userId = await getUserIdFromRequest(req);
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
   const contactId = String(body?.contactId || "");
   const jobId = String(body?.jobId || "");
   const source = body?.source === "internal" ? "internal" : "external";
-  const channel = body?.channel === "email" ? "email" : "linkedin";
+  const channel = body?.channel === "email" ? "email" : body?.channel === "note" ? "note" : "linkedin";
+  const relationship = typeof body?.relationship === "string" ? body.relationship.trim().slice(0, 300) : "";
   const language = body?.language === "en" ? "en" : "he";
   if (!mongoose.Types.ObjectId.isValid(contactId) || !mongoose.Types.ObjectId.isValid(jobId)) return NextResponse.json({ error: "Invalid ids" }, { status: 400 });
   // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
@@ -45,11 +47,13 @@ export async function POST(req: NextRequest) {
     ]);
     if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    const resumeSummary = ((user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "")).slice(0, 1500);
+    // The whole résumé (within reason): the strongest credential for a role is often a project further down the page.
+    const resumeSummary = ((user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "")).slice(0, 3000);
     const draft = await composeOutreach({
       me: { fullname: user?.fullname || "", currentJob: user?.currentJob, resumeSummary },
-      contact: { fullName: contact.fullName, position: contact.position, company: contact.company },
+      contact: { fullName: contact.fullName, position: contact.position, company: contact.company, connectedOn: contact.connectedOn },
       job: { title: job.title, company: job.company, description: job.description, url: body?.url ? String(body.url) : undefined },
+      relationship: relationship || undefined,
       language,
       channel,
     });

@@ -120,7 +120,18 @@ describe("routes", () => {
     const { system, user } = buildOutreachPrompt({ me: { fullname: "Maor", resumeSummary: "React dev" }, contact: { fullName: "Noa", position: "EM", company: "Acme" }, job: { title: "Frontend", company: "Acme" }, language: "he", channel: "linkedin" });
     expect(system).toMatch(/Never invent/);
     expect(system).toMatch(/Hebrew/);
+    expect(system).toMatch(/cold message/); // no relationship given: never pretend to know them
+    expect(system).toMatch(/first a 10-minute chat/); // the chat comes before the referral
     expect(user).toContain("Noa, EM at Acme");
     expect(user).toContain("Frontend at Acme");
+
+    // The sender's own words about the contact become the opening; a connection date is mentioned in passing; a note is capped.
+    const warm = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme", url: "https://acme.jobs/1" }, relationship: "למדנו יחד בטכניון", language: "he", channel: "note" });
+    expect(warm.system).toContain("למדנו יחד בטכניון");
+    expect(warm.system).toMatch(/at most 280 characters/);
+    expect(warm.system).toMatch(/include the job link/);
+    expect(warm.user).toContain("https://acme.jobs/1");
+    const dated = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme" }, language: "en", channel: "email" });
+    expect(dated.system).toMatch(/LinkedIn connections since March 2024/);
   });
 });

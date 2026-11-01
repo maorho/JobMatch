@@ -7,13 +7,17 @@ import { modelFor } from "@/app/lib/llm/models";
 /** A message a real person will read, in Hebrew: the quality tier (the fast tier's Hebrew came out broken). */
 export const OUTREACH_MODEL = modelFor("quality");
 
+export type OutreachChannel = "linkedin" | "note" | "email";
+
 export type OutreachInput = {
   me: { fullname: string; currentJob?: string; resumeSummary?: string };
-  contact: { fullName: string; position?: string; company: string };
+  contact: { fullName: string; position?: string; company: string; connectedOn?: Date | string | null };
   job: { title: string; company: string; url?: string; description?: string };
+  /** How the sender knows the contact, in their own words (optional): the opening line is built from it. */
+  relationship?: string;
   language: "he" | "en";
-  /** "linkedin" → short DM; "email" → subject + longer body. */
-  channel: "linkedin" | "email";
+  /** "linkedin" → DM; "note" → the 300-character note on a connection request; "email" → subject + longer body. */
+  channel: OutreachChannel;
 };
 
 export const outreachSchema = z.object({
@@ -23,6 +27,11 @@ export const outreachSchema = z.object({
   angle: z.string().default(""),
 });
 export type Outreach = z.infer<typeof outreachSchema>;
+
+const monthYear = (d: Date | string | null | undefined, lang: "he" | "en") => {
+  const t = d ? new Date(d) : null;
+  return t && !isNaN(t.getTime()) ? t.toLocaleDateString(lang === "he" ? "he-IL" : "en-US", { month: "long", year: "numeric" }) : "";
+};
 
 export function buildOutreachPrompt(input: OutreachInput): { system: string; user: string } {
   const he = input.language === "he";
@@ -36,17 +45,33 @@ HEBREW STYLE (this is how a native Israeli professional writes a LinkedIn messag
 - If the sender's gender is unknown, phrase the sender's lines so they work for either (e.g. "בניתי", "עבדתי", "אשמח").
 - Read the message back: every sentence must be something a person would actually say out loud.`
     : "";
+  const length =
+    input.channel === "note"
+      ? "A LinkedIn connection-request note: at most 280 characters (LinkedIn's limit), 2–3 sentences, no subject. Say who you are, name the role, and ask to connect so you can ask a question about it; the full message comes after they accept."
+      : input.channel === "linkedin"
+        ? "A LinkedIn DM: 70–120 words, no subject."
+        : "An email: a 4–8 word subject plus a 100–160 word body.";
+  const connected = monthYear(input.contact.connectedOn, input.language);
+  const opening = input.relationship?.trim()
+    ? `OPENING: the sender says this about how they know the contact: "${input.relationship.trim().slice(0, 300)}". Open with that, in one natural sentence — it is the reason the contact should read on.`
+    : connected
+      ? `OPENING: they have been LinkedIn connections since ${connected}; you may say so in passing, nothing more. Do not pretend to any other acquaintance.`
+      : "OPENING: this is a cold message to a connection; do not pretend to know them, invent a mutual contact or a post you saw. Open with who you are and go straight to the role.";
   const system = `You write short, warm referral requests from a job seeker to someone they are connected with on LinkedIn.
 Rules:
-- Language: ${lang}. ${input.channel === "linkedin" ? "A LinkedIn DM: 60–100 words, no subject." : "An email: a 4–8 word subject plus a 90–150 word body."}
-- Structure: who I am in one line → why this role (one specific reason) → ONE concrete, true detail from the sender's background that matters for this role → one clear ask (a referral, or a 10-minute chat). Nothing else.
-- Mention the specific role and that the contact works at (or is connected to) the company. Never invent experience, mutual history, or facts about the contact.
+- Language: ${lang}. ${length}
+- ${opening}
+- Structure${input.channel === "note" ? " (compressed to fit)" : ""}: the opening → the role and ONE specific reason it fits the sender → the sender's single strongest, true, relevant credential → the ask.
+- The credential: pick from the sender's background the one thing most relevant to THIS role — prefer a shipped project or system the sender built (with its link when the background gives one) over job titles or dates. State it as a fact, not a boast. No numbers, metrics or claims that are not in the background text.
+- The ask, in this order: first a 10-minute chat about the team and the day-to-day; then, only if it seems like a fit, a referral. A referral is a heavy ask of someone who does not know you yet, so it comes second and conditional. Offer to send the CV${input.job.url ? " and include the job link given below so they need not search for it" : ""}.
+- Speak well of the role and the company; never phrase the sender's interest as a criticism of how others work.
+- Never invent experience, mutual history, or facts about the contact. One ask, not a list of options.
 - No flattery, no "I hope this finds you well", no emojis, no bullet lists. Sound like a person, not a template.${hebrewRules}
 - Return STRICT JSON: {"subject": string, "message": string, "angle": string}. Nothing else.`;
   const user = `SENDER: ${input.me.fullname}${input.me.currentJob ? ` — ${input.me.currentJob}` : ""}
-SENDER BACKGROUND (summary): ${(input.me.resumeSummary || "").slice(0, 1200) || "(none)"}
-CONTACT: ${input.contact.fullName}${input.contact.position ? `, ${input.contact.position}` : ""} at ${input.contact.company}
-ROLE: ${input.job.title} at ${input.job.company}${input.job.url ? ` (${input.job.url})` : ""}
+SENDER BACKGROUND (résumé text; the only source of facts about the sender): ${(input.me.resumeSummary || "").slice(0, 3000) || "(none)"}
+CONTACT: ${input.contact.fullName}${input.contact.position ? `, ${input.contact.position}` : ""} at ${input.contact.company}${connected ? ` (LinkedIn connection since ${connected})` : ""}
+${input.relationship?.trim() ? `HOW THE SENDER KNOWS THE CONTACT: ${input.relationship.trim().slice(0, 300)}\n` : ""}ROLE: ${input.job.title} at ${input.job.company}${input.job.url ? ` — link: ${input.job.url}` : ""}
 ROLE SUMMARY: ${(input.job.description || "").slice(0, 800) || "(none)"}`;
   return { system, user };
 }
