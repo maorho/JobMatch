@@ -50,17 +50,23 @@ jobs:
       - name: Smoke test — health, then a real page through Chrome
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           docker run -d --name apply -p 4000:4000 -e SCRAPER_TOKEN=smoke-token -e SCRAPER_CONCURRENCY=1 ${{ env.IMAGE }}:test
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:4000/health >/dev/null; then break; fi
+          up=0
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:4000/health >/dev/null; then up=1; break; fi
             sleep 1
           done
-          echo "health: $(curl -sf http://127.0.0.1:4000/health)"
-          # /api/open-job launches Chrome and renders the page: the real proof the image works.
-          out=$(curl -sf --max-time 90 -H "x-scraper-token: smoke-token" "http://127.0.0.1:4000/api/open-job?url=https%3A%2F%2Fexample.com%2F")
-          echo "$out" | head -c 300; echo
-          echo "$out" | grep -qi "example" || { echo "::error::Chrome did not render the page"; docker logs apply; exit 1; }
+          if [ "$up" != 1 ]; then echo "::error::server never answered /health"; docker logs apply; exit 1; fi
+          echo "health: $(curl -s http://127.0.0.1:4000/health)"
+          # /api/open-job launches Chrome and renders the page. It answers 200 with
+          # {finalUrl, jobdescription} (both null on a non-job page like example.com)
+          # and 500 when Chrome failed, so the status code is the proof we need.
+          code=$(curl -s -o /tmp/open.json -w "%{http_code}" --max-time 120 -H "x-scraper-token: smoke-token" "http://127.0.0.1:4000/api/open-job?url=https%3A%2F%2Fexample.com%2F")
+          echo "open-job: HTTP $code $(head -c 300 /tmp/open.json)"
+          if [ "$code" != "200" ] || ! grep -q '"jobdescription"' /tmp/open.json; then
+            echo "::error::Chrome did not render the page (HTTP $code)"; docker logs apply; exit 1
+          fi
           docker logs apply | tail -20
           docker rm -f apply
 
