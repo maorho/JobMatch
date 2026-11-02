@@ -15,8 +15,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogoMark } from "@/app/components/Logo";
 import { mutate } from "swr";
-import { FcGoogle } from "react-icons/fc";
-import { FaFacebook } from "react-icons/fa";
+import SocialSignIn from "@/app/components/SocialSignIn";
 import { safeNextPath } from "../lib/hooks/nextPath";
 
 function LoginForm() {
@@ -37,7 +36,6 @@ function LoginForm() {
     setNext(safeNextPath(sp.get("next"), ""));
   }, []);
 
-  const oauthHref = (provider: "google" | "facebook") => `/api/auth/oauth/${provider}?next=${encodeURIComponent(next || "/")}`;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -141,22 +139,7 @@ function LoginForm() {
             </p>
           </form>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-line" />
-            <span className="text-sm text-ink-400">or</span>
-            <div className="flex-1 border-t border-line" />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <a href={oauthHref("google")} className="jm-btn jm-btn-secondary w-full">
-              <FcGoogle className="h-5 w-5 shrink-0" />
-              <span>Continue with Google</span>
-            </a>
-            <a href={oauthHref("facebook")} className="jm-btn jm-btn-secondary w-full">
-              <FaFacebook className="h-5 w-5 shrink-0 text-sky-600" />
-              <span>Continue with Facebook</span>
-            </a>
-          </div>
+          <SocialSignIn next={next || "/"} />
         </div>
       </div>
 

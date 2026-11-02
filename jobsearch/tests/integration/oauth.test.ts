@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { setupTestDb, resetDb } from "../setup/mongo";
 import User from "@/app/models/User";
 import { GET as start } from "@/app/api/auth/oauth/[provider]/route";
+import { GET as providersGET } from "@/app/api/auth/oauth/providers/route";
 import { GET as callback } from "@/app/api/auth/oauth/[provider]/callback/route";
 import { verifyJwt } from "@/app/lib/jwt";
 import { safeNext } from "@/app/lib/oauth/providers";
@@ -134,5 +135,29 @@ describe("social login", () => {
     expect(loc.pathname).toBe("/onboarding"); // fell back to "/" → new account → onboarding
     const token = cookieHeader(cb, "token");
     expect(await verifyJwt(token)).toMatchObject({ email: "evilnext@example.com", tv: 0 });
+  });
+});
+
+describe("GET /api/auth/oauth/providers", () => {
+  it("lists only the providers whose keys are set, so the pages show only buttons that work", async () => {
+    const saved = { gid: process.env.GOOGLE_CLIENT_ID, gsec: process.env.GOOGLE_CLIENT_SECRET, fid: process.env.FACEBOOK_APP_ID, fsec: process.env.FACEBOOK_APP_SECRET };
+    try {
+      process.env.GOOGLE_CLIENT_ID = "g-id";
+      process.env.GOOGLE_CLIENT_SECRET = "g-secret";
+      delete process.env.FACEBOOK_APP_ID;
+      delete process.env.FACEBOOK_APP_SECRET;
+      expect(await (await providersGET()).json()).toEqual({ providers: ["google"] });
+      process.env.FACEBOOK_APP_ID = "f-id"; // a secret alone is not enough
+      expect(await (await providersGET()).json()).toEqual({ providers: ["google"] });
+      process.env.FACEBOOK_APP_SECRET = "f-secret";
+      expect(await (await providersGET()).json()).toEqual({ providers: ["google", "facebook"] });
+      delete process.env.GOOGLE_CLIENT_ID;
+      expect(await (await providersGET()).json()).toEqual({ providers: ["facebook"] });
+    } finally {
+      for (const [k, v] of [["GOOGLE_CLIENT_ID", saved.gid], ["GOOGLE_CLIENT_SECRET", saved.gsec], ["FACEBOOK_APP_ID", saved.fid], ["FACEBOOK_APP_SECRET", saved.fsec]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });

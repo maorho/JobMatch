@@ -5,8 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogoMark } from "@/app/components/Logo";
-import { FcGoogle } from "react-icons/fc";
-import { FaFacebook } from "react-icons/fa";
+import SocialSignIn from "@/app/components/SocialSignIn";
 
 function SignUp() {
   const router = useRouter();
@@ -278,22 +277,7 @@ function SignUp() {
             </p>
           </form>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 border-t border-line" />
-            <span className="text-sm text-ink-400">or</span>
-            <div className="flex-1 border-t border-line" />
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <a href="/api/auth/oauth/google?next=/" className="jm-btn jm-btn-secondary w-full">
-              <FcGoogle className="h-5 w-5 shrink-0" />
-              <span>Continue with Google</span>
-            </a>
-            <a href="/api/auth/oauth/facebook?next=/" className="jm-btn jm-btn-secondary w-full">
-              <FaFacebook className="h-5 w-5 shrink-0 text-sky-600" />
-              <span>Continue with Facebook</span>
-            </a>
-          </div>
+          <SocialSignIn next="/" />
         </div>
       </div>
 
