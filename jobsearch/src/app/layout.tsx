@@ -1,21 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Assistant, Lora } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import LayoutWrapper from "./components/LayoutWrapper";
 import { siteUrl } from "./lib/seo/site";
 
 // UI face: Assistant (Latin + Hebrew, so Hebrew no longer falls back to the OS font) for all text
-// and headings; Lora (serif) is kept for the hero headline only. Both open-licensed via Google Fonts.
-const inter = Assistant({
-  subsets: ["latin", "hebrew"],
-  weight: ["400", "500", "600", "700", "800"],
+// and headings; Lora (serif) is kept for the hero headline only. Both are OFL fonts from Google
+// Fonts, self-hosted in ./fonts: `next/font/google` downloads them at build time, and a flaky
+// download failed a Vercel build ("next/font/google queries have exactly one entry").
+// Variable fonts: one file per subset covers every weight.
+const inter = localFont({
+  src: [
+    { path: "./fonts/assistant-latin.woff2", weight: "200 800", style: "normal" },
+    { path: "./fonts/assistant-hebrew.woff2", weight: "200 800", style: "normal" },
+  ],
   variable: "--font-inter-next",
   display: "swap",
 });
-const serif = Lora({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  style: ["normal", "italic"],
+const serif = localFont({
+  src: [
+    { path: "./fonts/lora-latin.woff2", weight: "400 700", style: "normal" },
+    { path: "./fonts/lora-latin-italic.woff2", weight: "400 700", style: "italic" },
+  ],
   variable: "--font-serif-next",
   display: "swap",
 });
