@@ -14,6 +14,7 @@ on:
       - "jobsearch/package.json"
       - "jobsearch/package-lock.json"
       - "jobsearch/.dockerignore"
+      - "jobsearch/Dockerfile"
       - ".github/workflows/apply-server-image.yml"
   workflow_dispatch:
 
@@ -40,7 +41,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: jobsearch
-          file: jobsearch/server/Dockerfile
+          file: jobsearch/Dockerfile
           load: true
           tags: ${{ env.IMAGE }}:test
           cache-from: type=gha
@@ -76,7 +77,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: jobsearch
-          file: jobsearch/server/Dockerfile
+          file: jobsearch/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE }}:latest

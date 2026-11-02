@@ -2,7 +2,8 @@
 # container host (Render, Koyeb, Cloud Run, Fly, Railway). Built and published
 # by .github/workflows/apply-server-image.yml as ghcr.io/maorho/jobmatch-apply.
 #
-# Build context = the jobsearch/ directory:  docker build -f server/Dockerfile .
+# Lives in jobsearch/ (not server/) because Cloud Build and most hosts take the
+# Dockerfile's directory as the build context:  cd jobsearch && docker build .
 
 # ---- 1. compile the TypeScript (full dev toolchain, thrown away) ----
 FROM node:22-slim AS build
