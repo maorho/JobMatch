@@ -5,6 +5,7 @@ import Header from "./Header";
 import Footer from "./Footer";
 import RevealObserver from "./RevealObserver";
 import BackgroundAurora from "./BackgroundAurora";
+import AccessibilityMenu from "./AccessibilityMenu";
 
 export default function LayoutWrapper({
   children,
@@ -16,11 +17,13 @@ export default function LayoutWrapper({
 
   return (
     <>
+      <a href="#main-content" className="jm-skip-link">דלג לתוכן</a>
       <BackgroundAurora />
       <RevealObserver />
       {!hideFooterAndHeader && <Header />}
-      <main className="flex-1 w-full mx-auto">{children}</main>
+      <main id="main-content" tabIndex={-1} className="flex-1 w-full mx-auto outline-none">{children}</main>
       {!hideFooterAndHeader && <Footer />}
+      <AccessibilityMenu />
     </>
   );
 }

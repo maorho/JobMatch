@@ -318,3 +318,26 @@
 }
 /* Background tab: pause the drift (toggled by BackgroundAurora on visibilitychange). */
 .jm-aurora[data-paused] span { animation-play-state: paused; }
+
+/*
+ * Accessibility widget (components/AccessibilityMenu.tsx) — preferences land
+ * as classes on <html>. Font steps scale the root size so every rem-based
+ * layout grows with the text; the rest are plain overrides.
+ */
+html.a11y-font-1 { font-size: 115%; }
+html.a11y-font-2 { font-size: 130%; }
+html.a11y-font-3 { font-size: 145%; }
+html.a11y-readable body { font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; letter-spacing: 0.02em; word-spacing: 0.08em; line-height: 1.7; }
+html.a11y-links a { text-decoration: underline !important; text-underline-offset: 3px; text-decoration-thickness: 2px; background: color-mix(in srgb, #ffe14d 55%, transparent); color: #0b1a8c !important; }
+html.a11y-grayscale { filter: grayscale(1); }
+html.a11y-contrast { filter: contrast(1.25); }
+html.a11y-contrast body { background: #ffffff; color: #000000; }
+html.a11y-contrast .jm-card, html.a11y-contrast .jm-input, html.a11y-contrast .jm-select { border-color: #000000; }
+html.a11y-contrast .text-ink-600, html.a11y-contrast .text-ink-400, html.a11y-contrast .jm-muted { color: #1a1a1a !important; }
+html.a11y-grayscale.a11y-contrast { filter: grayscale(1) contrast(1.25); }
+html.a11y-cursor, html.a11y-cursor * { cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 24 24'><path d='M5 3l14 9-6 1.5L16 20l-2.5 1.2L10.3 15 6 19z' fill='%23fff' stroke='%23000' stroke-width='1.5'/></svg>") 4 2, auto !important; }
+html.a11y-no-motion *, html.a11y-no-motion *::before, html.a11y-no-motion *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+
+/* "Skip to content" for keyboard users: invisible until focused. */
+.jm-skip-link { position: absolute; inset-inline-start: 1rem; top: -4rem; z-index: 100; padding: 0.6rem 1rem; border-radius: var(--radius-control); background: var(--color-navy); color: #fff; font-weight: 600; transition: top 0.15s; }
+.jm-skip-link:focus { top: 1rem; }

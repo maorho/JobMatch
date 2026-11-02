@@ -27,6 +27,8 @@ const COLUMNS = [
       { href: "/About", label: "About" },
       { href: "/ContactUs", label: "Contact Us" },
       { href: "/TermsOfConditions", label: "Terms of Conditions" },
+      { href: "/PrivacyPolicy", label: "מדיניות פרטיות" },
+      { href: "/Accessibility", label: "הצהרת נגישות" },
     ],
   },
 ];
