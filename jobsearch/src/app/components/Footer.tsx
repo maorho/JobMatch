@@ -46,7 +46,7 @@ function Footer() {
       <div className="jm-container py-12 grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div className="space-y-4">
           <Link href="/" className="inline-flex items-center gap-2.5">
-            <LogoMark size={36} className="text-white" />
+            <LogoMark size={36} className="text-black" />
             <span className="text-lg font-semibold text-navy">JobMatch</span>
           </Link>
           <p className="text-sm text-ink-600 max-w-xs leading-relaxed">

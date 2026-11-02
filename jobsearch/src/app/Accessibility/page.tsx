@@ -55,7 +55,7 @@ export default function AccessibilityPage() {
 
             <h2>נתקלתם בבעיה? דברו איתנו</h2>
             <p>
-              אם משהו באתר אינו נגיש לכם, אשמח לדעת ולתקן. אפשר לכתוב ל-<a href="mailto:[המייל שלך]">[המייל שלך]</a> או דרך
+              אם משהו באתר אינו נגיש לכם, אשמח לדעת ולתקן. אפשר לכתוב ל-<a href="mailto:maorhomri1@gmail.com">maorhomri1@gmail.com</a> או דרך
               עמוד <Link href="/ContactUs">צור קשר</Link>. אשתדל להשיב בתוך 7 ימי עבודה.
             </p>
 
