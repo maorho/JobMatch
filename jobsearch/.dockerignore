@@ -1,0 +1,10 @@
+node_modules
+.next
+.env*
+!.env.example
+demo
+public
+src
+tests
+scripts
+*.md

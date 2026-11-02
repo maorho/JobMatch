@@ -4,6 +4,7 @@ import { announceCatalogIngested } from "@/app/lib/agents/triggers";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 import { requireCron } from "@/app/lib/cron/requireCron";
+import { heartbeat, continueWalk, releaseWalk } from "@/app/lib/scout/selfDrive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,10 @@ const HARD_END_MS = maxDuration * 1000 - 15_000;
  *   ?budget=S          seconds to spend before handing back `nextOffset`
  *   ?since=ISO         when the whole walk started (the cron takes it once,
  *                      before the first chunk, and repeats it on every call)
+ *   ?walk=ID&n=K       a chunk of a self-driven walk (lib/scout/selfDrive.ts):
+ *                      the route checks the walk still holds the lock, and
+ *                      after answering kicks chunk K+1 itself (or closes the
+ *                      walk when the catalogue is covered).
  *   ?finalize=1        poll nothing: just tell the agents about everything
  *                      ingested since `since`. The cron makes this closing
  *                      call when its walk ended without a successful last
@@ -92,7 +97,19 @@ export async function GET(req: NextRequest) {
       const counts = await announceSince(since, { removed: 0, sources });
       return NextResponse.json({ ok: true, finalized: true, since: since.toISOString(), nextOffset: null, ...counts });
     }
-    const result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs, deadlineAt: startedAt.getTime() + HARD_END_MS });
+    // A self-driven chunk only runs while its walk holds the lock (a newer walk or the cron may have taken over).
+    const walk = sp.get("walk") || "";
+    const n = num("n") ?? 1;
+    if (walk && !(await heartbeat(walk))) {
+      return NextResponse.json({ ok: true, skipped: "walk superseded", walk, nextOffset: null });
+    }
+    let result;
+    try {
+      result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs, deadlineAt: startedAt.getTime() + HARD_END_MS });
+    } catch (e) {
+      if (walk) await releaseWalk(walk);
+      throw e;
+    }
     // Whole catalog covered → hand the new postings to the agent chain
     // (Locator → Matcher → Notifier) the same way the Scout agent does.
     // Counts come from the catalog (indexed on firstSeenAt), so a walk made of
@@ -100,6 +117,7 @@ export async function GET(req: NextRequest) {
     if (!dry && result.nextOffset === null) {
       await announceSince(since, { removed: result.removed, sources: company ? result.processed : result.totalSources });
     }
+    if (walk && !dry) continueWalk(walk, n, since.toISOString(), result.nextOffset);
     return NextResponse.json({ ok: true, dry, since: since.toISOString(), ...result });
   } catch (err: any) {
     console.error("❌ Scout run error:", err);

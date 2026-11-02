@@ -1,5 +1,11 @@
 name: JobMatch Cron
 
+# Second driver for the catalogue and the agents. The app also drives itself
+# from traffic (jobsearch/src/app/lib/scout/selfDrive.ts): a stale catalogue
+# starts a scout walk when someone opens the app. GitHub silently drops a
+# repository's schedules after 60 days without pushes; a push that touches this
+# file re-registers them (that is why this comment exists).
+
 on:
   schedule:
     - cron: "*/30 * * * *"    # Scout: ingest fresh ATS jobs (every 30 min, best-effort)

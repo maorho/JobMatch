@@ -51,6 +51,19 @@
 
 `next` על Vercel לא יכול להריץ Chrome. שרת ה-apply רץ על VM/Container (Railway, Fly, Render, EC2):
 
+### 4א. הדרך הקצרה: הקונטיינר המוכן
+
+כל push ל-`main` שנוגע ב-`jobsearch/server/**` בונה את `server/Dockerfile`, מריץ עליו בדיקת עשן (health + טעינת עמוד אמיתי דרך Chrome) ומפרסם ל-`ghcr.io/maorho/jobmatch-apply:latest` (workflow: `.github/workflows/apply-server-image.yml`; אפשר גם Run workflow ידני). לא צריך Docker מקומי. בכל מארח קונטיינרים:
+
+1. **Image:** `ghcr.io/maorho/jobmatch-apply:latest` (הריפו ציבורי, אין צורך בהרשאה למשיכה).
+2. **Env:** `SCRAPER_TOKEN` (זהה ל-Vercel), `SCRAPER_ALLOWED_ORIGIN=https://job-match-six.vercel.app`, `OPENAI_API_KEY` (סוכן הטפסים), `SCRAPER_CONCURRENCY=1` על 512MB. `PORT` מוזרק על ידי המארח (ברירת מחדל 4000).
+3. **Health check:** `GET /health`.
+4. ב-Vercel: `PUPPETEER_SERVER_URL=https://<הכתובת שהמארח נתן>`, `SCRAPER_TOKEN`, ו-Redeploy. `/api/admin/health` יראה `puppeteer: true`.
+
+מארחים שנבדקו על הנייר: **Render** (Web Service → Existing image; חינמי, 512MB, נרדם אחרי 15 דקות חוסר פעילות — הבקשה הראשונה אחרי שינה איטית), **Koyeb** (דומה), **Google Cloud Run** (הפרויקט `jobmatch-513510` כבר קיים; מדרגת החינם נדיבה, דורש חשבון חיוב; לבחור 1GB זיכרון, min instances 0). ה-worker (`npm run worker`) לא נדרש כל עוד הסוכנים רצים ב-Vercel דרך ה-tick וה-inline.
+
+### 4ב. הרצה ידנית
+
 ```bash
 cd jobsearch && npm ci
 # שרת ה-apply (Chrome). PORT אופציונלי — ברירת מחדל 4000

@@ -1,0 +1,85 @@
+name: Apply server image
+
+# Builds the Puppeteer apply server (jobsearch/server) into a container,
+# smoke-tests it (health + a real Chrome page load), and publishes it to
+# GitHub's registry as ghcr.io/maorho/jobmatch-apply:latest. A container
+# host (Render, Koyeb, Cloud Run, Fly, Railway) pulls that image; see
+# jobsearch/DEPLOY.md §4.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "jobsearch/server/**"
+      - "jobsearch/package.json"
+      - "jobsearch/package-lock.json"
+      - "jobsearch/.dockerignore"
+      - ".github/workflows/apply-server-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: apply-server-image
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/jobmatch-apply
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (load locally for the smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: jobsearch
+          file: jobsearch/server/Dockerfile
+          load: true
+          tags: ${{ env.IMAGE }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test — health, then a real page through Chrome
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name apply -p 4000:4000 -e SCRAPER_TOKEN=smoke-token -e SCRAPER_CONCURRENCY=1 ${{ env.IMAGE }}:test
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4000/health >/dev/null; then break; fi
+            sleep 1
+          done
+          echo "health: $(curl -sf http://127.0.0.1:4000/health)"
+          # /api/open-job launches Chrome and renders the page: the real proof the image works.
+          out=$(curl -sf --max-time 90 -H "x-scraper-token: smoke-token" "http://127.0.0.1:4000/api/open-job?url=https%3A%2F%2Fexample.com%2F")
+          echo "$out" | head -c 300; echo
+          echo "$out" | grep -qi "example" || { echo "::error::Chrome did not render the page"; docker logs apply; exit 1; }
+          docker logs apply | tail -20
+          docker rm -f apply
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: jobsearch
+          file: jobsearch/server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
