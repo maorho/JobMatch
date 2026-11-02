@@ -120,8 +120,9 @@ describe("routes", () => {
     const { system, user } = buildOutreachPrompt({ me: { fullname: "Maor", resumeSummary: "React dev" }, contact: { fullName: "Noa", position: "EM", company: "Acme" }, job: { title: "Frontend", company: "Acme" }, language: "he", channel: "linkedin" });
     expect(system).toMatch(/Never invent/);
     expect(system).toMatch(/Hebrew/);
-    expect(system).toMatch(/cold message/); // no relationship given: never pretend to know them
-    expect(system).toMatch(/first a 10-minute chat/); // the chat comes before the referral
+    expect(system).toMatch(/do not pretend to know them/); // no relationship given
+    expect(system).toMatch(/never mention when or that you connected/); // "connected since 2022" reads as generated
+    expect(system).toMatch(/if they are busy, the sender can simply send a CV/); // the easy way out after the chat
     expect(user).toContain("Noa, EM at Acme");
     expect(user).toContain("Frontend at Acme");
 
@@ -129,10 +130,10 @@ describe("routes", () => {
     const warm = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme", url: "https://acme.jobs/1" }, relationship: "למדנו יחד בטכניון", language: "he", channel: "note" });
     expect(warm.system).toContain("למדנו יחד בטכניון");
     expect(warm.system).toMatch(/at most 280 characters/);
-    expect(warm.system).toMatch(/include the job link/);
+    expect(warm.system).toMatch(/job link given below/);
     expect(warm.user).toContain("https://acme.jobs/1");
     const dated = buildOutreachPrompt({ me: { fullname: "Maor" }, contact: { fullName: "Noa", company: "Acme", connectedOn: new Date("2024-03-10") }, job: { title: "Frontend", company: "Acme" }, language: "en", channel: "email", companyNotes: "Products: Acme Cloud" });
-    expect(dated.system).toMatch(/LinkedIn connections since March 2024/);
+    expect(dated.system).not.toMatch(/since March 2024/); // the date never becomes a sentence
     expect(dated.system).toMatch(/forwardNote/); // the paste-to-recruiter blurb is always requested
     expect(dated.system).toMatch(/Personalise with ONE specific, true item/); // only when notes exist
     expect(dated.user).toContain("COMPANY NOTES");

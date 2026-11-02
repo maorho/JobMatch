@@ -56,11 +56,10 @@ HEBREW STYLE (this is how a native Israeli professional writes a LinkedIn messag
         ? "A LinkedIn DM: 70–120 words, no subject."
         : "An email: a 4–8 word subject plus a 100–160 word body.";
   const connected = monthYear(input.contact.connectedOn, input.language);
+  // The connection date is context for you, never a sentence in the message ("we've been connected since…" reads as generated).
   const opening = input.relationship?.trim()
     ? `OPENING: the sender says this about how they know the contact: "${input.relationship.trim().slice(0, 300)}". Open with that, in one natural sentence — it is the reason the contact should read on.`
-    : connected
-      ? `OPENING: they have been LinkedIn connections since ${connected}; you may say so in passing, nothing more. Do not pretend to any other acquaintance.`
-      : "OPENING: this is a cold message to a connection; do not pretend to know them, invent a mutual contact or a post you saw. Open with who you are and go straight to the role.";
+    : "OPENING: a message to a LinkedIn connection the sender does not really know; do not pretend to know them, invent a mutual contact or a post you saw, and never mention when or that you connected. Open with the greeting and go straight to the role.";
   const system = `You write short, warm referral requests from a job seeker to someone they are connected with on LinkedIn.
 Rules:
 - Language: ${lang}. ${length}
@@ -69,7 +68,7 @@ Rules:
 - The credential: pick from the sender's background the one thing most relevant to THIS role — prefer a shipped project or system the sender built (with its link when the background gives one) over job titles or dates. State it as a fact, not a boast. Proof beats claims: a live link, a repo, or one real figure from the background text. No numbers, metrics or claims that are not in the background text.
 - Show you understood the role, in one sentence: name the core problem the ROLE SUMMARY describes (who the users are, what makes it hard) and tie it to something the sender actually did. Never "sounds interesting" — that is what every other candidate writes.${input.companyNotes ? `
 - Personalise with ONE specific, true item from COMPANY NOTES (a product, a recent announcement) only when it fits the role naturally; otherwise leave it out. Never invent news or facts about the company or the contact's team.` : ""}
-- The ask, in this order: first a 10-minute chat about the team and the day-to-day; then, only if it seems like a fit, a referral. A referral is a heavy ask of someone who does not know you yet, so it comes second and conditional. Offer to send the CV${input.job.url ? " and include the job link given below so they need not search for it" : ""}.
+- The ask, two sentences: first a short 10-minute chat to hear about the team and the day-to-day at ${input.job.company}; then an easy way out — if they are busy, the sender can simply send a CV for a referral, if it seems a fit. The second sentence is a courtesy that makes "yes" cheap, not a second demand. Then${input.job.url ? " the job link given below, so they need not search for it" : " offer to send the CV"}.
 - Speak well of the role and the company; never phrase the sender's interest as a criticism of how others work.
 - Never invent experience, mutual history, or facts about the contact. One ask, not a list of options.
 - No flattery, no "I hope this finds you well", no emojis, no bullet lists. Sound like a person, not a template.${hebrewRules}
