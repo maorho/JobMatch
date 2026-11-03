@@ -22,6 +22,10 @@ FROM ghcr.io/puppeteer/puppeteer:24.43.1
 ENV NODE_ENV=production \
     PUPPETEER_SKIP_DOWNLOAD=true \
     PORT=4000
+# The image runs as pptruser. The legacy builder (Cloud Build's default) makes a
+# WORKDIR owned by root, so npm install below would die with EACCES (exit 243);
+# create it as pptruser first. BuildKit already did this, so both builders agree.
+RUN mkdir -p /home/pptruser/app
 WORKDIR /home/pptruser/app
 COPY --chown=pptruser:pptruser server/package.json ./package.json
 RUN npm install --omit=dev --no-audit --no-fund
