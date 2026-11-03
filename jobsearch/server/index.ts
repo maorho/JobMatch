@@ -810,8 +810,11 @@ app.post("/api/apply", async (req: Request, res: Response): Promise<void> => {
 
 // Liveness for the Next app (lib/apply/server.ts probes it once per auto-apply pass
 // before paying for any résumé tailoring). No token: it reveals nothing but "up".
-app.get("/health", (_req: Request, res: Response) => {
-  res.json({ ok: true, inFlight, maxConcurrency: MAX_CONCURRENCY, agent: !!openai });
+// A caller that sends its token learns whether it matches (the site's health check
+// does this, so a token set differently on the two sides shows up before an apply fails).
+app.get("/health", (req: Request, res: Response) => {
+  const presented = String(req.get("x-scraper-token") || "");
+  res.json({ ok: true, inFlight, maxConcurrency: MAX_CONCURRENCY, agent: !!openai, ...(presented ? { authorized: tokenOk(presented) } : {}) });
 });
 
 const httpServer = http.createServer(app);

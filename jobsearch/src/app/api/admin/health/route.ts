@@ -18,6 +18,7 @@ import { channelConfigured } from "@/app/lib/messaging/channels";
 import { featureSnapshot } from "@/app/lib/flags";
 import { siteUrl } from "@/app/lib/seo/site";
 import { describeModels } from "@/app/lib/llm/models";
+import { probeApplyServer } from "@/app/lib/apply/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -108,6 +109,9 @@ export async function GET(req: NextRequest) {
     features: featureSnapshot(),
   };
   out.checks.config.ok = out.checks.config.openai && out.checks.config.cronSecret && out.checks.config.appUrlResolves;
+  // Auto-apply depends on the Puppeteer server: up, and accepting our token. Not configured is a choice, not a failure.
+  const apply = await probeApplyServer();
+  out.checks.applyServer = apply.configured ? apply : { ...apply, ok: true };
   out.checks.product = { users, resolvedOutcomes: outcomes, verifiedInsiders: insiders };
   // Spend: today, the last hour, one user, the bus — anything over its line (lib/ops/costMonitor.ts) makes production "needs attention"
   // and so fails the cron's hourly health job, which is the alert that reaches the admin's inbox without an email provider.
@@ -115,6 +119,6 @@ export async function GET(req: NextRequest) {
   const costBreaches = cost ? breachesOf(cost) : [];
   out.checks.cost = cost ? { ok: costBreaches.length === 0, today: cost.today, lastHour: cost.lastHour, last7d: cost.last7d, limits: cost.limits, breaches: costBreaches } : { ok: true, unavailable: true };
   out.checks.usageToday = Object.fromEntries(Object.keys({ ...DEFAULT_LIMITS, ...usage }).map((k) => [k, { used: usage[k] || 0, limitPerUser: limitFor(k) }]));
-  out.ok = out.checks.db.ok && out.checks.catalog.ok && out.checks.agents.ok && out.checks.scout.ok && out.checks.config.ok && out.checks.cost.ok;
+  out.ok = out.checks.db.ok && out.checks.catalog.ok && out.checks.agents.ok && out.checks.scout.ok && out.checks.config.ok && out.checks.cost.ok && out.checks.applyServer.ok;
   return NextResponse.json(out, { status: out.ok ? 200 : 207, headers: { "Cache-Control": "private, no-store" } });
 }

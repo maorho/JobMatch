@@ -24,6 +24,42 @@ export const applyServerToken = () => process.env.SCRAPER_TOKEN || process.env.C
 
 export type ApplyServerHealth = { ok: boolean; reason?: string };
 
+export type ApplyServerProbe = { ok: boolean; configured: boolean; reachable?: boolean; authorized?: boolean | null; agent?: boolean; ms?: number; reason?: string };
+
+/**
+ * For the admin health check: is the server up, and does it accept our token?
+ * Sends the token to /health, which answers `authorized` without doing any work.
+ * `authorized: null` means the server is older than that field (counted as fine).
+ * The timeout allows a Cloud Run cold start.
+ */
+export async function probeApplyServer(timeoutMs = 20_000): Promise<ApplyServerProbe> {
+  const base = applyServerBase();
+  if (!base || !process.env.PUPPETEER_SERVER_URL) return { ok: false, configured: false, reason: "PUPPETEER_SERVER_URL is not set" };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const t0 = Date.now();
+  try {
+    const res = await fetch(`${base}/health`, { headers: { "x-scraper-token": applyServerToken() }, signal: ctrl.signal, cache: "no-store" });
+    const ms = Date.now() - t0;
+    if (!res.ok) return { ok: false, configured: true, reachable: false, ms, reason: `health returned ${res.status}` };
+    const body: any = await res.json().catch(() => ({}));
+    const authorized = typeof body.authorized === "boolean" ? body.authorized : null;
+    return {
+      ok: authorized !== false,
+      configured: true,
+      reachable: true,
+      authorized,
+      agent: !!body.agent,
+      ms,
+      ...(authorized === false ? { reason: "the server rejects SCRAPER_TOKEN: set the same value in Vercel and on the server" } : {}),
+    };
+  } catch (e: any) {
+    return { ok: false, configured: true, reachable: false, reason: e?.name === "AbortError" ? `no answer in ${timeoutMs / 1000}s` : `unreachable: ${e?.message || e}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * One cheap GET before a pass pays for tailoring: an unreachable or busy
  * server defers the whole pass instead of burning an LLM call per posting.
