@@ -60,7 +60,8 @@ describe("bus hygiene", () => {
     const newer = await startFlow("catalog.refresh", { since: new Date().toISOString() }, { from: "user", startedBy: "admin:test", title: "Walk B" });
     expect(new mongoose.Types.ObjectId(older.runId) < new mongoose.Types.ObjectId(newer.runId)).toBe(true);
     await processQueue({ budgetMs: 10_000, runId: newer.runId });
-    const b = await readRun(newer.runId);
+    const b = (await readRun(newer.runId))!;
+    expect(b).not.toBeNull();
     expect(b.run.status).toBe("done");
     expect(b.messages).toHaveLength(1); // no next chunk, no hand-off: it stopped
     expect(b.messages[0].result).toMatch(/already in progress/);
