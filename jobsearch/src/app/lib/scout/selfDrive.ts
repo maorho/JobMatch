@@ -27,13 +27,15 @@ export const selfDriveEnabled = () =>
 const baseUrl = () => (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
 
 /**
- * Fire a chunk as its own function invocation and return as soon as the
- * request is on its way: the caller's function may end right after, and a
- * serverless function keeps running after its client goes away.
+ * Fire a chunk as its own function invocation and return once the request
+ * has been accepted (a cold function can take a few seconds to answer; we
+ * wait up to 6 s for headers, never for the chunk to finish): the caller's
+ * function may end right after, and a serverless function keeps running
+ * after its client goes away.
  */
 async function fire(path: string): Promise<void> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 1500);
+  const t = setTimeout(() => ctrl.abort(), 6000);
   try {
     await fetch(`${baseUrl()}${path}`, { headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` }, signal: ctrl.signal, cache: "no-store" });
   } catch (e: any) {

@@ -11,6 +11,7 @@ import AgentMessage from "@/app/models/AgentMessage";
 import ApplicationOutcome from "@/app/models/ApplicationOutcome";
 import Referrer from "@/app/models/Referrer";
 import CompanySource from "@/app/models/CompanySource";
+import Maintenance from "@/app/models/Maintenance";
 import { usageToday, limitFor, DEFAULT_LIMITS } from "@/app/lib/ops/quota";
 import { mailTransportName } from "@/app/lib/email/send";
 import { channelConfigured } from "@/app/lib/messaging/channels";
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const dayAgo = new Date(now - 86_400_000);
   const stuckBefore = new Date(now - STUCK_AFTER_MS);
-  const [users, jobs, embedded, freshJobs, lastRun, queued, oldestQueued, stuck, failed24h, outcomes, insiders, usage, enabledSources, lastPolled] = await Promise.all([
+  const [users, jobs, embedded, freshJobs, lastRun, queued, oldestQueued, stuck, failed24h, outcomes, insiders, usage, enabledSources, lastPolled, tick] = await Promise.all([
     User.estimatedDocumentCount(),
     ExternalJobs.countDocuments(OPEN_JOBS),
     ExternalJobs.countDocuments({ ...OPEN_JOBS, embeddedAt: { $exists: true } }),
@@ -67,17 +68,21 @@ export async function GET(req: NextRequest) {
     usageToday(),
     CompanySource.countDocuments({ enabled: true }),
     CompanySource.findOne({ lastPolledAt: { $ne: null } }).sort({ lastPolledAt: -1 }).select("lastPolledAt").lean() as any,
+    Maintenance.findById("agentsTick").select("lastRunAt").lean() as any,
   ]);
   const ageMin = (d: Date | string | null | undefined) => (d ? Math.round((now - new Date(d).getTime()) / 60_000) : null);
   const lastRunAgeMin = ageMin(lastRun?.createdAt);
+  const lastTickAgeMin = ageMin(tick?.lastRunAt); // when the bus was last drained (cron tick, inline trigger, worker)
   const oldestQueuedAgeMin = ageMin(oldestQueued?.createdAt);
   const lastSourcePolledAt: string | null = lastPolled?.lastPolledAt ? new Date(lastPolled.lastPolledAt).toISOString() : null;
   const lastPolledAgeMin = ageMin(lastPolled?.lastPolledAt);
   out.checks.catalog = { ok: jobs > 0 && embedded / Math.max(1, jobs) > 0.8, jobs, embeddedPct: jobs ? Math.round((100 * embedded) / jobs) : 0, newLast24h: freshJobs };
   out.checks.agents = {
-    // Unhealthy when handlers fail, the queue is not draining (oldest queued > 2h), or something is wedged in "processing".
-    ok: failed24h < 5 && (lastRunAgeMin === null || lastRunAgeMin < 180) && (oldestQueuedAgeMin === null || oldestQueuedAgeMin < QUEUE_STALL_MIN) && stuck === 0,
+    // Unhealthy when handlers fail, nobody drained the bus for 3 h, the queue is not draining (oldest queued > 2h), or something is wedged in "processing".
+    // (A quiet night with no new postings creates no runs; that is not a fault, so the drain heartbeat is the liveness signal, not run recency.)
+    ok: failed24h < 5 && (lastTickAgeMin === null || lastTickAgeMin < 180) && (oldestQueuedAgeMin === null || oldestQueuedAgeMin < QUEUE_STALL_MIN) && stuck === 0,
     lastRun: lastRun ? { title: lastRun.title, status: lastRun.status, ageMin: lastRunAgeMin } : null,
+    lastTickAgeMin,
     queued,
     oldestQueuedAgeMin,
     stuck,

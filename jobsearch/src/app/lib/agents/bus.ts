@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import AgentMessage from "@/app/models/AgentMessage";
 import AgentRun from "@/app/models/AgentRun";
+import Maintenance from "@/app/models/Maintenance";
 import { getAgent, ownerOf } from "./registry";
 import { priorityOf, type AgentContext, type BusMessage, type MessageType, type Payloads, type Sender } from "./types";
 import { withUsageScope } from "@/app/lib/llm/usageMeter";
@@ -87,6 +88,8 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
   const deadline = Date.now() + budgetMs;
   const result: ProcessResult = { handled: 0, failed: 0, remaining: 0 };
   const failedIds = new Set<string>();
+  // Heartbeat for the health check: "the bus was drained at <time>", whether or not anything was queued.
+  await Maintenance.updateOne({ _id: "agentsTick" }, { $set: { lastRunAt: new Date() } }, { upsert: true }).catch(() => {});
   const touchedRuns = new Set<string>();
   const scope = opts.runId ? { runId: opts.runId } : {};
   // A runtime that cannot do some work (the worker without an apply server) leaves it queued for one that can.
