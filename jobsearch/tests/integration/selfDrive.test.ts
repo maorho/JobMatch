@@ -5,6 +5,7 @@ import CompanySource from "@/app/models/CompanySource";
 import Maintenance from "@/app/models/Maintenance";
 import { catalogueIsStale, claimWalk, heartbeat, releaseWalk, kickScoutIfStale, selfDriveEnabled, SCOUT_STALE_MIN } from "@/app/lib/scout/selfDrive";
 import { GET as scoutGET } from "@/app/api/scout/run/route";
+import { GET as kickGET } from "@/app/api/scout/kick/route";
 
 setupTestDb();
 
@@ -59,5 +60,15 @@ describe("self-driving scout: one walk at a time", () => {
   it("is off under test and reports so", async () => {
     expect(selfDriveEnabled()).toBe(false);
     expect(await kickScoutIfStale()).toBe("off");
+  });
+
+  it("the scheduler endpoint needs the cron secret and answers 200 with the kick result", async () => {
+    const anon = await kickGET(new NextRequest("http://localhost/api/scout/kick"));
+    expect(anon.status).toBe(401);
+    const res = await kickGET(new NextRequest("http://localhost/api/scout/kick?staleMin=20", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ result: "off", staleMin: 20 });
+    const clamped = await kickGET(new NextRequest("http://localhost/api/scout/kick?staleMin=1", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } }));
+    expect((await clamped.json()).staleMin).toBe(SCOUT_STALE_MIN); // under 5 min is ignored
   });
 });

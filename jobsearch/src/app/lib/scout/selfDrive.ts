@@ -48,13 +48,13 @@ async function fire(path: string): Promise<void> {
 const chunkPath = (walkId: string, offset: number, n: number, since: string) =>
   `/api/scout/run?offset=${offset}&limit=${CHUNK_SOURCES}&budget=${CHUNK_BUDGET_SEC}&since=${encodeURIComponent(since)}&walk=${walkId}&n=${n}`;
 
-/** True when the newest poll of any enabled source is older than SCOUT_STALE_MIN (or nothing was ever polled). */
-export async function catalogueIsStale(): Promise<boolean> {
+/** True when the newest poll of any enabled source is older than `staleMin` (default SCOUT_STALE_MIN), or nothing was ever polled. */
+export async function catalogueIsStale(staleMin = SCOUT_STALE_MIN): Promise<boolean> {
   await connectToDatabase();
   const enabled = await CompanySource.countDocuments({ enabled: true });
   if (!enabled) return false;
   const last: any = await CompanySource.findOne({ enabled: true, lastPolledAt: { $ne: null } }).sort({ lastPolledAt: -1 }).select("lastPolledAt").lean();
-  return !last?.lastPolledAt || Date.now() - new Date(last.lastPolledAt).getTime() > SCOUT_STALE_MIN * 60_000;
+  return !last?.lastPolledAt || Date.now() - new Date(last.lastPolledAt).getTime() > staleMin * 60_000;
 }
 
 /** Take the walk lock when nobody holds it (or the holder died). Returns the new walk id, or null. */
@@ -82,13 +82,17 @@ export async function releaseWalk(walkId: string): Promise<void> {
   await Maintenance.updateOne({ _id: LOCK_ID, walkId }, { $set: { running: false, lastRunAt: new Date() } }).catch(() => {});
 }
 
-/** Called after a response (from /api/auth/me): start a walk when the catalogue is stale and no walk is running. */
-export async function kickScoutIfStale(): Promise<"started" | "fresh" | "busy" | "off"> {
+/**
+ * Start a walk when the catalogue is stale and no walk is running. Called after
+ * a response from /api/auth/me (traffic), and by /api/scout/kick (an external
+ * scheduler, which may pass a shorter `staleMin` so a 30-min schedule never skips).
+ */
+export async function kickScoutIfStale(staleMin = SCOUT_STALE_MIN): Promise<"started" | "fresh" | "busy" | "off"> {
   if (!selfDriveEnabled()) return "off";
-  if (!(await catalogueIsStale())) return "fresh";
+  if (!(await catalogueIsStale(staleMin))) return "fresh";
   const walkId = await claimWalk();
   if (!walkId) return "busy";
-  console.log(`[scout] self-drive: catalogue older than ${SCOUT_STALE_MIN} min, starting walk ${walkId}`);
+  console.log(`[scout] self-drive: catalogue older than ${staleMin} min, starting walk ${walkId}`);
   await fire(chunkPath(walkId, 0, 1, new Date().toISOString()));
   return "started";
 }
