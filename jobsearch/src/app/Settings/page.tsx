@@ -12,7 +12,7 @@ import SearchProfileCard from "../components/SearchProfileCard";
 import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 
-type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string };
+type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string; privacy?: { excludeFromTraining?: boolean } };
 
 const card = "jm-card p-6 space-y-4";
 
@@ -67,6 +67,14 @@ export default function SettingsPage() {
     setP(d.user);
     mutateUser();
     flash("ok", "הפרופיל נשמר");
+  };
+
+  const setTrainingOptOut = async (exclude: boolean) => {
+    const r = await fetch("/api/settings/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ excludeFromTraining: exclude }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return flash("err", d?.error || "השמירה נכשלה");
+    setP(d.user);
+    flash("ok", exclude ? "התוצאות שלך לא ישמשו לאימון מעכשיו" : "התוצאות שלך ישמשו לשיפור הציון");
   };
 
   const changePassword = async (e: React.FormEvent) => {
@@ -189,9 +197,21 @@ export default function SettingsPage() {
           </form>
         )}
 
+        <div id="privacy" className={card}>
+          <h2 className="jm-h2">🔒 פרטיות</h2>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" className="mt-1 h-4 w-4 accent-teal" checked={!!p?.privacy?.excludeFromTraining} disabled={!p} onChange={(e) => setTrainingOptOut(e.target.checked)} />
+            <span className="text-sm text-ink-600 leading-relaxed">
+              <span className="font-semibold text-navy">לא לשתף את תוצאות המועמדויות שלי באימון ציון הסיכוי לראיון.</span>{" "}
+              ציון הסיכוי לומד מתוצאות אמיתיות של כל המשתמשים (הגשה, מענה, זימון לראיון), בצורה מצטברת ובלי פרטים מזהים. סימון כאן מוציא את התוצאות שלך מהאימון הבא. הציון עצמו ימשיך להופיע לך.
+            </span>
+          </label>
+          <p className="text-xs jm-muted">פרטים מלאים ב<a href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">מדיניות הפרטיות</a>.</p>
+        </div>
+
         <div className={`${card} border-red-200`}>
           <h2 className="jm-h2 text-red-700">מחיקת חשבון</h2>
-          <p className="text-sm text-ink-600 leading-relaxed">מוחק לצמיתות את החשבון, קורות החיים, המועמדויות, ההודעות וההתראות. אין דרך חזרה.</p>
+          <p className="text-sm text-ink-600 leading-relaxed">מוחק מיד ולצמיתות את החשבון, קורות החיים, המועמדויות, ההודעות, אנשי הקשר וההתראות. אין דרך חזרה.</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <input className="jm-input" placeholder='הקלד/י DELETE לאישור' value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} dir="ltr" />
             <button onClick={deleteAccount} disabled={confirmDelete !== "DELETE"} className="jm-btn jm-btn-danger shrink-0">מחק חשבון</button>

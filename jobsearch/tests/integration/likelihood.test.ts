@@ -123,6 +123,17 @@ describe("training on outcomes", () => {
     expect(strong.pct).toBeLessThanOrEqual(95);
   });
 
+  it("leaves out the outcomes of people who opted out (Settings → privacy), and counts them again after they opt back in", async () => {
+    await User.updateOne({ _id: dana }, { $set: { "privacy.excludeFromTraining": true } });
+    const out = await trainLikelihood();
+    expect(out.samples).toBe(0); // all 150 outcomes are dana's
+    expect(out.trained).toBe(false);
+    await User.updateOne({ _id: dana }, { $set: { "privacy.excludeFromTraining": false } });
+    const back = await trainLikelihood();
+    expect(back.samples).toBe(150);
+    expect(back.trained).toBe(true);
+  });
+
   it("the ranked feed, the explain route and the status route carry the score", async () => {
     resetModelCache();
     const { jobs } = await rankForUser(dana, { limit: 5, rerank: false });

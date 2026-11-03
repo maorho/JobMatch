@@ -25,6 +25,9 @@ import UsageCounter from "@/app/models/UsageCounter";
 import RateLimit from "@/app/models/RateLimit";
 import AddedJobs from "@/app/models/AddedJobs";
 import InterviewQuestion from "@/app/models/InterviewQuestion";
+import RankedFeed from "@/app/models/RankedFeed";
+import SuggestedAnswer from "@/app/models/SuggestedAnswer";
+import LlmUsage from "@/app/models/LlmUsage";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { signJwt, verifyJwt, JWT_TTL_SEC } from "@/app/lib/jwt";
 import { rateLimit } from "@/app/lib/ops/rateLimit";
@@ -248,6 +251,12 @@ describe("account deletion", () => {
     await ReferralRequest.collection.insertOne({ candidateId: other, referrerUserId: uid, jobId: new mongoose.Types.ObjectId(), status: "accepted" });
     await ReferralRequest.collection.insertOne({ candidateId: other, referrerUserId: uid, jobId: new mongoose.Types.ObjectId(), status: "submitted" });
     await AddedJobs.collection.insertOne({ candidateId: uid, jobTitle: "t", company: "c" });
+    await RankedFeed.collection.insertOne({ userId: uid, key: "default", computedAt: new Date() });
+    await SuggestedAnswer.collection.insertOne({ userId: uid, key: "why", resumeVersion: "v1", createdAt: new Date() });
+    // AI-spend ledger: their row folds into the untagged row for the same hour/model/role/feature.
+    const usageKey = { hour: "2026-11-03T10", day: "2026-11-03", provider: "openai", model: "gpt-6.1-sol", role: "interviewer", feature: "interview_turn" };
+    await LlmUsage.collection.insertOne({ ...usageKey, userId: uid, calls: 2, inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, usd: 0.4, updatedAt: new Date() });
+    await LlmUsage.collection.insertOne({ ...usageKey, userId: null, calls: 1, inputTokens: 50, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, usd: 0.1, updatedAt: new Date() });
     // Interview questions: a private one, and two shareable reports of the same question from two applications.
     await InterviewQuestion.syncIndexes(); // the unique (userId, applicationId, key) index is part of what's tested
     const q = { userId: uid, company: "Wix", companyKey: "wix", question: "Why us?", key: "why us", note: "my secret note" };
@@ -270,6 +279,13 @@ describe("account deletion", () => {
     // Requests to them as an insider: open → expired (frees the candidate's quota), history kept.
     expect((await ReferralRequest.find({ referrerUserId: uid }).lean()).map((r: any) => r.status).sort()).toEqual(["expired", "submitted"]);
     expect(await AddedJobs.countDocuments({ candidateId: uid })).toBe(0);
+    expect(await RankedFeed.countDocuments({ userId: uid })).toBe(0);
+    expect(await SuggestedAnswer.countDocuments({ userId: uid })).toBe(0);
+    expect(await LlmUsage.countDocuments({ userId: uid })).toBe(0);
+    const merged: any[] = await LlmUsage.find({ model: "gpt-6.1-sol", feature: "interview_turn" }).lean();
+    expect(merged).toHaveLength(1); // totals kept, the person's link gone
+    expect(merged[0]).toMatchObject({ calls: 3, inputTokens: 150 });
+    expect(merged[0].usd).toBeCloseTo(0.5, 6);
     // Questions: nothing left under their id; the bank keeps the shareable text, anonymized and de-duplicated.
     expect(await InterviewQuestion.countDocuments({ userId: uid })).toBe(0);
     const kept: any[] = await InterviewQuestion.find({ companyKey: "wix" }).lean();

@@ -55,6 +55,8 @@ export interface IUser extends Document {
     lastError?: string;
   };
   autoApply?: { enabled?: boolean; minScore?: number; dailyCap?: number; enabledAt?: Date };
+  /** Privacy choices. excludeFromTraining: my application outcomes are left out of the likelihood model's training. */
+  privacy?: { excludeFromTraining?: boolean };
   onboarding?: { completedAt?: Date; contactsStep?: "" | "done" | "skipped" };
   searchProfile?: { roles?: string[]; level?: "junior" | "mid" | "senior"; cities?: string[]; workModes?: string[]; keywords?: string[]; updatedAt?: Date };
   searchVector?: number[];
@@ -151,6 +153,10 @@ const UserSchema = new Schema<IUser>(
       minScore: { type: Number, default: 75, min: 50, max: 100 },
       dailyCap: { type: Number, default: 5, min: 1, max: 30 },
       enabledAt: { type: Date, default: undefined },
+    },
+    /** Privacy choices (Settings → "פרטיות"): leave my outcomes out of model training. */
+    privacy: {
+      excludeFromTraining: { type: Boolean, default: false },
     },
     /** Partner program membership (lib/partners/partners.ts): the bootcamp/college cohort this user belongs to. */
     partner: {

@@ -1,5 +1,6 @@
 import { connectToDatabase } from "@/app/lib/db";
 import ApplicationOutcome, { type OutcomeFeatures } from "@/app/models/ApplicationOutcome";
+import User from "@/app/models/User";
 import ScoreModel from "@/app/models/ScoreModel";
 import { isPositive } from "@/app/lib/outcomes/outcomes";
 
@@ -119,10 +120,11 @@ export const resetModelCache = () => {
   cache = null;
 };
 
-/** Train on every resolved outcome. Stores the model; returns the report (or null when there's too little data). */
+/** Train on every resolved outcome, except those of people who opted out (Settings → privacy). Stores the model; returns the report. */
 export async function trainLikelihood(opts: { minSamples?: number } = {}): Promise<{ samples: number; positives: number; auc: number; logLoss: number; trained: boolean }> {
   await connectToDatabase();
-  const rows: any[] = await ApplicationOutcome.find({ outcome: { $ne: "pending" } }).select("features reached").lean();
+  const optedOut = await User.find({ "privacy.excludeFromTraining": true }).distinct("_id");
+  const rows: any[] = await ApplicationOutcome.find({ outcome: { $ne: "pending" }, ...(optedOut.length ? { userId: { $nin: optedOut } } : {}) }).select("features reached").lean();
   const X = rows.map((r) => featureVector(r.features || {}));
   const y: number[] = rows.map((r) => (isPositive(r.reached) ? 1 : 0));
   const positives = y.reduce((a, b) => a + b, 0);

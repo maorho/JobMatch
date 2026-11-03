@@ -67,6 +67,30 @@ export async function recordUsage(ev: UsageEvent): Promise<void> {
   }
 }
 
+/**
+ * Account deletion: keep the spend totals (the cost monitor's history) but drop
+ * who caused them. Each of the person's rows is folded into the matching
+ * untagged row (same hour/model/role/feature), then removed.
+ */
+export async function anonymizeUsageOf(userId: string): Promise<number> {
+  await connectToDatabase();
+  const rows: any[] = await LlmUsage.find({ userId }).lean();
+  for (const r of rows) {
+    const key = { hour: r.hour, model: r.model, role: r.role || "", feature: r.feature || "", userId: null };
+    await LlmUsage.updateOne(
+      key,
+      {
+        $setOnInsert: { ...key, day: r.day, provider: r.provider },
+        $inc: { calls: r.calls || 0, inputTokens: r.inputTokens || 0, outputTokens: r.outputTokens || 0, cacheReadTokens: r.cacheReadTokens || 0, cacheWriteTokens: r.cacheWriteTokens || 0, usd: r.usd || 0 },
+        $set: { updatedAt: r.updatedAt || new Date(), ...(r.estimated ? { estimated: true } : {}) },
+      },
+      { upsert: true }
+    );
+  }
+  const { deletedCount } = await LlmUsage.deleteMany({ userId });
+  return deletedCount || 0;
+}
+
 /** Flat charges that are not token-based. */
 export const recordVoiceSession = (userId: string, model: string) => recordUsage({ provider: "openai", model, role: "voice", flatUsd: FLAT_USD.voiceSession, feature: "voice_session", userId });
 export const recordPhoneSession = (userId: string, model: string) => recordUsage({ provider: "openai", model, role: "voice", flatUsd: FLAT_USD.phoneSession, feature: "phone_session", userId });

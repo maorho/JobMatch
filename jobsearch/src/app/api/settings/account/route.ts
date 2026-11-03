@@ -22,6 +22,9 @@ import MatchCache from "@/app/models/MatchCache";
 import JobSignal from "@/app/models/JobSignal";
 import ContactMessage from "@/app/models/ContactMessage";
 import UsageCounter from "@/app/models/UsageCounter";
+import RankedFeed from "@/app/models/RankedFeed";
+import SuggestedAnswer from "@/app/models/SuggestedAnswer";
+import { anonymizeUsageOf } from "@/app/lib/llm/usageMeter";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,6 +114,10 @@ export async function DELETE(req: NextRequest) {
     JobSignal.deleteMany({ userId }),
     ContactMessage.deleteMany({ userId }),
     UsageCounter.deleteMany({ userId }),
+    RankedFeed.deleteMany({ userId }),
+    SuggestedAnswer.deleteMany({ userId }),
+    // The AI-spend ledger keeps its totals; only the link to this person goes.
+    anonymizeUsageOf(String(userId)),
   ]);
   await User.deleteOne({ _id: userId });
   await deleteResumeObject(String(user.resume || ""));
