@@ -58,6 +58,8 @@ export type ScoutSourceResult = {
   reopened?: number;
   /** The adapter could not deliver the whole board: new postings were ingested, nothing was soft-closed. */
   partial?: boolean;
+  /** Not polled: another walker polled it within `skipPolledWithinMs`. */
+  skipped?: boolean;
   partialReason?: string;
   error?: string;
 };
@@ -131,6 +133,13 @@ export type RunOptions = {
   heartbeat?: () => Promise<void> | void;
   /** Override the per-source deadline (tests). */
   sourceDeadlineMs?: number;
+  /**
+   * Skip a source polled this recently (it still counts as processed so
+   * offsets stay stable). Several walkers share the catalogue — the cron, the
+   * self-driving walk and bus walks — and the sources are the same for all of
+   * them; this is what keeps them from polling everything several times over.
+   */
+  skipPolledWithinMs?: number;
 };
 
 /**
@@ -171,6 +180,10 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       deadlineMs = Math.min(deadlineMs, Math.max(MIN_FIRST_SOURCE_MS, opts.deadlineAt - Date.now() - START_MARGIN_MS));
     }
     processed++;
+    if (opts.skipPolledWithinMs && src.lastPolledAt && Date.now() - new Date(src.lastPolledAt).getTime() < opts.skipPolledWithinMs) {
+      results.push({ company: src.companyName, atsType: src.atsType, fetched: 0, created: 0, removed: 0, skipped: true } as ScoutSourceResult);
+      continue;
+    }
     const result: ScoutSourceResult = {
       company: src.companyName,
       atsType: src.atsType,

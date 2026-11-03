@@ -32,6 +32,11 @@ const HARD_END_MS = maxDuration * 1000 - 15_000;
  *   ?budget=S          seconds to spend before handing back `nextOffset`
  *   ?since=ISO         when the whole walk started (the cron takes it once,
  *                      before the first chunk, and repeats it on every call)
+ *   ?minAge=M          skip sources polled within the last M minutes (default
+ *                      20 for a full walk, 0 when ?company= or ?refresh=1 is
+ *                      given): the cron, the self-driving walk and bus walks
+ *                      all share the sources, and none should poll a board
+ *                      another one just polled.
  *   ?walk=ID&n=K       a chunk of a self-driven walk (lib/scout/selfDrive.ts):
  *                      the route checks the walk still holds the lock, and
  *                      after answering kicks chunk K+1 itself (or closes the
@@ -103,9 +108,10 @@ export async function GET(req: NextRequest) {
     if (walk && !(await heartbeat(walk))) {
       return NextResponse.json({ ok: true, skipped: "walk superseded", walk, nextOffset: null });
     }
+    const minAgeMin = num("minAge") ?? (company || refresh ? 0 : 20);
     let result;
     try {
-      result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs, deadlineAt: startedAt.getTime() + HARD_END_MS });
+      result = await runScout({ dry, refresh, company, offset, limit, timeBudgetMs, deadlineAt: startedAt.getTime() + HARD_END_MS, skipPolledWithinMs: minAgeMin * 60_000 });
     } catch (e) {
       if (walk) await releaseWalk(walk);
       throw e;

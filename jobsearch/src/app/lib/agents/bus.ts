@@ -21,6 +21,8 @@ const MAX_ATTEMPTS = 3;
  * tick never double-process a message that is merely slow.
  */
 const STUCK_AFTER_MS = 10 * 60 * 1000;
+/** A message nobody claimed for this long belongs to a conversation that is over (a chain that died, a runtime that never came). */
+const EXPIRE_QUEUED_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const staleBefore = () => new Date(Date.now() - STUCK_AFTER_MS);
 
 export type SendInput<T extends MessageType> = {
@@ -88,6 +90,16 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
   const scope = opts.runId ? { runId: opts.runId } : {};
   // A runtime that cannot do some work (the worker without an apply server) leaves it queued for one that can.
   const typeScope = opts.skipTypes?.length ? { type: { $nin: opts.skipTypes } } : {};
+
+  // Messages queued for a week were never going to be handled (the chain they belong to is long over); close them so the queue and the health check reflect live work.
+  const expired: any[] = await AgentMessage.find({ ...scope, status: "queued", createdAt: { $lt: new Date(Date.now() - EXPIRE_QUEUED_AFTER_MS) } }).select("_id runId").lean();
+  if (expired.length) {
+    await AgentMessage.updateMany({ _id: { $in: expired.map((m) => m._id) } }, { $set: { status: "failed", error: "expired: queued for more than 7 days", finishedAt: new Date() } });
+    for (const m of expired) {
+      touchedRuns.add(String(m.runId));
+      await AgentRun.updateOne({ _id: m.runId }, { $inc: { "stats.failed": 1 } });
+    }
+  }
 
   // Abandoned messages that already used every attempt are closed, not reclaimed forever.
   const exhausted: any[] = await AgentMessage.find({ ...scope, status: "processing", startedAt: { $lt: staleBefore() }, attempts: { $gte: MAX_ATTEMPTS } }).select("_id runId").lean();

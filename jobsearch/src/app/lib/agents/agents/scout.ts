@@ -8,6 +8,8 @@ import AgentMessage from "@/app/models/AgentMessage";
 const CHUNK_BUDGET_MS = 60_000;
 /** Kept free before the dispatcher's deadline for the hand-off messages and the bus bookkeeping. */
 const DEADLINE_MARGIN_MS = 10_000;
+/** A source polled this recently by any walker (cron, self-drive, another bus walk) is not polled again. */
+const FRESH_SOURCE_MS = 30 * 60_000;
 
 export const scoutAgent = registerAgent({
   name: "scout",
@@ -26,6 +28,13 @@ export const scoutAgent = registerAgent({
     }
 
     const p = msg.payload as Payloads["catalog.refresh"];
+    // One full walk at a time: when an older run is still walking the catalogue, this one
+    // yields (its run settles as done). Walks were started by hand from the admin page and
+    // piled up, each re-polling the same 130 sources chunk by chunk on the hourly tick.
+    if (!p.company) {
+      const older = await AgentMessage.exists({ type: "catalog.refresh", status: { $in: ["queued", "processing"] }, runId: { $lt: msg.runId }, "payload.company": { $exists: false } });
+      if (older) return `Another catalog walk is already in progress (an older run); this one stops here so the sources are not polled twice.`;
+    }
     // The chunk lives inside the dispatcher's budget: never plan past ctx.deadline, and let
     // runScout refuse to start a source whose own deadline would not fit before it.
     const hardEnd = ctx.deadline - DEADLINE_MARGIN_MS;
@@ -35,6 +44,7 @@ export const scoutAgent = registerAgent({
       timeBudgetMs: Math.max(0, Math.min(CHUNK_BUDGET_MS, hardEnd - Date.now())),
       deadlineAt: hardEnd,
       heartbeat: ctx.heartbeat,
+      skipPolledWithinMs: p.company ? 0 : FRESH_SOURCE_MS,
     });
     const acc = {
       created: (p.acc?.created ?? 0) + res.created,
