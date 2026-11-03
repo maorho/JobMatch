@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 import { setupTestDb, resetDb } from "../setup/mongo";
 import CompanySource from "@/app/models/CompanySource";
 import Maintenance from "@/app/models/Maintenance";
-import { catalogueIsStale, claimWalk, heartbeat, releaseWalk, kickScoutIfStale, selfDriveEnabled, SCOUT_STALE_MIN } from "@/app/lib/scout/selfDrive";
+import { catalogueIsStale, claimWalk, heartbeat, releaseWalk, kickScoutIfStale, selfDriveEnabled, SCOUT_STALE_MIN, resumeStalledWalk, recordProgress, walkDue } from "@/app/lib/scout/selfDrive";
 import { GET as scoutGET } from "@/app/api/scout/run/route";
 import { GET as kickGET } from "@/app/api/scout/kick/route";
 
@@ -70,5 +70,34 @@ describe("self-driving scout: one walk at a time", () => {
     expect(await res.json()).toMatchObject({ result: "off", staleMin: 20 });
     const clamped = await kickGET(new NextRequest("http://localhost/api/scout/kick?staleMin=1", { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } }));
     expect((await clamped.json()).staleMin).toBe(SCOUT_STALE_MIN); // under 5 min is ignored
+  });
+});
+
+describe("self-driving scout: a broken chain resumes, it does not restart", () => {
+  it("a walk whose hops stopped is taken over at its saved offset, and freshness counts only completed walks", async () => {
+    await Maintenance.deleteMany({ _id: "scoutWalk" as any });
+    const a = await claimWalk();
+    expect(a).toBeTruthy();
+    await recordProgress(a!, 60, 7);
+    expect(await resumeStalledWalk()).toBeNull(); // still heartbeating: nothing to resume
+    await Maintenance.collection.updateOne({ _id: "scoutWalk" as any }, { $set: { updatedAt: minutesAgo(6) } });
+    const r = await resumeStalledWalk();
+    expect(r).toMatchObject({ offset: 60, n: 7 });
+    expect(r!.walkId).not.toBe(a);
+    expect(await heartbeat(a!)).toBe(false); // the old chain, if it wakes up, stops
+    expect(await heartbeat(r!.walkId)).toBe(true);
+    expect(await resumeStalledWalk()).toBeNull(); // taken once
+
+    // A half-done walk never makes the catalogue look fresh, however recent its polls.
+    await CompanySource.updateMany({}, { $set: { lastPolledAt: new Date() } });
+    await releaseWalk(r!.walkId); // not completed
+    await Maintenance.collection.updateOne({ _id: "scoutWalk" as any }, { $set: { completedAt: minutesAgo(SCOUT_STALE_MIN + 10) } });
+    expect(await walkDue()).toBe(true);
+    const c = await claimWalk();
+    await releaseWalk(c!, true); // covered everything
+    expect(await walkDue()).toBe(false);
+    await Maintenance.collection.updateOne({ _id: "scoutWalk" as any }, { $set: { completedAt: minutesAgo(25) } });
+    expect(await walkDue(20)).toBe(true); // the scheduler's shorter window
+    expect(await walkDue()).toBe(false);
   });
 });

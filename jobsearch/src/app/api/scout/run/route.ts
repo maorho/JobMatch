@@ -4,7 +4,7 @@ import { announceCatalogIngested } from "@/app/lib/agents/triggers";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import CompanySource from "@/app/models/CompanySource";
 import { requireCron } from "@/app/lib/cron/requireCron";
-import { heartbeat, continueWalk, releaseWalk } from "@/app/lib/scout/selfDrive";
+import { heartbeat, continueWalk, releaseWalk, recordProgress } from "@/app/lib/scout/selfDrive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,7 +123,11 @@ export async function GET(req: NextRequest) {
     if (!dry && result.nextOffset === null) {
       await announceSince(since, { removed: result.removed, sources: company ? result.processed : result.totalSources });
     }
-    if (walk && !dry) continueWalk(walk, n, since.toISOString(), result.nextOffset);
+    if (walk && !dry) {
+      // Save the position before handing off: if the next hop is lost, the next kick resumes here.
+      if (result.nextOffset !== null) await recordProgress(walk, result.nextOffset, n + 1);
+      continueWalk(walk, n, since.toISOString(), result.nextOffset);
+    }
     return NextResponse.json({ ok: true, dry, since: since.toISOString(), ...result });
   } catch (err: any) {
     console.error("❌ Scout run error:", err);
