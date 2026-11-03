@@ -37,6 +37,7 @@ import ReferralRequestModel from "@/app/models/ReferralRequest";
 import ReferrerModel from "@/app/models/Referrer";
 import ScoreModelModel from "@/app/models/ScoreModel";
 import UsageCounterModel from "@/app/models/UsageCounter";
+import LlmUsageModel from "@/app/models/LlmUsage";
 import UserModel from "@/app/models/User";
 import WebInterviewQuestionModel from "@/app/models/WebInterviewQuestion";
 
@@ -87,6 +88,7 @@ export const ALL_MODELS: Record<string, Model<any>> = {
   Referrer: ReferrerModel,
   ScoreModel: ScoreModelModel,
   UsageCounter: UsageCounterModel,
+  LlmUsage: LlmUsageModel,
   User: UserModel,
   WebInterviewQuestion: WebInterviewQuestionModel,
 };

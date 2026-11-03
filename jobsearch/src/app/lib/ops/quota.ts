@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import UsageCounter from "@/app/models/UsageCounter";
+import { enterUsageScope } from "@/app/lib/llm/usageMeter";
 
 /**
  * Daily caps per person on the actions that cost real money, so one account
@@ -45,6 +46,8 @@ export class QuotaError extends Error {
 
 /** Count one use; throws QuotaError when the day's limit is already spent. Returns what is left. */
 export async function consumeQuota(userId: string | mongoose.Types.ObjectId, key: string, opts: { cost?: number } = {}): Promise<{ used: number; limit: number; remaining: number }> {
+  // Everything this request spends on models from here on is booked to this person and this feature.
+  enterUsageScope({ userId: String(userId), feature: key });
   if (process.env.NODE_ENV === "test" && !process.env.QUOTA_ENFORCE_IN_TESTS) return { used: 0, limit: limitFor(key), remaining: limitFor(key) };
   await connectToDatabase();
   const limit = limitFor(key);

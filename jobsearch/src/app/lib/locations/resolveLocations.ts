@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { recordUsage } from "@/app/lib/llm/usageMeter";
 import { modelFor } from "@/app/lib/llm/models";
 import { connectToDatabase } from "@/app/lib/db";
 import LocationAlias from "@/app/models/LocationAlias";
@@ -59,6 +60,7 @@ async function resolveWithLLM(raws: string[], model: string): Promise<Map<string
           { role: "user", content: JSON.stringify({ inputs: batch }) },
         ],
       });
+      void recordUsage({ provider: "openai", model, role: "fast", feature: "locations", inputTokens: res.usage?.prompt_tokens, outputTokens: res.usage?.completion_tokens });
       const text = res.choices?.[0]?.message?.content ?? "{}";
       const parsed = JSON.parse(text);
       const items: any[] = Array.isArray(parsed?.items) ? parsed.items : [];

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { startFlow, processQueue } from "@/app/lib/agents";
 import { alertAdmins } from "@/app/lib/ops/alerts";
+import { checkCostAlerts } from "@/app/lib/ops/costMonitor";
 import { requireCron } from "@/app/lib/cron/requireCron";
 
 export const runtime = "nodejs";
@@ -44,8 +45,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: `Unknown flow "${flow}"` }, { status: 400 });
     }
     const result = await processQueue({ budgetMs });
+    // The hourly spend check rides on the hourly drain: a spike, a spending user or a looping chain becomes an admin alert.
+    const cost = await checkCostAlerts().catch(() => null);
     if (result.failed > 0) await alertAdmins("agents_failed", `${result.failed} agent message${result.failed === 1 ? "" : "s"} failed in this tick`, `flow=${flow || "drain"} · handled ${result.handled} · remaining ${result.remaining}. Open the agent team view for the error log.`, "/AdminDashboard/agents");
-    return NextResponse.json({ ok: true, runId, ...result });
+    return NextResponse.json({ ok: true, runId, ...result, cost: cost ? { ok: cost.ok, today: cost.summary.today, breaches: cost.breaches.map((b) => b.kind) } : undefined });
   } catch (err: any) {
     console.error("❌ agents tick:", err);
     await alertAdmins("tick_crashed", "The agents tick crashed", String(err?.message || err).slice(0, 500), "/AdminDashboard/agents");

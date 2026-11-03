@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { consumeQuota, quotaResponse } from "@/app/lib/ops/quota";
+import { recordVoiceSession } from "@/app/lib/llm/usageMeter";
 import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
   // Daily cap on this paid action (lib/ops/quota.ts); 429 with a hint when spent.
   try {
     await consumeQuota(userId, "voice_session");
+    void recordVoiceSession(userId, process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-mini"); // audio is billed per minute; a flat per-session estimate keeps it on the ledger
   } catch (e) {
     const q = quotaResponse(e);
     if (q) return q;

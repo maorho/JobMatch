@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import { requireAdmin } from "@/app/lib/authGuard";
 import { requireCron } from "@/app/lib/cron/requireCron";
+import { costSummary, breachesOf } from "@/app/lib/ops/costMonitor";
 import User from "@/app/models/User";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import AgentRun from "@/app/models/AgentRun";
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
     AgentMessage.findOne({ status: "queued" }).sort({ createdAt: 1 }).select("createdAt").lean() as any,
     // "processing" for longer than the bus's retry window: a lambda died (or froze) mid-handling.
     AgentMessage.countDocuments({ status: "processing", startedAt: { $lt: stuckBefore } }),
-    AgentMessage.countDocuments({ status: "failed", updatedAt: { $gt: dayAgo } }),
+    AgentMessage.countDocuments({ status: "failed", updatedAt: { $gt: dayAgo }, error: { $not: /^expired/ } }), // week-old messages the bus expired are housekeeping, not failures
     ApplicationOutcome.countDocuments({ outcome: { $ne: "pending" } }),
     Referrer.countDocuments({ verifiedAt: { $ne: null }, active: true }),
     usageToday(),
@@ -103,7 +104,12 @@ export async function GET(req: NextRequest) {
   };
   out.checks.config.ok = out.checks.config.openai && out.checks.config.cronSecret && out.checks.config.appUrlResolves;
   out.checks.product = { users, resolvedOutcomes: outcomes, verifiedInsiders: insiders };
+  // Spend: today, the last hour, one user, the bus — anything over its line (lib/ops/costMonitor.ts) makes production "needs attention"
+  // and so fails the cron's hourly health job, which is the alert that reaches the admin's inbox without an email provider.
+  const cost = await costSummary().catch(() => null);
+  const costBreaches = cost ? breachesOf(cost) : [];
+  out.checks.cost = cost ? { ok: costBreaches.length === 0, today: cost.today, lastHour: cost.lastHour, last7d: cost.last7d, limits: cost.limits, breaches: costBreaches } : { ok: true, unavailable: true };
   out.checks.usageToday = Object.fromEntries(Object.keys({ ...DEFAULT_LIMITS, ...usage }).map((k) => [k, { used: usage[k] || 0, limitPerUser: limitFor(k) }]));
-  out.ok = out.checks.db.ok && out.checks.catalog.ok && out.checks.agents.ok && out.checks.scout.ok && out.checks.config.ok;
+  out.ok = out.checks.db.ok && out.checks.catalog.ok && out.checks.agents.ok && out.checks.scout.ok && out.checks.config.ok && out.checks.cost.ok;
   return NextResponse.json(out, { status: out.ok ? 200 : 207, headers: { "Cache-Control": "private, no-store" } });
 }

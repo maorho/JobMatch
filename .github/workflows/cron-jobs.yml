@@ -17,6 +17,7 @@ on:
     - cron: "30 5 * * *"      # outcome loop: ask "did you get a reply?" daily 05:30 UTC
     - cron: "0 3 * * *"       # company profiles: 15 more per night
     - cron: "30 2 * * *"      # company discovery: probe 20 new companies per night
+    - cron: "0 7 * * 1"       # writer: two articles for the week, Monday 07:00 UTC (admin reviews before publish)
   workflow_dispatch:
     inputs:
       job:
@@ -35,6 +36,7 @@ on:
           - company_profiles
           - health
           - company_discovery
+          - content_plan
 
 env:
   PROD_BASE_URL: https://job-match-six.vercel.app
@@ -271,6 +273,21 @@ jobs:
         run: |
           curl -fsS --max-time 60 -G "${{ env.PROD_BASE_URL }}/api/admin/health" -H "${{ env.AUTH }}" | tee health.json
           node -e 'const h=require("./health.json"); if(!h.ok){console.error("UNHEALTHY", JSON.stringify(h.checks)); process.exit(1)}'
+
+  content_plan:
+    if: github.event.schedule == '0 7 * * 1' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'content_plan')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: cron-weekly-writer
+      cancel-in-progress: false
+    steps:
+      - name: Ask the Writer for this week's articles (drafts land in the admin review queue)
+        run: |
+          curl -fsS --max-time 320 -G "${{ env.PROD_BASE_URL }}/api/agents/tick" -H "${{ env.AUTH }}" \
+            --data-urlencode "flow=content.plan" \
+            --data-urlencode "count=2" \
+            --data-urlencode "budget=240"
 
   company_discovery:
     if: github.event.schedule == '30 2 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'company_discovery')

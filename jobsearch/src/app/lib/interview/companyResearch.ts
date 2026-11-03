@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { recordUsage } from "@/app/lib/llm/usageMeter";
+import { FLAT_USD } from "@/app/lib/llm/pricing";
 import { modelFor } from "@/app/lib/llm/models";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
@@ -83,6 +85,7 @@ export function researchClient(): Client | null {
 /** Web search can't run in JSON mode; when the free-text answer isn't clean JSON, a cheap second pass converts it. */
 export async function repairJsonAs(client: Client, text: string, shape: string): Promise<string> {
   const res = await client.responses.create({ model: modelFor("fast", "openai"), input: `Convert the following text into STRICT JSON with exactly this shape: ${shape}. Drop citation markers. Text:\n\n${text.slice(0, 12000)}`, text: { format: { type: "json_object" } }, max_output_tokens: 2500 });
+  void recordUsage({ provider: "openai", model: modelFor("fast", "openai"), role: "research", inputTokens: (res as any).usage?.input_tokens, outputTokens: (res as any).usage?.output_tokens });
   return res.output_text || "";
 }
 
@@ -95,12 +98,15 @@ export async function callWithSearch(client: Client, prompt: string, opts: { mod
   const model = opts.model || RESEARCH_MODEL;
   try {
     const res = await client.responses.create({ model, tools: [{ type: "web_search_preview" }], input: prompt, max_output_tokens: opts.maxTokens ?? 4500 });
+    const searches = (res.output || []).filter((o: any) => o.type === "web_search_call").length;
+    void recordUsage({ provider: "openai", model, role: "research", inputTokens: (res as any).usage?.input_tokens, outputTokens: (res as any).usage?.output_tokens, flatUsd: searches * FLAT_USD.webSearch });
     const text = res.output_text || (res.output || []).flatMap((o: any) => o.content || []).map((c: any) => c.text || "").join("");
     const searched = (res.output || []).some((o: any) => o.type === "web_search_call");
     return { text, searched };
   } catch (e: any) {
     // Search tool unavailable on this account/model → plain generation, flagged low-confidence.
     const res = await client.responses.create({ model, input: `${prompt}\n\n(Web search is unavailable: answer from what you know and set confidence to "low".)`, max_output_tokens: Math.min(opts.maxTokens ?? 2000, 2000) });
+    void recordUsage({ provider: "openai", model, role: "research", inputTokens: (res as any).usage?.input_tokens, outputTokens: (res as any).usage?.output_tokens });
     return { text: res.output_text || "", searched: false };
   }
 }

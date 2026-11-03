@@ -4,6 +4,8 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import type { BaseMessage } from "@langchain/core/messages";
 import { llmProvider, modelFor, providerFor, type LlmProvider, type LlmRole } from "./models";
+import { recordUsage } from "./usageMeter";
+import { spendAllowed } from "@/app/lib/ops/costMonitor";
 
 export type ChatOptions = {
   temperature?: number;
@@ -114,9 +116,19 @@ function usageOf(res: any): Omit<LlmUsage, "provider" | "model" | "role"> | null
   if (l && typeof l.input_tokens === "number") return { inputTokens: l.input_tokens, outputTokens: l.output_tokens || 0, cacheReadTokens: l.input_token_details?.cache_read || 0, cacheWriteTokens: 0 };
   return null;
 }
+/** Thrown when today's spend reached COST_HARD_CAP_DAILY_USD (lib/ops/costMonitor.ts): the product's circuit breaker. */
+export class SpendCapError extends Error {
+  constructor(public readonly today: number, public readonly cap: number) {
+    super(`AI features are paused: today's spend $${today} reached the daily cap of $${cap}`);
+    this.name = "SpendCapError";
+  }
+}
+
 class Metered implements ChatLike {
   constructor(readonly inner: ChatLike, private readonly tag: { provider: LlmProvider; model: string; role: LlmRole }) {}
   async invoke(messages: BaseMessage[]): Promise<ChatReply> {
+    const gate = await spendAllowed();
+    if (!gate.allowed) throw new SpendCapError(gate.today, gate.cap);
     const res = await this.inner.invoke(messages);
     const u = usageListeners.size ? usageOf(res) : null;
     if (u) for (const fn of usageListeners) fn({ ...this.tag, ...u });
@@ -151,7 +163,7 @@ export function chatModel(role: LlmRole, opts: ChatOptions = {}): ChatLike {
       ...(opts.json ? { modelKwargs: { response_format: { type: "json_object" } } } : {}),
     }) as unknown as ChatLike;
   };
-  const metered = (budget: number): ChatLike => (usageListeners.size ? new Metered(build(budget), { provider, model, role }) : build(budget));
+  const metered = (budget: number): ChatLike => new Metered(build(budget), { provider, model, role }); // always: the meter and the cap
   // A reply the caller will parse is useless when cut off: grow the budget and ask again rather than fail on a half JSON.
   return opts.json ? new GrowOnTruncate(metered, maxTokens, OUTPUT_CEILING[provider], model) : metered(maxTokens);
 }
@@ -198,3 +210,6 @@ export class GrowOnTruncate implements ChatLike {
 export function llmConfigured(): boolean {
   return activeProvider() === "anthropic" ? !!process.env.ANTHROPIC_API_KEY : !!process.env.OPENAI_API_KEY;
 }
+
+// The spend ledger listens to every chat call (lib/llm/usageMeter.ts); harnesses may add their own listeners.
+onLlmUsage((u) => void recordUsage({ provider: u.provider, model: u.model, role: u.role, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cacheReadTokens: u.cacheReadTokens, cacheWriteTokens: u.cacheWriteTokens }));

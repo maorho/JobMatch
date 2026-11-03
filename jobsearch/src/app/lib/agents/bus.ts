@@ -5,6 +5,7 @@ import AgentMessage from "@/app/models/AgentMessage";
 import AgentRun from "@/app/models/AgentRun";
 import { getAgent, ownerOf } from "./registry";
 import { priorityOf, type AgentContext, type BusMessage, type MessageType, type Payloads, type Sender } from "./types";
+import { withUsageScope } from "@/app/lib/llm/usageMeter";
 
 /**
  * The agent bus. Agents never call each other directly: they post messages
@@ -161,7 +162,9 @@ export async function processQueue(opts: { budgetMs?: number; max?: number; runI
     try {
       if (!agent) throw new Error(`No agent registered for "${msg.to}"`);
       if (!agent.handles.includes(msg.type)) throw new Error(`Agent "${agent.name}" does not handle "${msg.type}"`);
-      const said = (await agent.handle(msg, ctx)) || "";
+      // Spend inside the handler is booked to the message type (and the person in the payload, when there is one).
+      const payloadUser = (msg.payload as any)?.userId;
+      const said = (await withUsageScope({ feature: msg.type, userId: payloadUser ? String(payloadUser) : undefined }, () => agent.handle(msg, ctx))) || "";
       const done = lost
         ? { matchedCount: 0 }
         : await AgentMessage.updateOne(owned, { $set: { status: "done", result: [said, ...log].filter(Boolean).join("\n").slice(0, 2000), error: "", finishedAt: new Date() } });

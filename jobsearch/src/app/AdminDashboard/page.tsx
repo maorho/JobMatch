@@ -1,5 +1,6 @@
 "use client";
 import HealthCard from "./components/HealthCard";
+import CostCard from "./components/CostCard";
 
 import Link from "next/link";
 import React, { useEffect, useState, useCallback } from "react";
@@ -271,6 +272,7 @@ function AdminDashboard() {
       </section>
 
       <HealthCard />
+      <CostCard />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (

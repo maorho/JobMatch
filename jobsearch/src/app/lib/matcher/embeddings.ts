@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { recordUsage } from "@/app/lib/llm/usageMeter";
 
 export const EMBEDDING_MODEL = "text-embedding-3-small"; // 1536 dims, multilingual
 
@@ -27,6 +28,7 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
       model: EMBEDDING_MODEL,
       input: batch,
     });
+    void recordUsage({ provider: "openai", model: EMBEDDING_MODEL, role: "embedding", inputTokens: (res as any).usage?.total_tokens ?? (res as any).usage?.prompt_tokens ?? 0 });
     // Order by `index` — do not assume the API returns input order.
     const sorted = [...res.data].sort((a, b) => a.index - b.index);
     for (const d of sorted) out.push(d.embedding as number[]);

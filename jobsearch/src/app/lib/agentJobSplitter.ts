@@ -1,5 +1,6 @@
 // src/app/lib/agentJobSplitter.ts
 import OpenAI from "openai";
+import { recordUsage } from "@/app/lib/llm/usageMeter";
 import { modelFor } from "@/app/lib/llm/models";
 
 export type SplitResult = {
@@ -60,6 +61,7 @@ export async function agentSplitJobText(raw: string): Promise<SplitResult> {
     ],
     tool_choice: "auto",
   });
+  void recordUsage({ provider: "openai", model: modelFor("fast", "openai"), role: "fast", feature: "job_split", inputTokens: completion.usage?.prompt_tokens, outputTokens: completion.usage?.completion_tokens });
 
   let llm: SplitResult | null = null;
   const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
