@@ -432,6 +432,34 @@ describe("paginating adapters: partial lists are returned, not thrown", () => {
     expect(calls.filter((c) => c.includes("_next/data"))).toHaveLength(1);
   });
 
+  it("jsonlist: a headless-CMS feed (Moveo/Payload) maps by dotted paths, flattens rich text, fills the link template", async () => {
+    const { jsonlist } = await import("@/app/lib/scout/adapters/jsonlist");
+    stubFetch({
+      "/api/jobs": { body: { docs: [
+        { id: 1, title: "Full-Stack Web Developer ", slug: "full-stack-web-developer", location: "Tel Aviv", summary: "<p>Ship apps</p>", requirements: [{ id: "x", lead: "Technical Proficiency", text: "Strong JS" }], createdAt: "2026-10-01T00:00:00.000Z", _status: "published" },
+        { id: 2, title: "Draft", slug: "draft", location: "Tel Aviv", _status: "draft" },
+      ] } },
+    });
+    const out = await jsonlist("https://www.moveo.group/api/jobs?limit=100", JSON.stringify({ items: "docs", location: "location", description: ["summary", "requirements"], link: "https://www.moveo.group/careers#{slug}", postedAt: "createdAt", company: "Moveo", status: { field: "_status", value: "published" } }));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ sourceJobId: "1", title: "Full-Stack Web Developer", city: "Tel Aviv", country: "Israel", company: "Moveo", applyUrl: "https://www.moveo.group/careers#full-stack-web-developer" });
+    expect(out[0].description).toContain("Ship apps");
+    expect(out[0].description).toContain("Technical Proficiency: Strong JS");
+    expect(out[0].postedAt?.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+  });
+
+  it("html: link \"self\" takes the card's own href, link \"page\" keys a job to the listing URL plus its title", async () => {
+    const { html } = await import("@/app/lib/scout/adapters/html");
+    stubFetch({
+      "robo.example/careers": { body: `<div class="grid"><a class="role-card" href="/careers/dev-1"><h3>Robotics Dev</h3><span>Full-time</span></a><a class="role-card" href="/careers/ops-2"><h3>Ops</h3></a></div>` },
+      "giv.example/careers": { body: `<div class="text-wraper"><div><h3>Full Stack Developer</h3><p>C#, .NET</p></div></div>` },
+    });
+    const robo = await html("https://robo.example/careers", JSON.stringify({ item: "a.role-card", link: "self", title: "h3", maxDetail: 0 }));
+    expect(robo.map((p) => [p.title, p.applyUrl])).toEqual([["Robotics Dev", "https://robo.example/careers/dev-1"], ["Ops", "https://robo.example/careers/ops-2"]]);
+    const giv = await html("https://giv.example/careers", JSON.stringify({ item: ".text-wraper > div", link: "page", title: "h3", desc: "p", maxDetail: 0 }));
+    expect(giv.map((p) => [p.title, p.applyUrl, p.description])).toEqual([["Full Stack Developer", "https://giv.example/careers#full-stack-developer", "C#, .NET"]]);
+  });
+
   it("workday: city-only locations (Marvell style) count as Israel through the location rules", async () => {
     const { workday } = await import("@/app/lib/scout/adapters/workday");
     stubFetch({

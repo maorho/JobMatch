@@ -47,6 +47,7 @@ const COMPLETE_FEED_ATS = new Set([
   "eightfold", // pages until the reported count is reached (partial otherwise)
   "elbit", // one JSON file with the whole board
   "checkpoint", // pages until numberOfPages is reached (partial otherwise)
+  "jsonlist", // one JSON document with the whole board
 ]);
 
 export type ScoutSourceResult = {

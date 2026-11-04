@@ -30,6 +30,7 @@ export type AtsType =
   | "html"
   | "elbit"
   | "checkpoint"
+  | "jsonlist"
   | "generic";
 
 /**

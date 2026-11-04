@@ -10,7 +10,8 @@ import { ListAdapter, NormalizedPosting, fetchText, htmlToText, parseLocation } 
  *     {
  *       "item":     "article.job-card",        // repeated job container (required)
  *       "title":    "h3 a",                    // title within item (default: first <a>)
- *       "link":     "h3 a",                    // href within item (default: first <a>)
+ *       "link":     "h3 a",                    // href within item (default: first <a>); "self" = the item is the <a>;
+ *                                              // "page" = no job pages, listing URL + title is the key
  *       "location": ".job-location",           // optional, within item
  *       "desc":     ".job-summary",            // optional, within item
  *       "detail": {                            // optional: fetch each job page
@@ -110,10 +111,12 @@ export const html: ListAdapter = async (identifier, secondaryIdentifier) => {
 
     $(cfg.item).each((_, el) => {
       const item = $(el);
-      const linkEl = cfg.link ? item.find(cfg.link).first() : item.find("a[href]").first();
+      // link "self": the item is the <a> (card-as-link boards); "page": no per-job page at all, the
+      // listing URL plus the title stands in (one-job pages like giv-solutions.com/careers).
+      const linkEl = cfg.link === "self" ? item : cfg.link && cfg.link !== "page" ? item.find(cfg.link).first() : item.find("a[href]").first();
       const titleEl = cfg.title ? item.find(cfg.title).first() : linkEl;
-      const href = linkEl.attr("href") || "";
       const title = clean(titleEl.text());
+      const href = cfg.link === "page" ? `${listUrl}#${encodeURIComponent(title.toLowerCase().replace(/\s+/g, "-")).slice(0, 80)}` : linkEl.attr("href") || "";
       if (!href || !title) return;
 
       let url: string;

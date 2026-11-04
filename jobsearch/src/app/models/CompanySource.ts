@@ -31,6 +31,7 @@ const CompanySourceSchema = new Schema(
         "html",
         "elbit",
         "checkpoint",
+        "jsonlist",
         "generic",
       ],
       required: true,
