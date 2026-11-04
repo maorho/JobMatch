@@ -121,6 +121,7 @@ describe("background feed warm-up", () => {
     await ExternalJobs.create(job("Junior React Developer newest", "React TypeScript frontend"));
     await embedPendingJobs();
     invalidate(`rank:${dana}:`);
+    await RankedFeed.deleteMany({ userId: dana, isDefault: false }); // the window list the test above persisted (same 10-minute key)
     const view = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
     expect(view.personalized).toBe(true);
     const names = view.jobs.map((j: any) => j.job);

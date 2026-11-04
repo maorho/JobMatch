@@ -18,7 +18,9 @@ export function parsePostedDays(raw: string | null | undefined): number | null {
   return POSTED_WINDOWS.some((w) => w.days === n) ? n : null;
 }
 
-export const postedSince = (days: number, now = Date.now()) => new Date(now - days * 86_400_000);
+/** Start of the window, on a 10-minute boundary: two clicks minutes apart ask for the same list, so the memo and the persisted ranking answer the second one. */
+export const SINCE_BUCKET_MS = 10 * 60_000;
+export const postedSince = (days: number, now = Date.now()) => new Date(Math.floor((now - days * 86_400_000) / SINCE_BUCKET_MS) * SINCE_BUCKET_MS);
 
 /** Mongo filter for external postings: posted (or, without a date, first seen) at or after `since`. */
 export function postedWithinFilter(since: Date): Record<string, unknown> {
