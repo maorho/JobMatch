@@ -10,7 +10,7 @@ import CompanyLogo from "./CompanyLogo";
 import { EmptyState } from "./ui";
 import { useModalBehavior } from "./Dialog";
 import type { JobFacets } from "./FilterJobs";
-import { seniorityOf, workModeOf } from "../lib/jobTaxonomy";
+import { seniorityOf, workModeOf, POSTED_WINDOWS } from "../lib/jobTaxonomy";
 
 
 interface BaseJob {
@@ -98,6 +98,7 @@ function JobTable() {
   const [city, setCity] = useState<string[]>([]);
   const [jobType, setJobType] = useState<string[]>([]);
   const [seniority, setSeniority] = useState<string[]>([]);
+  const [posted, setPosted] = useState(""); // "posted within" days: "" | "1" | "3" | "7" | "14" | "30"
   const [jobCount, setJobCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
@@ -130,6 +131,7 @@ function JobTable() {
     if (list("country").length) setCountry(list("country"));
     if (list("seniority").length) setSeniority(list("seniority"));
     if (list("jobType").length) setJobType(list("jobType"));
+    if (sp.get("posted")) setPosted(sp.get("posted")!);
   }, []);
 
   // Filter options for the WHOLE catalog (every company/city in the DB).
@@ -148,7 +150,10 @@ function JobTable() {
     country.length > 0 ||
     city.length > 0 ||
     jobType.length > 0 ||
-    seniority.length > 0;
+    seniority.length > 0 ||
+    // "Posted within" alone keeps a signed-in person on the personalised feed (the feed takes `posted`);
+    // for everyone else it is a catalogue search.
+    (posted !== "" && !user);
 
   // ✅ חיפוש בכל המאגר (פנימי + חיצוני) — לא רק במשרות שנטענו לדף
   const searchServer = async (pageNum: number) => {
@@ -162,6 +167,7 @@ function JobTable() {
       country.forEach((v) => params.append("country", v));
       jobType.forEach((v) => params.append("jobType", v));
       seniority.forEach((v) => params.append("seniority", v));
+      if (posted) params.set("posted", posted);
       params.set("page", String(pageNum));
       params.set("limit", "48");
 
@@ -200,7 +206,7 @@ function JobTable() {
       if (user) {
         try {
           const feedRes = await fetch(
-            `/api/matcher/feed?page=${pageNum}&limit=48`,
+            `/api/matcher/feed?page=${pageNum}&limit=48${posted ? `&posted=${posted}` : ""}`,
             { signal: req.signal }
           );
           if (feedRes.ok) {
@@ -234,6 +240,8 @@ function JobTable() {
           if ((err as Error)?.name === "AbortError") return; // superseded
           // fall through to the normal feed
         }
+        // No personalised feed (no résumé yet): the plain feed cannot filter by date, the search can.
+        if (posted && req.isCurrent()) return searchServer(pageNum);
       }
       if (!req.isCurrent()) return;
 
@@ -289,6 +297,7 @@ function JobTable() {
     city,
     jobType,
     seniority,
+    posted,
     u: user?._id ?? user?.id ?? null,
   });
   const prevKeyRef = React.useRef(searchKey);
@@ -345,7 +354,9 @@ function JobTable() {
     return () => io.disconnect();
   }, [page, totalPages, loading]);
 
+  const postedLabel = POSTED_WINDOWS.find((w) => String(w.days) === posted)?.label;
   const activeFilters: { label: string; clear: () => void }[] = [
+    ...(postedLabel ? [{ label: postedLabel, clear: () => setPosted("") }] : []),
     ...seniority.map((v) => ({ label: v, clear: () => setSeniority((s) => s.filter((x) => x !== v)) })),
     ...jobType.map((v) => ({ label: v, clear: () => setJobType((s) => s.filter((x) => x !== v)) })),
     ...country.map((v) => ({ label: v, clear: () => setCountry((s) => s.filter((x) => x !== v)) })),
@@ -354,6 +365,7 @@ function JobTable() {
   ];
   const clearAll = () => {
     setSearchTerm("");
+    setPosted("");
     setSeniority([]);
     setJobType([]);
     setCountry([]);
@@ -362,6 +374,7 @@ function JobTable() {
   };
   // One-tap shortcuts under the hero search; each toggles a single filter.
   const quick = [
+    { label: "New today", on: posted === "1", toggle: () => setPosted((p) => (p === "1" ? "" : "1")) },
     { label: "Junior", on: seniority.includes("Junior"), toggle: () => setSeniority((s) => (s.includes("Junior") ? s.filter((x) => x !== "Junior") : [...s, "Junior"])) },
     { label: "Remote", on: jobType.includes("Remote"), toggle: () => setJobType((s) => (s.includes("Remote") ? s.filter((x) => x !== "Remote") : [...s, "Remote"])) },
     { label: "Hybrid", on: jobType.includes("Hybrid"), toggle: () => setJobType((s) => (s.includes("Hybrid") ? s.filter((x) => x !== "Hybrid") : [...s, "Hybrid"])) },
@@ -383,6 +396,8 @@ function JobTable() {
       setJobType={setJobType}
       seniority={seniority}
       setSeniority={setSeniority}
+      posted={posted}
+      setPosted={setPosted}
     />
   );
 

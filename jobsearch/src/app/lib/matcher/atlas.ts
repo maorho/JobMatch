@@ -1,3 +1,4 @@
+import { postedWithinFilter } from "@/app/lib/jobs/posted";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { cosineSimilarity } from "./cosine";
@@ -57,7 +58,7 @@ function markFailed(e: unknown) {
 }
 
 export type VectorHit = { _id: string; score: number };
-export type VectorFilter = { company?: string[]; country?: string[]; city?: string[]; remote?: boolean; firstSeenAfter?: Date };
+export type VectorFilter = { company?: string[]; country?: string[]; city?: string[]; remote?: boolean; firstSeenAfter?: Date; /** "posted within": postedAt, or firstSeenAt when the ATS gave no date (lib/jobs/posted.ts) */ postedAfter?: Date };
 
 function atlasFilter(f?: VectorFilter): Record<string, unknown> | undefined {
   const and: Record<string, unknown>[] = [];
@@ -66,6 +67,9 @@ function atlasFilter(f?: VectorFilter): Record<string, unknown> | undefined {
   if (f?.city?.length) and.push({ city: { $in: f.city } });
   if (f?.remote !== undefined) and.push({ remote: f.remote });
   if (f?.firstSeenAfter) and.push({ firstSeenAt: { $gt: f.firstSeenAfter } });
+  // The vector index filters on firstSeenAt only. A posting seen after `postedAfter` may still have been
+  // posted before it, so this is a superset; rankAll applies the exact rule on the loaded documents.
+  if (f?.postedAfter) and.push({ firstSeenAt: { $gte: f.postedAfter } });
   if (process.env.ATLAS_FILTER_ACTIVE === "1") and.push({ active: { $ne: false } });
   return and.length ? { $and: and } : undefined;
 }
@@ -77,6 +81,7 @@ function mongoFilter(f?: VectorFilter): Record<string, unknown> {
   if (f?.city?.length) q.city = { $in: f.city };
   if (f?.remote !== undefined) q.remote = f.remote;
   if (f?.firstSeenAfter) q.firstSeenAt = { $gt: f.firstSeenAfter };
+  if (f?.postedAfter) Object.assign(q, postedWithinFilter(f.postedAfter));
   return q;
 }
 

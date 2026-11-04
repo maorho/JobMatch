@@ -4,13 +4,15 @@ import { rankForUser } from "@/app/lib/matcher/hybrid";
 import { PRIVATE_CACHE, memo, ttl } from "@/app/lib/cache";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import { parsePostedDays, postedSince } from "@/app/lib/jobs/posted";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Personalized job feed for the signed-in user, ranked by match to their résumé.
- * ?page=&limit= . Returns { personalized, jobs, page, pages, total }.
+ * ?page=&limit=&posted=<days> . Returns { personalized, jobs, page, pages, total }.
+ * `posted` keeps only postings from the last N days (1/3/7/14/30), still ranked by match.
  * `personalized: false` means we have no profile vector yet (caller should fall
  * back to the normal feed).
  */
@@ -30,7 +32,8 @@ export async function GET(req: NextRequest) {
 
   try {
     // One ranked list per user (cached briefly, LLM-reranked head cached per résumé version); each page is a slice of it.
-    const { jobs: matches, total } = await rankForUser(userId, { limit, skip });
+    const postedDays = parsePostedDays(sp.get("posted"));
+    const { jobs: matches, total } = await rankForUser(userId, { limit, skip, ...(postedDays ? { filter: { postedAfter: postedSince(postedDays) } } : {}) });
 
     if (matches.length === 0 && page === 1) {
       // No profile vector (or no embedded jobs) → let the client use the normal feed.
@@ -48,7 +51,7 @@ export async function GET(req: NextRequest) {
       await connectToDatabase();
       return ExternalJobs.countDocuments(OPEN_JOBS);
     });
-    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal }, { headers: PRIVATE_CACHE });
+    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal, ...(postedDays ? { posted: postedDays } : {}) }, { headers: PRIVATE_CACHE });
   } catch (err: any) {
     console.error("❌ feed error:", err);
     return NextResponse.json(

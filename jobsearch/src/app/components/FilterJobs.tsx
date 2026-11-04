@@ -2,6 +2,36 @@
 import React from "react";
 import {ChevronDown} from "lucide-react";
 import { Job, getJobType, getSeniorityLevel } from "./JobTable";
+import { POSTED_WINDOWS } from "../lib/jobTaxonomy";
+
+/** One choice out of a few (radio), with "Any time" to clear: the "Posted" filter. */
+const ChoiceRender: React.FC<{ title: string; options: { value: string; label: string }[]; selected: string; setSelected: (v: string) => void; anyLabel: string; defaultOpen?: boolean }> = ({ title, options, selected, setSelected, anyLabel, defaultOpen = true }) => {
+  const [isOpen, setIsOpen] = React.useState<boolean>(defaultOpen);
+  const id = `filter-${title.toLowerCase().replace(/\s+/g, "-")}`;
+  const current = options.find((o) => o.value === selected);
+  return (
+    <div className="border-b border-line">
+      <button type="button" onClick={() => setIsOpen((o) => !o)} aria-expanded={isOpen} aria-controls={id} className="w-full flex items-center justify-between gap-2 text-start py-4 min-h-[56px]">
+        <span className="font-semibold text-navy text-[15px]">
+          {title}
+          {current && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0">1</span>}
+          {!isOpen && current && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{current.label}</span>}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+      {isOpen && (
+        <div id={id} className="pb-4 space-y-0.5" role="radiogroup" aria-label={title}>
+          {[{ value: "", label: anyLabel }, ...options].map((o) => (
+            <label key={o.value || "any"} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-canvas cursor-pointer text-sm text-ink-600">
+              <input type="radio" name={id} checked={selected === o.value} onChange={() => setSelected(o.value)} className="h-4 w-4 accent-teal" />
+              <span>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface FilterRenderProps {
   title: string;
@@ -93,6 +123,9 @@ interface JobFiltersProps {
   city: string[];
   jobType: string[];
   seniority: string[];
+  /** "Posted within" in days ("" = any time); see lib/jobs/posted.ts. */
+  posted: string;
+  setPosted: (v: string) => void;
   setCompany: React.Dispatch<React.SetStateAction<string[]>>;
   setCountry: React.Dispatch<React.SetStateAction<string[]>>;
   setCity: React.Dispatch<React.SetStateAction<string[]>>;
@@ -108,6 +141,8 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   city,
   jobType,
   seniority,
+  posted,
+  setPosted,
   setCompany,
   setCountry,
   setCity,
@@ -136,6 +171,8 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   const uniqueSeniority = seniorityOrder.filter((s) => presentSeniority.has(s));
   return (
     <div className="w-full">
+      {/* Posted within: the freshest postings first, still ranked by match */}
+      <ChoiceRender title="Posted" options={POSTED_WINDOWS.map((w) => ({ value: String(w.days), label: w.label }))} selected={posted} setSelected={setPosted} anyLabel="Any time" />
       {/* Seniority (Intern / Junior / Mid / Senior) */}
       <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
       {/* Work mode (On Site / Hybrid / Remote) */}

@@ -1,3 +1,4 @@
+import { parsePostedDays, postedSince, postedWithinFilter } from "@/app/lib/jobs/posted";
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
@@ -111,6 +112,8 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
   const country = list(sp, "country");
   const jobType = list(sp, "jobType");
   const seniority = list(sp, "seniority");
+  const postedDays = parsePostedDays(sp.get("posted"));
+  const since = postedDays ? postedSince(postedDays) : null;
   const rawPage = parseInt(sp.get("page") || "1", 10);
   const rawLimit = parseInt(sp.get("limit") || "48", 10);
   const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
@@ -135,12 +138,12 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     // Closed postings never appear in search results or totals.
     const extAnd: object[] = [OPEN_JOBS];
     // Everything that shapes the external filter, for the shared count cache.
-    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority })}`;
+    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays })}`;
     // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
     // falls back to the every-word regex when Atlas Search isn't available.
     let rankedIds: string[] | null = null;
     if (q) {
-      const hits = await textSearch(q, { limit: RECALL, filter: { company, city, country } }).catch(() => []);
+      const hits = await textSearch(q, { limit: RECALL, filter: { company, city, country, ...(since ? { postedAfter: since } : {}) } }).catch(() => []);
       // Only trust the ranking when it came from Atlas Search; the regex fallback is just a prefilter.
       if (hits.length && isAtlasSearchAvailable()) rankedIds = hits.map((h) => h._id);
     }
@@ -153,6 +156,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     if (country.length) extAnd.push({ country: { $in: country } });
     if (jobType.length) extAnd.push(externalWorkModeFilter(jobType));
     if (seniority.length) extAnd.push(seniorityFilter(seniority));
+    if (since) extAnd.push(postedWithinFilter(since));
     const extFilter = { $and: extAnd };
 
     // ---------- internal postings: few, all returned on page 1 ----------
@@ -171,6 +175,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       if (country.length) intAnd.push({ country: { $in: country } });
       if (jobType.length) intAnd.push({ type: { $in: jobType } });
       if (seniority.length) intAnd.push(seniorityFilter(seniority));
+      if (since) intAnd.push({ createdAt: { $gte: since } });
       internalJobs = await Job.find(intAnd.length ? { $and: intAnd } : {})
         .populate({ path: "company", model: "Company", select: "companyName" })
         .sort({ createdAt: -1 })
@@ -182,6 +187,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
           const extra = await Job.find({
             company: { $in: byName.map((c: any) => c._id) },
             _id: { $nin: internalJobs.map((j) => j._id) },
+            ...(since ? { createdAt: { $gte: since } } : {}),
           })
             .populate({ path: "company", model: "Company", select: "companyName" })
             .lean();

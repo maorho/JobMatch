@@ -62,3 +62,6 @@ export function workModeOf(opts: {
   if (HYBRID_RE.test(hay)) return "Hybrid";
   return "On Site";
 }
+
+/** "Posted within" choices (lib/jobs/posted.ts), re-exported for the filter UI. */
+export { POSTED_WINDOWS } from "@/app/lib/jobs/posted";

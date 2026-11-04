@@ -1,3 +1,4 @@
+import { postedWithin } from "@/app/lib/jobs/posted";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
@@ -159,6 +160,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
     .map((id) => {
       const d = byId.get(id);
       if (!d) return null;
+      if (opts.filter?.postedAfter && !postedWithin(d, opts.filter.postedAfter)) return null; // the index filtered a superset
       const cosine = cosineOf.get(id);
       const textual = textOf.get(id);
       const lf = levelFit(profile.level, d.job, d.seniority);

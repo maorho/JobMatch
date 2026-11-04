@@ -94,4 +94,26 @@ describe("background feed warm-up", () => {
     expect(results.filter((r) => r === "warming-elsewhere")).toHaveLength(2);
     expect(await RankedFeed.countDocuments({ userId: dana })).toBe(1);
   });
+
+  it("feed?posted=<days> keeps only recent postings, still ranked by match", async () => {
+    const day = 86_400_000;
+    await ExternalJobs.create({ ...job("Junior React Developer old", "React TypeScript frontend"), postedAt: new Date(Date.now() - 40 * day), firstSeenAt: new Date(Date.now() - 40 * day) });
+    await ExternalJobs.create({ ...job("Junior React Developer undated", "React TypeScript frontend"), postedAt: null, firstSeenAt: new Date(Date.now() - 2 * day) });
+    await embedPendingJobs();
+    // A new résumé drops the stored default list and warms a fresh one that sees both new postings.
+    await embedAndStoreResume(dana, "Junior frontend developer React TypeScript");
+    await sleep(300);
+    invalidate(`rank:${dana}:`);
+    const all = await (await feedGET(authed("/api/matcher/feed?limit=20"))).json();
+    expect(all.jobs.map((j: any) => j.job)).toContain("Junior React Developer old");
+    const recent = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
+    expect(recent.personalized).toBe(true);
+    expect(recent.posted).toBe(7);
+    const names = recent.jobs.map((j: any) => j.job);
+    expect(names).not.toContain("Junior React Developer old");
+    expect(names).toContain("Junior React Developer undated"); // no employer date: first seen 2 days ago counts
+    expect(names).toContain("Junior React Developer");
+    for (let i = 1; i < recent.jobs.length; i++) expect(recent.jobs[i - 1].matchScore).toBeGreaterThanOrEqual(recent.jobs[i].matchScore);
+    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: true })).toBeLessThanOrEqual(1); // a filtered list is never the warmed default
+  });
 });

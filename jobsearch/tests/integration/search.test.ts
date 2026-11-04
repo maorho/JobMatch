@@ -121,6 +121,22 @@ describe("GET /api/jobs/search", () => {
     expect(haifa.body.jobs.map((j: any) => j.job)).toEqual(["Data Scientist"]);
   });
 
+  it("posted=<days> keeps only recent postings: the employer's date, else when the Scout first saw it", async () => {
+    const day = 86_400_000;
+    await ExternalJobs.insertMany([
+      ext({ job: "Zircon Engineer fresh", postedAt: new Date(Date.now() - 2 * day) }),
+      ext({ job: "Zircon Engineer stale", postedAt: new Date(Date.now() - 40 * day), firstSeenAt: new Date(Date.now() - 40 * day) }),
+      ext({ job: "Zircon Engineer undated", postedAt: null, firstSeenAt: new Date(Date.now() - 0.5 * day) }), // no ATS date → first seen counts
+    ]);
+    const titles = async (qs: string) => ((await (await searchGET(new NextRequest(`http://localhost/api/jobs/search?q=zircon${qs}`))).json()).jobs as any[]).map((j) => j.job).sort();
+    expect(await titles("")).toEqual(["Zircon Engineer fresh", "Zircon Engineer stale", "Zircon Engineer undated"]);
+    expect(await titles("&posted=7")).toEqual(["Zircon Engineer fresh", "Zircon Engineer undated"]);
+    expect(await titles("&posted=1")).toEqual(["Zircon Engineer undated"]); // posted 2 days ago is out
+    expect(await titles("&posted=99")).toHaveLength(3); // not one of the windows → ignored
+    const body = await (await searchGET(new NextRequest("http://localhost/api/jobs/search?q=zircon&posted=7"))).json();
+    expect(body.total).toBe(2); // the count honours the window too
+  });
+
   it("is not personalised without a session", async () => {
     const { body } = await call("q=react");
     expect(body.personalized).toBe(false);
