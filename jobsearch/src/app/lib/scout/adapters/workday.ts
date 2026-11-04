@@ -1,22 +1,51 @@
-import { Adapter, NormalizedPosting, adapterResult, fetchJson, htmlToText } from "../types";
+import { Adapter, AdapterHint, NormalizedPosting, adapterResult, fetchJson, htmlToText } from "../types";
 
 /**
  * Generic Workday adapter (many large companies run on *.myworkdayjobs.com).
  *   identifier          = host, e.g. "nvidia.wd5.myworkdayjobs.com"
  *   secondaryIdentifier = "<tenant>/<site>", e.g. "nvidia/NVIDIAExternalCareerSite"
- * Searches for Israel, keeps Israel-located postings, and fetches each one's
- * detail for the description. Only a failed FIRST search page throws; a later
- * failure, the search cap or the detail cap return the postings marked
- * incomplete (see AdapterResult). Workday is never reconciled anyway (not in
- * COMPLETE_FEED_ATS) — the flag is for the source log.
+ * Searches for Israel, then fetches each hit's detail (description + the
+ * precise locations) and keeps the postings that really are in Israel. A
+ * multi-location hit lists as "3 Locations" in the search and only the
+ * detail says whether Israel is one of them, so the search text alone is
+ * never trusted to drop a posting. Details are fetched a few at a time
+ * (NVIDIA alone has ~430 Israel hits; one at a time did not fit the
+ * per-source deadline, which is why the catalogue showed 40 of them).
+ * Postings the caller already holds (hint.knownIds) are returned from the
+ * search hit alone, without a detail call, so after the first full walk a
+ * run only pays for what is new.
+ * Only a failed FIRST search page throws; a later failure or a cap returns
+ * the postings marked incomplete (see AdapterResult). Workday is never
+ * reconciled anyway (not in COMPLETE_FEED_ATS) — the flag is for the log.
  */
 const LIMIT = 20;
-const MAX_RESULTS = 400;
-const MAX_DETAIL = 80;
-/** Stop starting detail calls past this, inside the 90s per-source deadline. */
-const DETAIL_BUDGET_MS = 60_000;
+const MAX_RESULTS = 1000;
+const MAX_DETAIL = 600;
+const DETAIL_CONCURRENCY = 8;
+/** Stop starting detail calls past this, inside the 120s per-source deadline (runScout's SOURCE_DEADLINE_BY_ATS). */
+const DETAIL_BUDGET_MS = 100_000;
 
-export const workday: Adapter = async (identifier, secondaryIdentifier) => {
+const mentionsIsrael = (s: unknown) => /israel/i.test(String(s || ""));
+/** "3 Locations" / "2 Locations": the search does not say where; the detail will. */
+const isMultiLocation = (s: unknown) => /^\s*\d+\s+locations?\s*$/i.test(String(s || ""));
+
+/** The Israeli city out of a Workday location string ("Israel, Yokneam" / "Tel Aviv, Israel"), or "". */
+function israeliCity(loc: string): string {
+  return (
+    loc
+      .split(",")
+      .map((x) => x.trim())
+      .filter((x) => x && !mentionsIsrael(x))
+      .pop() || ""
+  );
+}
+
+const jobIdOf = (p: any) => {
+  const jr = String(p.externalPath || "").match(/_([A-Za-z]*\d+)$/);
+  return jr ? jr[1] : "";
+};
+
+export const workday: Adapter = async (identifier, secondaryIdentifier, hint?: AdapterHint) => {
   const host = identifier;
   const [tenant, site] = String(secondaryIdentifier || "").split("/");
   if (!host || !tenant || !site) {
@@ -25,7 +54,7 @@ export const workday: Adapter = async (identifier, secondaryIdentifier) => {
   const base = `https://${host}/wday/cxs/${tenant}/${site}`;
   const startedAt = Date.now();
 
-  // 1) Page the search for Israel and keep Israel-located postings.
+  // 1) Page the search for Israel. Keep what is in Israel for sure, and what might be (multi-location).
   const candidates: any[] = [];
   let total = 0;
   let offset = 0;
@@ -47,59 +76,68 @@ export const workday: Adapter = async (identifier, secondaryIdentifier) => {
       break;
     }
     const posts: any[] = data?.jobPostings ?? [];
-    total = Number(data?.total) || 0;
+    // Workday reports `total` on the first page only; later pages omit it (reading it as 0 there ended the
+    // walk after two pages, which is how NVIDIA's ~430 Israel postings showed up as 40).
+    if (offset === 0 || Number(data?.total) > 0) total = Number(data?.total) || total;
     if (posts.length === 0) break;
     for (const p of posts) {
-      if (
-        /\/Israel[-/]/i.test(p.externalPath || "") ||
-        /israel/i.test(p.locationsText || "")
-      ) {
-        candidates.push(p);
-      }
+      if (/\/Israel[-/]/i.test(p.externalPath || "") || mentionsIsrael(p.locationsText) || isMultiLocation(p.locationsText)) candidates.push(p);
     }
     if (posts.length < LIMIT || offset + LIMIT >= total) break;
   }
   if (!incomplete && offset >= MAX_RESULTS && total > MAX_RESULTS) {
     incomplete = `${total} search results exceed the ${MAX_RESULTS} cap`;
   }
-  if (!incomplete && candidates.length > MAX_DETAIL) {
-    incomplete = `${candidates.length} Israel postings, details fetched for the first ${MAX_DETAIL}`;
-  }
 
-  // 2) Fetch detail (description + precise location) for each, capped.
+  // 2) Known postings come back as they are listed (the catalogue has their description); the rest get a detail
+  //    call (description + precise locations), a few at a time, and only the Israeli ones are kept.
   const out: NormalizedPosting[] = [];
-  for (const p of candidates.slice(0, MAX_DETAIL)) {
-    if (Date.now() - startedAt > DETAIL_BUDGET_MS) {
-      incomplete = incomplete || `details ran out of time after ${out.length} postings`;
-      break;
-    }
-    try {
-      const r = await fetchJson(`${base}${p.externalPath}`, {
-        headers: { "User-Agent": "Mozilla/5.0" },
-        cache: "no-store",
-      });
-      if (!r.ok) continue;
-      const info = r.data?.jobPostingInfo ?? {};
-      const loc = info.location || p.locationsText || "";
-      const city =
-        loc
-          .split(",")
-          .map((s: string) => s.trim())
-          .filter((s: string) => s && !/israel/i.test(s))
-          .pop() || "";
-      const jr = String(p.externalPath || "").match(/_([A-Za-z]*\d+)$/);
-      out.push({
-        sourceJobId: jr ? jr[1] : String(info.id || p.externalPath),
-        title: info.title || p.title || "",
-        company: "",
-        city,
-        country: "Israel",
-        description: htmlToText(info.jobDescription || ""),
-        applyUrl: info.externalUrl || `https://${host}/${site}${p.externalPath}`,
-      });
-    } catch {
-      // skip this posting
+  const known = hint?.knownIds;
+  const toFetch: any[] = [];
+  for (const p of candidates) {
+    const id = jobIdOf(p);
+    if (known && id && known.has(id)) {
+      const loc = String(p.locationsText || "");
+      out.push({ sourceJobId: id, title: p.title || "", company: "", city: mentionsIsrael(loc) ? israeliCity(loc) : "", country: "Israel", description: "", applyUrl: `https://${host}/${site}${p.externalPath}` });
+    } else {
+      toFetch.push(p);
     }
   }
+  if (!incomplete && toFetch.length > MAX_DETAIL) {
+    incomplete = `${toFetch.length} new postings, details fetched for the first ${MAX_DETAIL}`;
+  }
+  const queue = toFetch.slice(0, MAX_DETAIL);
+  let outOfTime = false;
+  const worker = async () => {
+    for (;;) {
+      const p = queue.shift();
+      if (!p) return;
+      if (Date.now() - startedAt > DETAIL_BUDGET_MS) {
+        outOfTime = true;
+        return;
+      }
+      try {
+        const r = await fetchJson(`${base}${p.externalPath}`, { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" });
+        if (!r.ok) continue;
+        const info = r.data?.jobPostingInfo ?? {};
+        const locations: string[] = [info.location, ...(Array.isArray(info.additionalLocations) ? info.additionalLocations : [])].filter(Boolean).map(String);
+        const here = locations.find(mentionsIsrael) || (locations.length === 0 && mentionsIsrael(p.locationsText) ? String(p.locationsText) : "");
+        if (!here) continue; // a multi-location posting that turned out not to include Israel
+        out.push({
+          sourceJobId: jobIdOf(p) || String(info.id || p.externalPath),
+          title: info.title || p.title || "",
+          company: "",
+          city: israeliCity(here),
+          country: "Israel",
+          description: htmlToText(info.jobDescription || ""),
+          applyUrl: info.externalUrl || `https://${host}/${site}${p.externalPath}`,
+        });
+      } catch {
+        // skip this posting
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: DETAIL_CONCURRENCY }, worker));
+  if (outOfTime) incomplete = incomplete || `details ran out of time after ${out.length} postings (${queue.length} left)`;
   return adapterResult(out, incomplete && `Workday ${host}: ${incomplete}`);
 };

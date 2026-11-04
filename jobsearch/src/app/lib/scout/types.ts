@@ -47,15 +47,24 @@ export type PartialPostings = { postings: NormalizedPosting[]; complete: boolean
  */
 export type AdapterResult = NormalizedPosting[] | PartialPostings;
 
+/**
+ * What the caller already knows, so an adapter that pays per posting (a detail
+ * call each) can skip the ones the catalogue has: it returns them without a
+ * description and the scout only refreshes their "last seen" stamp.
+ */
+export type AdapterHint = { knownIds?: Set<string> };
+
 export type Adapter = (
   identifier: string,
-  secondaryIdentifier?: string
+  secondaryIdentifier?: string,
+  hint?: AdapterHint
 ) => Promise<AdapterResult>;
 
 /** Adapters that make one call and always return the whole board (narrower type, so callers can index the array). */
 export type ListAdapter = (
   identifier: string,
-  secondaryIdentifier?: string
+  secondaryIdentifier?: string,
+  hint?: AdapterHint
 ) => Promise<NormalizedPosting[]>;
 
 /** Arrays are complete; objects say so themselves. */

@@ -19,13 +19,13 @@ async function complete(p: Promise<AdapterResult>): Promise<NormalizedPosting[]>
  * reverse-engineered, so a regression here means the parser broke, not the site.
  */
 type Reply = { status?: number; body: string | object; contentType?: string };
-function stubFetch(routes: Record<string, Reply | ((url: string) => Reply)>) {
+function stubFetch(routes: Record<string, Reply | ((url: string, init?: RequestInit) => Reply)>) {
   const calls: string[] = [];
-  const fn = vi.fn(async (input: any) => {
+  const fn = vi.fn(async (input: any, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.url;
     calls.push(url);
     const key = Object.keys(routes).find((k) => url.includes(k));
-    const r = key ? (typeof routes[key] === "function" ? (routes[key] as any)(url) : routes[key]) : { status: 404, body: "" };
+    const r = key ? (typeof routes[key] === "function" ? (routes[key] as any)(url, init) : routes[key]) : { status: 404, body: "" };
     const status = r.status ?? 200;
     const text = typeof r.body === "string" ? r.body : JSON.stringify(r.body);
     return {
@@ -350,6 +350,55 @@ describe("paginating adapters: partial lists are returned, not thrown", () => {
     expect(calls.some((c) => c.includes("postings/us1"))).toBe(false); // no detail call for a posting we drop
     expect(out.find((p) => p.sourceJobId === "il1")!.description).toBe("Build");
     expect(out.find((p) => p.sourceJobId === "rm1")!.description).toBe("Remote");
+  });
+
+  it("workday: a multi-location hit is kept when its detail lists Israel, dropped when it does not", async () => {
+    const { workday } = await import("@/app/lib/scout/adapters/workday");
+    stubFetch({
+      "/jobs": {
+        body: {
+          total: 3,
+          jobPostings: [
+            { title: "Sure", externalPath: "/job/Israel-Tel-Aviv/Sure_JR1", locationsText: "Israel, Tel Aviv" },
+            { title: "Maybe", externalPath: "/job/Santa-Clara/Maybe_JR2", locationsText: "3 Locations" },
+            { title: "Nope", externalPath: "/job/Austin/Nope_JR3", locationsText: "2 Locations" },
+          ],
+        },
+      },
+      "/job/Israel-Tel-Aviv/Sure_JR1": { body: { jobPostingInfo: { title: "Sure", location: "Israel, Tel Aviv", jobDescription: "<p>a</p>" } } },
+      "/job/Santa-Clara/Maybe_JR2": { body: { jobPostingInfo: { title: "Maybe", location: "US, CA, Santa Clara", additionalLocations: ["Israel, Yokneam", "Taiwan, Taipei"], jobDescription: "<p>b</p>" } } },
+      "/job/Austin/Nope_JR3": { body: { jobPostingInfo: { title: "Nope", location: "US, TX, Austin", additionalLocations: ["Germany, Munich"], jobDescription: "<p>c</p>" } } },
+    });
+    const r = toPartialPostings(await workday("acme.wd5.myworkdayjobs.com", "acme/Careers"));
+    expect(r.complete).toBe(true);
+    expect(r.postings.map((p) => [p.sourceJobId, p.city])).toEqual([["JR1", "Tel Aviv"], ["JR2", "Yokneam"]]);
+  });
+
+  it("workday: pages past the first carry no total, and the walk still continues to the end", async () => {
+    const { workday } = await import("@/app/lib/scout/adapters/workday");
+    const page = (offset: number) => Array.from({ length: offset < 40 ? 20 : 5 }, (_, i) => ({ title: `W${offset + i}`, externalPath: `/job/Israel-Tel-Aviv/W_JR${offset + i}`, locationsText: "Israel, Tel Aviv" }));
+    stubFetch({
+      "/jobs": (url, init) => {
+        const offset = JSON.parse(String(init?.body || "{}")).offset || 0;
+        return { body: offset === 0 ? { total: 45, jobPostings: page(0) } : { jobPostings: page(offset) } }; // no `total` after page 1, like Workday
+      },
+      "/job/": { body: { jobPostingInfo: { title: "W", location: "Israel, Tel Aviv", jobDescription: "<p>x</p>" } } },
+    });
+    const r = toPartialPostings(await workday("acme.wd5.myworkdayjobs.com", "acme/Careers"));
+    expect(r.complete).toBe(true);
+    expect(r.postings).toHaveLength(45);
+  });
+
+  it("workday: postings the catalogue already holds are listed without a detail call", async () => {
+    const { workday } = await import("@/app/lib/scout/adapters/workday");
+    const { calls } = stubFetch({
+      "/jobs": { body: { total: 2, jobPostings: [{ title: "Old", externalPath: "/job/Israel-Tel-Aviv/Old_JR1", locationsText: "Israel, Tel Aviv" }, { title: "New", externalPath: "/job/Israel-Yokneam/New_JR2", locationsText: "Israel, Yokneam" }] } },
+      "/job/": { body: { jobPostingInfo: { title: "New", location: "Israel, Yokneam", jobDescription: "<p>fresh</p>" } } },
+    });
+    const r = toPartialPostings(await workday("acme.wd5.myworkdayjobs.com", "acme/Careers", { knownIds: new Set(["JR1"]) }));
+    expect(r.complete).toBe(true);
+    expect(r.postings.map((p) => [p.sourceJobId, p.city, p.description])).toEqual([["JR1", "Tel Aviv", ""], ["JR2", "Yokneam", "fresh"]]);
+    expect(calls.filter((c) => c.includes("/job/"))).toHaveLength(1); // only the new one was fetched
   });
 
   it("workday: a cap or a later failed page never throws", async () => {

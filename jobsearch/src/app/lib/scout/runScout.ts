@@ -73,6 +73,7 @@ const SOURCE_DEADLINE_MS = 90_000;
  */
 const SOURCE_DEADLINE_BY_ATS: Partial<Record<string, number>> = {
   eightfold: 120_000,
+  workday: 120_000, // a detail call per posting; NVIDIA alone has ~430 in Israel (new ones only, after the first walk)
 };
 /** Slack between a source's deadline and the hard end of the call (bookkeeping, DB writes, response). */
 const START_MARGIN_MS = 10_000;
@@ -196,7 +197,9 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       const adapter = getAdapter(src.atsType);
       if (!adapter) throw new Error(`No adapter for atsType "${src.atsType}"`);
 
-      const fetched = toPartialPostings(await withDeadline(adapter(src.identifier, src.secondaryIdentifier), deadlineMs, src.companyName));
+      // Postings the catalogue already holds for this source: an adapter that pays a call per posting skips their details.
+      const knownIds = opts.refresh ? undefined : new Set<string>((await ExternalJobs.find({ companySource: src._id }).select("sourceJobId").lean()).map((e: any) => String(e.sourceJobId)));
+      const fetched = toPartialPostings(await withDeadline(adapter(src.identifier, src.secondaryIdentifier, { knownIds }), deadlineMs, src.companyName));
       const postings = fetched.postings;
       result.fetched = postings.length;
       if (!fetched.complete) {
