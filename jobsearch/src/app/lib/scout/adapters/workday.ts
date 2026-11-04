@@ -1,4 +1,5 @@
 import { Adapter, AdapterHint, NormalizedPosting, adapterResult, fetchJson, htmlToText } from "../types";
+import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
 
 /**
  * Generic Workday adapter (many large companies run on *.myworkdayjobs.com).
@@ -26,11 +27,15 @@ const DETAIL_CONCURRENCY = 8;
 const DETAIL_BUDGET_MS = 100_000;
 
 const mentionsIsrael = (s: unknown) => /israel/i.test(String(s || ""));
+/** "Israel, Tel Aviv", "Tel Aviv, Israel", but also the city-only strings some tenants use ("Yokneam", "IL - Petah Tikva"). */
+const inIsrael = (s: unknown) => mentionsIsrael(s) || normalizeLocation({ city: String(s || "") }).country === "Israel";
 /** "3 Locations" / "2 Locations": the search does not say where; the detail will. */
 const isMultiLocation = (s: unknown) => /^\s*\d+\s+locations?\s*$/i.test(String(s || ""));
 
-/** The Israeli city out of a Workday location string ("Israel, Yokneam" / "Tel Aviv, Israel"), or "". */
+/** The Israeli city out of a Workday location string ("Israel, Yokneam" / "Tel Aviv, Israel" / "IL - Petah Tikva"), or "". */
 function israeliCity(loc: string): string {
+  const n = normalizeLocation({ city: loc });
+  if (n.country === "Israel" && n.city) return n.city;
   return (
     loc
       .split(",")
@@ -81,7 +86,7 @@ export const workday: Adapter = async (identifier, secondaryIdentifier, hint?: A
     if (offset === 0 || Number(data?.total) > 0) total = Number(data?.total) || total;
     if (posts.length === 0) break;
     for (const p of posts) {
-      if (/\/Israel[-/]/i.test(p.externalPath || "") || mentionsIsrael(p.locationsText) || isMultiLocation(p.locationsText)) candidates.push(p);
+      if (/\/Israel[-/]/i.test(p.externalPath || "") || inIsrael(p.locationsText) || isMultiLocation(p.locationsText)) candidates.push(p);
     }
     if (posts.length < LIMIT || offset + LIMIT >= total) break;
   }
@@ -98,7 +103,7 @@ export const workday: Adapter = async (identifier, secondaryIdentifier, hint?: A
     const id = jobIdOf(p);
     if (known && id && known.has(id)) {
       const loc = String(p.locationsText || "");
-      out.push({ sourceJobId: id, title: p.title || "", company: "", city: mentionsIsrael(loc) ? israeliCity(loc) : "", country: "Israel", description: "", applyUrl: `https://${host}/${site}${p.externalPath}` });
+      out.push({ sourceJobId: id, title: p.title || "", company: "", city: inIsrael(loc) ? israeliCity(loc) : "", country: "Israel", description: "", applyUrl: `https://${host}/${site}${p.externalPath}` });
     } else {
       toFetch.push(p);
     }
@@ -121,7 +126,7 @@ export const workday: Adapter = async (identifier, secondaryIdentifier, hint?: A
         if (!r.ok) continue;
         const info = r.data?.jobPostingInfo ?? {};
         const locations: string[] = [info.location, ...(Array.isArray(info.additionalLocations) ? info.additionalLocations : [])].filter(Boolean).map(String);
-        const here = locations.find(mentionsIsrael) || (locations.length === 0 && mentionsIsrael(p.locationsText) ? String(p.locationsText) : "");
+        const here = locations.find(inIsrael) || (locations.length === 0 && inIsrael(p.locationsText) ? String(p.locationsText) : "");
         if (!here) continue; // a multi-location posting that turned out not to include Israel
         out.push({
           sourceJobId: jobIdOf(p) || String(info.id || p.externalPath),

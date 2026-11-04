@@ -389,6 +389,22 @@ describe("paginating adapters: partial lists are returned, not thrown", () => {
     expect(r.postings).toHaveLength(45);
   });
 
+  it("workday: city-only locations (Marvell style) count as Israel through the location rules", async () => {
+    const { workday } = await import("@/app/lib/scout/adapters/workday");
+    stubFetch({
+      "/jobs": { body: { total: 3, jobPostings: [
+        { title: "A", externalPath: "/job/Yokneam/A_2603477", locationsText: "Yokneam" },
+        { title: "B", externalPath: "/job/IL---Petah-Tikva/B_2604490", locationsText: "IL - Petah Tikva" },
+        { title: "C", externalPath: "/job/Munich/C_2604491", locationsText: "Munich" },
+      ] } },
+      "/job/Yokneam/A_2603477": { body: { jobPostingInfo: { title: "A", location: "Yokneam", jobDescription: "a" } } },
+      "/job/IL---Petah-Tikva/B_2604490": { body: { jobPostingInfo: { title: "B", location: "IL - Petah Tikva", jobDescription: "b" } } },
+      "/job/Munich/C_2604491": { body: { jobPostingInfo: { title: "C", location: "Munich", jobDescription: "c" } } },
+    });
+    const r = toPartialPostings(await workday("marvell.wd1.myworkdayjobs.com", "marvell/MarvellCareers"));
+    expect(r.postings.map((p) => [p.sourceJobId, p.city, p.country])).toEqual([["2603477", "Yokneam", "Israel"], ["2604490", "Petah Tikva", "Israel"]]);
+  });
+
   it("workday: postings the catalogue already holds are listed without a detail call", async () => {
     const { workday } = await import("@/app/lib/scout/adapters/workday");
     const { calls } = stubFetch({
