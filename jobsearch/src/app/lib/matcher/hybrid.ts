@@ -73,17 +73,19 @@ export function rrf(lists: { _id: string }[][], weights?: number[]): Map<string,
   return out;
 }
 
-export type CandidateProfile = { userId?: string; vector: number[] | null; level: CandidateLevel; resumeSummary: string; resumeVersion: number; searchProfile?: SearchProfile | null; searchVersion?: number };
+export type CandidateProfile = { userId?: string; vector: number[] | null; level: CandidateLevel; resumeSummary: string; resumeVersion: number; searchProfile?: SearchProfile | null; searchVersion?: number; /** Loaded without the résumé text (a placeholder summary): enough to rank or to read a stored list; rankJobs loads the full profile before a rerank. */ light?: boolean };
 
 export async function loadCandidateProfile(userId: string, opts: { light?: boolean } = {}): Promise<CandidateProfile | null> {
   await connectToDatabase();
   // `light` skips the résumé text (only needed for the reranker) — the vector + level are enough to rank.
   const [sv, user]: [Awaited<ReturnType<typeof candidateSearchVector>>, any] = await Promise.all([candidateSearchVector(userId), User.findById(userId).select(opts.light ? "currentJob resumeUpdatedAt level" : "+resumeText +resumeStructured currentJob resumeUpdatedAt level").lean()]);
   if (!user) return null;
-  const resumeText = opts.light ? (user.level ? "x" : "") : (user.resumeText || "").trim() || (isStructuredResume(user.resumeStructured) ? structuredToText(user.resumeStructured) : "");
+  // Light: a placeholder summary that is truthy exactly when the full load would be (a résumé or a stated level), so the
+  // ranked-list cache key (which encodes "rerank on") is the same whichever way the profile was loaded.
+  const resumeText = opts.light ? (user.level || user.resumeUpdatedAt ? "x" : "") : (user.resumeText || "").trim() || (isStructuredResume(user.resumeStructured) ? structuredToText(user.resumeStructured) : "");
   // The stated level wins over the inferred one.
   const level: CandidateLevel = sv.profile?.level || user.level || inferCandidateLevel(resumeText, user.currentJob || "");
-  return { userId, vector: sv.vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0, searchProfile: sv.profile, searchVersion: sv.version };
+  return { userId, vector: sv.vector, level, resumeSummary: resumeText.slice(0, 4000), resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0, searchProfile: sv.profile, searchVersion: sv.version, ...(opts.light ? { light: true } : {}) };
 }
 
 /** Recall depth for a signed-in list: the best 1,000 of the catalogue get ranked (and filtered by the search profile). */
@@ -109,7 +111,8 @@ function isDateOnlyView(opts: RankOptions, minScore: number): Date | null {
 }
 
 /** Rank the catalog for a profile (vector + optional query), with level/freshness signals and optional LLM rerank. */
-export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number }> {
+export async function rankJobs(profileIn: CandidateProfile, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number }> {
+  let profile = profileIn;
   await connectToDatabase();
   const limit = opts.limit ?? 48;
   const skip = opts.skip ?? 0;
@@ -140,7 +143,12 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
     }
   }
   if (!final) {
-    const computeNow = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
+    const computeNow = async () => {
+      // The résumé text is only needed to ask the model; a light profile (the cheap load every request starts with)
+      // is upgraded here, once, when a rerank is actually about to run.
+      if (profile.light && wantRerank && !opts.rerankCachedOnly && profile.userId) profile = (await loadCandidateProfile(profile.userId)) || profile;
+      return rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
+    };
     final = cacheable
       ? await memo(key, ttl(RANK_TTL_MS), async () => {
           const stored = await loadRankedFeed(profile.userId!, key).catch(() => null);
@@ -262,7 +270,9 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
 
 /** Convenience: rank for a signed-in user. Every page comes from the same cached list (see rankJobs). */
 export async function rankForUser(userId: string, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number; profile: CandidateProfile | null }> {
-  const profile = await loadCandidateProfile(userId, { light: opts.rerank === false });
+  // Always the light load (vector, level, search profile; no résumé text): a stored or memoised list needs nothing more,
+  // and rankJobs loads the full profile itself the moment a rerank is due.
+  const profile = await loadCandidateProfile(userId, { light: true });
   if (!profile || (!profile.vector && !opts.query)) return { jobs: [], total: 0, profile };
   const r = await rankJobs(profile, opts);
   return { ...r, profile };
