@@ -117,22 +117,23 @@ describe("background feed warm-up", () => {
     expect(await RankedFeed.countDocuments({ userId: dana, isDefault: true })).toBeLessThanOrEqual(1); // a filtered list is never the warmed default
   });
 
-  it("a date view is cut from the stored default list (no re-rank, no model calls), so it answers in milliseconds", async () => {
-    // The default list was stored by the test above. A posting that arrived after it is not in that list…
+  it("a date view is ranked fresh (cached verdicts only) and persisted; the warm-up refreshes a stored list the memo still holds", async () => {
     await ExternalJobs.create(job("Junior React Developer newest", "React TypeScript frontend"));
     await embedPendingJobs();
     invalidate(`rank:${dana}:`);
     const view = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
     expect(view.personalized).toBe(true);
-    expect(view.jobs.map((j: any) => j.job)).not.toContain("Junior React Developer newest"); // …so the view came from the stored list, not a fresh rank
-    expect(view.jobs.map((j: any) => j.job)).toContain("Junior React Developer");
-    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: false })).toBe(0); // and nothing extra was persisted
-    // Without any default list the view is ranked on the spot (cached verdicts only) and the default is warmed for next time.
-    await invalidateRankedFeed(dana);
-    invalidate(`rank:${dana}:`);
-    const cold = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
-    expect(cold.jobs.map((j: any) => j.job)).toContain("Junior React Developer newest");
-    await sleep(300);
-    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: true })).toBe(1);
+    const names = view.jobs.map((j: any) => j.job);
+    expect(names).toContain("Junior React Developer newest"); // the window is ranked now, not cut from an older list
+    expect(names).not.toContain("Junior React Developer old");
+    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: false })).toBeGreaterThanOrEqual(1); // persisted like any other list (keys carry the window start)
+    // The background warm-up must not be answered from the memo it is meant to refresh.
+    const before: any = await RankedFeed.findOne({ userId: dana, isDefault: true }).select("computedAt").lean();
+    await RankedFeed.updateOne({ _id: before._id }, { $set: { computedAt: new Date(Date.now() - 20 * 60_000) } }); // older than fresh, memo still warm
+    await rankForUser(dana, { limit: 10 }); // fills the memo
+    expect(await warmFeedForUser(dana)).toBe("computed");
+    const after: any = await RankedFeed.findOne({ userId: dana, isDefault: true }).select("computedAt count").lean();
+    expect(after.computedAt.getTime()).toBeGreaterThan(Date.now() - 5_000);
+    expect(after.count).toBeGreaterThan(0);
   });
 });

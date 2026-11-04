@@ -57,7 +57,7 @@ export async function warmFeedForUser(userId: string): Promise<"fresh" | "warmin
   if (!claim) return "warming-elsewhere";
   try {
     const { rankForUser } = await import("./hybrid"); // lazy: hybrid imports this module
-    const r = await rankForUser(userId, { limit: 48, skip: 0 }); // exactly what the jobs page asks for first
+    const r = await rankForUser(userId, { limit: 48, skip: 0, recompute: true }); // exactly what the jobs page asks for first; never from a cache
     return r.profile?.vector ? "computed" : "no-profile";
   } finally {
     // The real row was written by rankJobs (which also clears the lock); only the placeholder is left to remove.
