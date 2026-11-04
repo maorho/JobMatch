@@ -389,6 +389,49 @@ describe("paginating adapters: partial lists are returned, not thrown", () => {
     expect(r.postings).toHaveLength(45);
   });
 
+  it("lever: an \"eu:\" handle reads the EU-hosted API (Mobileye) and the company keeps the bare handle", async () => {
+    const { lever } = await import("@/app/lib/scout/adapters/lever");
+    const { calls } = stubFetch({
+      "api.eu.lever.co/v0/postings/mobileye": { body: [{ id: "e30", text: "Backend Dev", categories: { location: "Jerusalem, Israel" }, descriptionPlain: "x", hostedUrl: "https://jobs.eu.lever.co/mobileye/e30", createdAt: 1700000000000 }] },
+    });
+    const out = await lever("eu:mobileye");
+    expect(calls[0]).toBe("https://api.eu.lever.co/v0/postings/mobileye?mode=json");
+    expect(out.map((p) => [p.sourceJobId, p.company, p.city, p.country])).toEqual([["e30", "mobileye", "Jerusalem", "Israel"]]);
+  });
+
+  it("elbit: the whole board comes from one JSON file; areas map to Hebrew regions, HTML is unescaped", async () => {
+    const { elbit } = await import("@/app/lib/scout/adapters/elbit");
+    stubFetch({
+      "/cron/jobs.json": { body: [
+        { jobId: 21187, jobTitle: "Board Design Engineer", status: 1, area: "North", locationAddress: null, description: "&lt;p&gt;Join our &lt;b&gt;Yokneam&lt;/b&gt; site&lt;/p&gt;", requirements: "&lt;p&gt;BSc&lt;/p&gt;", skills: "", openDate: "2026-11-03T09:16:00", employerName: "כלי טיס" },
+        { jobId: 21188, jobTitle: "Closed", status: 0, area: "South", description: "x" },
+      ] },
+    });
+    const out = await elbit("https://elbitsystemscareer.com");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ sourceJobId: "21187", title: "Board Design Engineer", city: "צפון", country: "Israel", applyUrl: "https://elbitsystemscareer.com/job?id=21187" });
+    expect(out[0].description).toContain("Join our Yokneam site");
+    expect(out[0].description).toContain("Requirements");
+    expect(out[0].postedAt?.toISOString().slice(0, 10)).toBe("2026-11-03");
+  });
+
+  it("checkpoint: page 1 from the server-rendered page, the rest from the Next.js data route with the page's build id", async () => {
+    const { checkpoint } = await import("@/app/lib/scout/adapters/checkpoint");
+    const job = (id: string, title: string) => ({ id, title, department: "R&D", city: "Tel Aviv-Yafo", country: "Israel", seniority: "Entry Level", responsibility: "<p>Build</p>", description: "<p>Need</p>", information: "" });
+    const { calls } = stubFetch({
+      "/jobs?country=Israel": { body: `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ buildId: "B1", props: { pageProps: { result: { numberOfMatches: 12, numberOfPages: 2, jobPostingsList: [job("1", "AI Engineer")] } } } })}</script></html>` },
+      "/_next/data/B1/jobs.json?country=Israel&page=2": { body: { pageProps: { result: { jobPostingsList: [job("2", "Backend Developer")] } } } },
+    });
+    const r = toPartialPostings(await checkpoint("Israel"));
+    expect(r.complete).toBe(true);
+    expect(r.postings.map((p) => [p.sourceJobId, p.title, p.city, p.country, p.applyUrl])).toEqual([
+      ["1", "AI Engineer", "Tel Aviv-Yafo", "Israel", "https://careers.checkpoint.com/jobs/1/ai-engineer"],
+      ["2", "Backend Developer", "Tel Aviv-Yafo", "Israel", "https://careers.checkpoint.com/jobs/2/backend-developer"],
+    ]);
+    expect(r.postings[0].seniority).toEqual(["Entry Level"]);
+    expect(calls.filter((c) => c.includes("_next/data"))).toHaveLength(1);
+  });
+
   it("workday: city-only locations (Marvell style) count as Israel through the location rules", async () => {
     const { workday } = await import("@/app/lib/scout/adapters/workday");
     stubFetch({

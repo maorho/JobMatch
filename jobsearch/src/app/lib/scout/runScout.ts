@@ -45,6 +45,8 @@ const COMPLETE_FEED_ATS = new Set([
   "google", // paginates to exhaustion; partial when a later page fails or the page cap is hit
   "apple", // pages until totalRecords is reached (partial otherwise)
   "eightfold", // pages until the reported count is reached (partial otherwise)
+  "elbit", // one JSON file with the whole board
+  "checkpoint", // pages until numberOfPages is reached (partial otherwise)
 ]);
 
 export type ScoutSourceResult = {

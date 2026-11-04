@@ -29,6 +29,8 @@ const CompanySourceSchema = new Schema(
         "apple",
         "eightfold",
         "html",
+        "elbit",
+        "checkpoint",
         "generic",
       ],
       required: true,

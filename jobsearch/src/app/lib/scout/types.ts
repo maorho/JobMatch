@@ -28,6 +28,8 @@ export type AtsType =
   | "apple"
   | "eightfold"
   | "html"
+  | "elbit"
+  | "checkpoint"
   | "generic";
 
 /**

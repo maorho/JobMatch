@@ -9,11 +9,13 @@ import {
 /**
  * Lever postings API (public, no key).
  * GET https://api.lever.co/v0/postings/{handle}?mode=json
+ * EU-hosted accounts (jobs.eu.lever.co, e.g. Mobileye) live on api.eu.lever.co:
+ * identifier "eu:{handle}".
  */
 export const lever: ListAdapter = async (identifier) => {
-  const url = `https://api.lever.co/v0/postings/${encodeURIComponent(
-    identifier
-  )}?mode=json`;
+  const eu = identifier.startsWith("eu:");
+  const handle = eu ? identifier.slice(3) : identifier;
+  const url = `https://api.${eu ? "eu." : ""}lever.co/v0/postings/${encodeURIComponent(handle)}?mode=json`;
 
   const { ok, status, data } = await fetchJson(url, { cache: "no-store" });
   if (!ok) {
@@ -28,7 +30,7 @@ export const lever: ListAdapter = async (identifier) => {
     return {
       sourceJobId: String(j.id),
       title: j.text ?? "",
-      company: identifier,
+      company: handle,
       city,
       country,
       description,

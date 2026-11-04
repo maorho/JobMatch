@@ -13,6 +13,8 @@ import { apple } from "./apple";
 import { html } from "./html";
 import { workable } from "./workable";
 import { eightfold } from "./eightfold";
+import { elbit } from "./elbit";
+import { checkpoint } from "./checkpoint";
 
 /** Maps a CompanySource.atsType to its adapter. "generic" (scraping) is TODO. */
 export const adapters: Partial<Record<AtsType, Adapter>> = {
@@ -30,6 +32,8 @@ export const adapters: Partial<Record<AtsType, Adapter>> = {
   html,
   workable,
   eightfold,
+  elbit,
+  checkpoint,
 };
 
 export function getAdapter(atsType: string): Adapter | undefined {
