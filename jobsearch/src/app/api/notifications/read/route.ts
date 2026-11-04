@@ -20,10 +20,11 @@ export async function POST(req: NextRequest) {
 
   if (body?.all === true) {
     const r = await Notification.updateMany({ userId, read: false }, { $set: { read: true } });
-    return NextResponse.json({ ok: true, updated: r.modifiedCount });
+    return NextResponse.json({ ok: true, updated: r.modifiedCount, unreadCount: 0 });
   }
   const ids: string[] = Array.isArray(body?.ids) ? body.ids.filter((id: unknown) => typeof id === "string" && mongoose.isValidObjectId(id)) : [];
   if (ids.length === 0) return NextResponse.json({ error: "Provide ids[] or all:true" }, { status: 400 });
   const r = await Notification.updateMany({ _id: { $in: ids }, userId }, { $set: { read: true } });
-  return NextResponse.json({ ok: true, updated: r.modifiedCount });
+  const unreadCount = await Notification.countDocuments({ userId, read: false });
+  return NextResponse.json({ ok: true, updated: r.modifiedCount, unreadCount });
 }

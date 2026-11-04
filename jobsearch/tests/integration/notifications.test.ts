@@ -54,9 +54,11 @@ describe("notify() + /api/notifications", () => {
     const theirs = await Notification.findOne({ userId: other });
     const r1 = await asJson(await readPOST(new NextRequest(`${O}/api/notifications/read`, { method: "POST", headers: await cookie(candidate), body: JSON.stringify({ ids: [String(mine!._id), String(theirs!._id)] }) })));
     expect(r1.body.updated).toBe(1); // the other user's notification is untouched
+    expect(r1.body.unreadCount).toBe(await unreadCount(candidate)); // the bell takes this number as-is
     expect((await Notification.findById(theirs!._id))!.read).toBe(false);
     const r2 = await asJson(await readPOST(new NextRequest(`${O}/api/notifications/read`, { method: "POST", headers: await cookie(candidate), body: JSON.stringify({ all: true }) })));
     expect(r2.body.updated).toBe(1);
+    expect(r2.body.unreadCount).toBe(0);
     expect(await unreadCount(candidate)).toBe(0);
     const bad = await readPOST(new NextRequest(`${O}/api/notifications/read`, { method: "POST", headers: await cookie(candidate), body: JSON.stringify({}) }));
     expect(bad.status).toBe(400);

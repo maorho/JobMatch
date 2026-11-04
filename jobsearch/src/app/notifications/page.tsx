@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import useSWR from "swr";
+import useSWR, { mutate as mutateKey } from "swr";
+import { BELL_KEY } from "../components/NotificationBell";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
@@ -26,13 +27,34 @@ export default function NotificationsPage() {
   const items: Item[] = data?.items ?? [];
   const unread: number = data?.unreadCount ?? 0;
 
+  // Mark read: the list and the header bell drop at once (optimistic), then the
+  // server's count replaces the guess. Clicking a notification navigates away
+  // immediately, so the request is sent with keepalive and never awaited there.
   const markRead = async (ids?: string[]) => {
-    await fetch("/api/notifications/read", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ids ? { ids } : { all: true }),
-    });
-    mutate();
+    const unreadIds = ids ? ids.filter((id) => items.some((n) => n._id === id && !n.read)) : items.filter((n) => !n.read).map((n) => n._id);
+    if (unreadIds.length === 0) return;
+    const drop = (d: any) => (d ? { ...d, unreadCount: Math.max(0, (d.unreadCount ?? 0) - unreadIds.length) } : d);
+    mutateKey(BELL_KEY, drop, { revalidate: false });
+    mutate((d: any) => (d ? { ...drop(d), items: (d.items || []).map((n: Item) => (unreadIds.includes(n._id) ? { ...n, read: true } : n)) } : d), { revalidate: false });
+    try {
+      const r = await fetch("/api/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ids ? { ids: unreadIds } : { all: true }),
+        keepalive: true,
+      });
+      const res = r.ok ? await r.json().catch(() => null) : null;
+      if (res && typeof res.unreadCount === "number") {
+        mutateKey(BELL_KEY, (d: any) => (d ? { ...d, unreadCount: res.unreadCount } : d), { revalidate: false });
+        mutate((d: any) => (d ? { ...d, unreadCount: res.unreadCount } : d), { revalidate: false });
+      } else {
+        mutateKey(BELL_KEY);
+        mutate();
+      }
+    } catch {
+      mutateKey(BELL_KEY);
+      mutate();
+    }
   };
 
   if (loading) return <Spinner label="טוען…" />;
