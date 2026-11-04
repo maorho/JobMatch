@@ -81,6 +81,16 @@ describe("social login", () => {
     expect(await User.countDocuments({ email: "dana@example.com" })).toBe(1);
   });
 
+  it("a returning login with no destination lands on the person's dashboard, by role", async () => {
+    const dana = { sub: "g-1", email: "dana@example.com", email_verified: true, name: "Dana Dev" };
+    expect((await login("google", dana)).cb.headers.get("location")).toBe(`${ORIGIN}/Dashboard`); // "/" is not a destination
+    await User.updateOne({ email: "dana@example.com" }, { $set: { admin: true } });
+    expect((await login("google", dana)).cb.headers.get("location")).toBe(`${ORIGIN}/AdminDashboard`);
+    await User.updateOne({ email: "dana@example.com" }, { $set: { admin: false, recruiter: true } });
+    expect((await login("google", dana)).cb.headers.get("location")).toBe(`${ORIGIN}/RecruiterDashboard`);
+    await User.updateOne({ email: "dana@example.com" }, { $set: { recruiter: false } });
+  });
+
   it("links a password account by verified email, and keeps usernames unique", async () => {
     await User.create({ username: "danapw", email: "dana2@example.com", password: "x", fullname: "Old Dana", phone: "0" } as any);
     const { cb } = await login("facebook", { id: "fb-9", email: "dana2@example.com", name: "Dana FB", picture: { data: { url: "https://img/fb.png" } } });

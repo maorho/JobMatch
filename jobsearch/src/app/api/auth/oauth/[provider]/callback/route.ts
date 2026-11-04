@@ -47,8 +47,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ provider: s
     if (created && ref) await attachPartner(String(user._id), ref).catch(() => null);
 
     const token = await signJwt(sessionClaims(user));
-    // New social accounts start with onboarding (résumé → contacts → auto-apply).
-    const dest = created && next === "/" ? "/onboarding" : next;
+    // New social accounts start with onboarding (résumé → contacts → auto-apply);
+    // returning ones with no destination land on their dashboard, like the form login.
+    const dashboard = user.recruiter ? "/RecruiterDashboard" : user.admin ? "/AdminDashboard" : "/Dashboard";
+    const dest = next !== "/" ? next : created ? "/onboarding" : dashboard;
     // Belt and braces on top of safeNext: never redirect off our own origin.
     let target = new URL(dest, req.nextUrl.origin);
     if (target.origin !== req.nextUrl.origin) target = new URL("/", req.nextUrl.origin);

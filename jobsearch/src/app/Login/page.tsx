@@ -51,10 +51,14 @@ function LoginForm() {
 
       const data = await res.json();
       if (res.ok) {
-        // Refresh the cached session so the header/pages see the user at once.
-        await mutate("/api/auth/me");
+        // Put the fresh session into the SWR cache before navigating: the dashboard
+        // pages read `/api/auth/me` from the cache first, and a stale `null` there
+        // made them treat the just-signed-in user as logged out. Nothing on this
+        // page subscribes to the key, so a bare revalidate would not have updated it.
+        const me = await fetch("/api/auth/me", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        await mutate("/api/auth/me", me ?? undefined, { revalidate: !me }).catch(() => undefined);
         const dashboard = data.recruiter ? "/RecruiterDashboard" : data.admin ? "/AdminDashboard" : "/Dashboard";
-        router.push(next || dashboard);
+        router.push(next && next !== "/" ? next : dashboard);
       } else {
         setError(data.message || "Login failed");
       }

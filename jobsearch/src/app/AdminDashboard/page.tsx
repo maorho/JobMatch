@@ -118,7 +118,7 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
 const LOGIN_HREF = "/Login?next=%2FAdminDashboard";
 
 function AdminDashboard() {
-  const { user, loading: authLoading } = useCurrentUser();
+  const { user, loading: authLoading, validating: authValidating } = useCurrentUser();
   const router = useRouter();
   const [recruitersList, setRecruitersList] = useState<IUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -162,9 +162,11 @@ function AdminDashboard() {
 
 
   // Logged-out visitors go to the login page (and come back here afterwards).
+  // Right after login the SWR cache may still hold the old `null` while /me is
+  // being re-fetched; redirecting then bounced admins back to the login page.
   useEffect(() => {
-    if (!authLoading && !user) router.replace(LOGIN_HREF);
-  }, [authLoading, user, router]);
+    if (!authLoading && !authValidating && !user) router.replace(LOGIN_HREF);
+  }, [authLoading, authValidating, user, router]);
 
   // Data loads only for admins; the auth phase is a separate flag so a
   // logged-out visitor never sees an endless spinner.

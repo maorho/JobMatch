@@ -29,7 +29,7 @@ export function markSignedOut() {
 }
 
 export function useCurrentUser() {
-  const { data, error, isLoading, mutate } = useSWR("/api/auth/me", fetcher, {
+  const { data, error, isLoading, isValidating, mutate } = useSWR("/api/auth/me", fetcher, {
     revalidateOnFocus: true,
     revalidateOnReconnect: true,
   });
@@ -45,6 +45,8 @@ export function useCurrentUser() {
   return {
     user: data,
     loading: isLoading,
+    /** A revalidation is in flight: a cached `null` may be about to become a user (right after login). */
+    validating: isValidating,
     mutateUser: mutate,
     isError: error,
     /** True when a previously signed-in session is now rejected by the server (401), i.e. it expired. */
