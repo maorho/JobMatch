@@ -151,6 +151,12 @@ export async function kickScoutIfStale(staleMin = SCOUT_STALE_MIN): Promise<"sta
   return "started";
 }
 
+/** Poll one company's source now, as its own function call (a source discovery just added). */
+export async function pollCompanyNow(company: string): Promise<void> {
+  if (!selfDriveEnabled()) return;
+  await fire(`/api/scout/run?company=${encodeURIComponent(company)}&budget=60`);
+}
+
 /** Schedule the kick after the current response; never throws into the request. */
 export function scheduleScoutKick(): void {
   if (!selfDriveEnabled()) return;

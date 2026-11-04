@@ -42,7 +42,11 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const location = [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ") || ((job as any).remote ? "Remote" : "");
   const workMode = getJobType(job);
   const level = getSeniorityLevel(job);
-  const time = job.createdAt ? dayjs(job.createdAt).fromNow() : "";
+  // When it was posted: the employer's date, else when we first saw it, else when it was added here.
+  const postedRaw = job.postedAt || job.firstSeenAt || job.createdAt;
+  const posted = postedRaw && dayjs(postedRaw).isValid() && !dayjs(postedRaw).isAfter(dayjs().add(1, "day")) ? dayjs(postedRaw) : null;
+  const time = posted ? `Posted ${posted.fromNow()}` : "";
+  const timeTitle = posted ? `${job.postedAt ? "Posted" : "First seen"} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   const why = (job as any).why as string | undefined;
   const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
 
@@ -87,10 +91,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         )}
         {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{level}</span>}
         {time && (
-          <span className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">
+          <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">
             <Clock className="h-3 w-3" />
             {time}
-          </span>
+          </time>
         )}
       </div>
 

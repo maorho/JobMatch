@@ -18,6 +18,10 @@ interface BaseJob {
   city: string;
   country: string;
   createdAt?: Date;
+  /** When the employer published it (from the ATS); external postings only, missing on some. */
+  postedAt?: Date | string;
+  /** When the Scout first saw it: the fallback for "posted" when the ATS gives no date. */
+  firstSeenAt?: Date | string;
   description?: string;
   companyDomain?: string;
   logoUrl?: string;
