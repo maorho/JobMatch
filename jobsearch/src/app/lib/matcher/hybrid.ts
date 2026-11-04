@@ -10,9 +10,9 @@ import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { candidateSearchVector, profileReject, hasSearchProfile, type SearchProfile } from "./searchProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
-import { memo, ttl } from "@/app/lib/cache";
+import { memo, ttl, peek } from "@/app/lib/cache";
 import { hiddenIds, dismissedIds } from "@/app/lib/jobs/signals";
-import { loadRankedFeed, saveRankedFeed } from "./rankedFeed";
+import { loadRankedFeed, saveRankedFeed, scheduleFeedWarm } from "./rankedFeed";
 
 /**
  * The matching pipeline:
@@ -57,6 +57,8 @@ export type RankOptions = {
   includeApplied?: boolean;
   rerankTop?: number;
   language?: "he" | "en";
+  /** Apply the LLM verdicts already cached for this résumé, but never call the model (a fast path for filtered views). */
+  rerankCachedOnly?: boolean;
 };
 
 const RRF_K = 60;
@@ -90,6 +92,21 @@ const MAX_POOL = 1000;
 const RERANK_TOP = 96;
 /** A signed-in user's ranked list lives this long; every page is a slice of the same list, so paging never repeats or skips a job. */
 const RANK_TTL_MS = 2 * 60_000;
+/** A "posted within" view may be cut from a default list this old: it is a filter on a ranking that changes slowly. */
+const DATE_VIEW_MAX_AGE_MS = 60 * 60_000;
+/** The plain feed: a stored list this old is shown at once while a fresh one is computed in the background (stale-while-revalidate). */
+const STALE_FEED_MAX_AGE_MS = 60 * 60_000;
+
+const rankKey = (profile: CandidateProfile, opts: RankOptions, wantRerank: boolean, minScore: number) =>
+  `rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
+
+/** True when the only thing asked beyond the plain feed is "posted within": the view can be cut from the default list. */
+function isDateOnlyView(opts: RankOptions, minScore: number): Date | null {
+  const f = opts.filter;
+  if (!f?.postedAfter || opts.query || opts.language || minScore !== 0) return null;
+  const others = Object.entries(f).filter(([k, v]) => k !== "postedAfter" && v !== undefined && !(Array.isArray(v) && v.length === 0));
+  return others.length ? null : f.postedAfter;
+}
 
 /** Rank the catalog for a profile (vector + optional query), with level/freshness signals and optional LLM rerank. */
 export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}): Promise<{ jobs: RankedJob[]; total: number }> {
@@ -102,23 +119,50 @@ export async function rankJobs(profile: CandidateProfile, opts: RankOptions = {}
   // Anonymous/one-off callers (digest, auto-apply, candidate matching) rank just as deep as the page they asked for.
   const cacheable = !!profile.userId;
   const pool = cacheable ? MAX_POOL : Math.min(Math.max((skip + limit) * 3, 150), MAX_POOL);
-  const compute = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
   // Two layers for signed-in people: this instance's memo, then the list persisted in Mongo —
   // computed in the background at sign-in (warmFeedForUser) so the jobs page opens on it from any instance.
-  const key = `rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
+  const key = rankKey(profile, opts, wantRerank, minScore);
   const isDefault = !opts.query && !opts.filter && !opts.language && minScore === 0; // the plain feed, the one worth warming
-  const final = cacheable
-    ? await memo(key, ttl(RANK_TTL_MS), async () => {
-        const stored = await loadRankedFeed(profile.userId!, key).catch(() => null);
-        if (stored) return stored;
-        const list = await compute();
-        await saveRankedFeed(profile.userId!, key, list, isDefault).catch((e) => console.warn("[feed] persist failed:", (e as Error)?.message));
-        return list;
-      })
-    : await compute();
+  // "Posted within" on the plain feed: cut it from the default list (this instance's memo, else the list persisted at
+  // sign-in), whose head already carries LLM verdicts, instead of ranking and reranking the window from scratch — that
+  // took 15–20 s of model calls for one filter click. Without a default list the window is ranked with cached verdicts
+  // only (no model calls) and the default list is warmed in the background for the next click.
+  const dateOnly = cacheable ? isDateOnlyView(opts, minScore) : null;
+  let final: RankedJob[] | null = null;
+  if (dateOnly) {
+    const defaultKey = rankKey(profile, { ...opts, filter: undefined }, wantRerank, minScore);
+    const base = peek<RankedJob[]>(defaultKey) ?? (await loadRankedFeed(profile.userId!, defaultKey, { maxAgeMs: DATE_VIEW_MAX_AGE_MS }).catch(() => null));
+    if (base) {
+      final = base.filter((j) => postedWithin(j, dateOnly));
+    } else {
+      scheduleFeedWarm(profile.userId!);
+      opts = { ...opts, rerankCachedOnly: true };
+    }
+  }
+  if (!final) {
+    const computeNow = () => rankAll(profile, { ...opts, minScore, rerank: wantRerank }, pool);
+    final = cacheable
+      ? await memo(key, ttl(RANK_TTL_MS), async () => {
+          const stored = await loadRankedFeed(profile.userId!, key).catch(() => null);
+          if (stored) return stored;
+          if (isDefault) {
+            // Opening the app after a quiet hour re-ranked everything (5–7 s with the verdicts cached) before showing
+            // anything. Show the list from the last visit now; the warm-up replaces it in the background.
+            const stale = await loadRankedFeed(profile.userId!, key, { maxAgeMs: STALE_FEED_MAX_AGE_MS }).catch(() => null);
+            if (stale) {
+              scheduleFeedWarm(profile.userId!);
+              return stale;
+            }
+          }
+          const list = await computeNow();
+          await saveRankedFeed(profile.userId!, key, list, isDefault).catch((e) => console.warn("[feed] persist failed:", (e as Error)?.message));
+          return list;
+        })
+      : await computeNow();
+  }
   // "Not relevant" is final for that person, and an applied posting lives under Applications now: neither comes back, in any page or total.
   const hidden = profile.userId ? await (opts.includeApplied ? dismissedIds(profile.userId) : hiddenIds(profile.userId)) : null;
-  const visible = hidden?.size ? final.filter((r) => !hidden.has(r._id)) : final;
+  const visible = hidden?.size ? final!.filter((r) => !hidden.has(r._id)) : final!;
   const page = visible.slice(skip, skip + limit);
   // The shown number: interview likelihood from the same features the outcome loop stores.
   const model = await loadModel().catch(() => null);
@@ -196,6 +240,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       resumeSummary: profile.resumeSummary,
       level: profile.level,
       language: opts.language,
+      ...(opts.rerankCachedOnly ? { useLLM: false } : {}), // otherwise rerankForUser's own default (off under test, env-gated)
       jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t.seniority })),
     });
     for (const t of top) {

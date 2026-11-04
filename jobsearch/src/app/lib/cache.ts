@@ -29,6 +29,12 @@ export async function memo<T>(key: string, ttlMs: number, fn: () => Promise<T>):
   return inflight;
 }
 
+/** A cached value if present and not expired; never computes. */
+export function peek<T>(key: string): T | undefined {
+  const hit = store.get(key) as Entry<T> | undefined;
+  return hit && hit.expiresAt > Date.now() ? hit.value : undefined;
+}
+
 /** Route TTLs: off under test so every request sees the fixtures it just wrote (memo itself is unit-tested). */
 export const ttl = (ms: number) => (process.env.NODE_ENV === "test" ? 0 : ms);
 

@@ -12,10 +12,12 @@ const WARM_LOCK_MS = 3 * 60_000;
 const feedTtlMs = () => (process.env.NODE_ENV === "test" && !process.env.FEED_PERSIST_IN_TESTS ? 0 : FEED_TTL_MS);
 const freshSince = () => new Date(Date.now() - feedTtlMs());
 
-/** The persisted list for a cache key, if it is still fresh. */
-export async function loadRankedFeed(userId: string, key: string): Promise<RankedJob[] | null> {
+/** The persisted list for a cache key, if it is still fresh (`maxAgeMs` widens "fresh" for callers that can live with an older list). */
+export async function loadRankedFeed(userId: string, key: string, opts: { maxAgeMs?: number } = {}): Promise<RankedJob[] | null> {
   await connectToDatabase();
-  const doc: any = await RankedFeed.findOne({ userId, key, computedAt: { $gt: freshSince() } }).select("blob").lean();
+  // The wider window only applies where persistence is on (never to suites that expect the next rank to see new fixtures).
+  const since = feedTtlMs() > 0 && opts.maxAgeMs && opts.maxAgeMs > feedTtlMs() ? new Date(Date.now() - opts.maxAgeMs) : freshSince();
+  const doc: any = await RankedFeed.findOne({ userId, key, computedAt: { $gt: since } }).select("blob").lean();
   if (!doc?.blob) return null;
   const raw = Buffer.isBuffer(doc.blob) ? doc.blob : Buffer.from(doc.blob.buffer ?? doc.blob);
   return JSON.parse(gunzipSync(raw).toString("utf8")) as RankedJob[];

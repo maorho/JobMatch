@@ -116,4 +116,23 @@ describe("background feed warm-up", () => {
     for (let i = 1; i < recent.jobs.length; i++) expect(recent.jobs[i - 1].matchScore).toBeGreaterThanOrEqual(recent.jobs[i].matchScore);
     expect(await RankedFeed.countDocuments({ userId: dana, isDefault: true })).toBeLessThanOrEqual(1); // a filtered list is never the warmed default
   });
+
+  it("a date view is cut from the stored default list (no re-rank, no model calls), so it answers in milliseconds", async () => {
+    // The default list was stored by the test above. A posting that arrived after it is not in that list…
+    await ExternalJobs.create(job("Junior React Developer newest", "React TypeScript frontend"));
+    await embedPendingJobs();
+    invalidate(`rank:${dana}:`);
+    const view = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
+    expect(view.personalized).toBe(true);
+    expect(view.jobs.map((j: any) => j.job)).not.toContain("Junior React Developer newest"); // …so the view came from the stored list, not a fresh rank
+    expect(view.jobs.map((j: any) => j.job)).toContain("Junior React Developer");
+    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: false })).toBe(0); // and nothing extra was persisted
+    // Without any default list the view is ranked on the spot (cached verdicts only) and the default is warmed for next time.
+    await invalidateRankedFeed(dana);
+    invalidate(`rank:${dana}:`);
+    const cold = await (await feedGET(authed("/api/matcher/feed?limit=20&posted=7"))).json();
+    expect(cold.jobs.map((j: any) => j.job)).toContain("Junior React Developer newest");
+    await sleep(300);
+    expect(await RankedFeed.countDocuments({ userId: dana, isDefault: true })).toBe(1);
+  });
 });
