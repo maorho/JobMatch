@@ -11,11 +11,13 @@ import MessagesBadge from "./MessagesBadge";
 import LogoutButton from "./Logout";
 import { NAV_LINKS, dashboardHref, userInitial } from "./nav";
 import { loginHref } from "../lib/hooks/nextPath";
+import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
 
 function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { user, sessionExpired } = useCurrentUser();
+  const { t, dir } = useT();
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // Sign-in link carries the current page so login lands back here.
@@ -46,7 +48,7 @@ function Header() {
   return (
     <header className="sticky top-0 z-40 bg-navy/95 backdrop-blur-md text-white shadow-[0_8px_24px_-16px_rgb(16_43_57/0.6)]">
       <div className="jm-container flex items-center gap-3 h-[72px]">
-        <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label="JobMatch home">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0" aria-label={t("nav.home")}>
           <LogoMark size={36} className="text-white" />
           <span className="font-extrabold text-[22px] leading-none tracking-[-0.02em] hidden sm:inline">Job<span className="text-sky">Match</span></span>
         </Link>
@@ -60,7 +62,7 @@ function Header() {
                 isActive(l.href) ? "bg-white/15 text-white" : "text-white/75 hover:text-white hover:bg-white/10"
               }`}
             >
-              {l.label}
+              {t(l.key)}
             </Link>
           ))}
         </nav>
@@ -68,8 +70,9 @@ function Header() {
         <div className="ms-auto flex items-center gap-2">
           <Link href="/ResumeAI" className="jm-btn jm-btn-primary jm-btn-sm hidden sm:inline-flex">
             <Sparkles className="h-4 w-4" />
-            ResumeAI
+            {t("nav.resumeAI")}
           </Link>
+          <LanguageToggle className="hidden sm:inline-flex h-11 px-3 rounded-full text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors" />
 
           {user && (
             <>
@@ -95,8 +98,8 @@ function Header() {
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <Link href={signInHref} className="jm-btn jm-btn-sm text-white hover:bg-white/10">Sign in</Link>
-                <Link href="/SignUp" className="jm-btn jm-btn-accent jm-btn-sm">Sign up</Link>
+                <Link href={signInHref} className="jm-btn jm-btn-sm text-white hover:bg-white/10">{t("nav.signIn")}</Link>
+                <Link href="/SignUp" className="jm-btn jm-btn-accent jm-btn-sm">{t("nav.signUp")}</Link>
               </div>
             )}
 
@@ -107,10 +110,10 @@ function Header() {
                   <div className="jm-muted truncate" dir="ltr">{user.email}</div>
                 </div>
                 <Link href={dashboardHref(user)} onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-canvas">
-                  <LayoutDashboard className="h-4 w-4 text-ink-400" /> Dashboard
+                  <LayoutDashboard className="h-4 w-4 text-ink-400" /> {t("nav.dashboard")}
                 </Link>
                 <Link href="/Settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-canvas">
-                  <Settings className="h-4 w-4 text-ink-400" /> Settings
+                  <Settings className="h-4 w-4 text-ink-400" /> {t("nav.settings")}
                 </Link>
                 <div className="border-t border-line mt-1 pt-1">
                   <LogoutButton closeNav={() => setMenuOpen(false)} className="w-full text-start flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-red-600 hover:bg-red-50" />
@@ -120,7 +123,7 @@ function Header() {
           </div>
 
           {/* Mobile: drawer trigger */}
-          <button onClick={() => setDrawerOpen(true)} aria-label="Open menu" className={`${iconBtn} lg:hidden`}>
+          <button onClick={() => setDrawerOpen(true)} aria-label={t("nav.openMenu")} className={`${iconBtn} lg:hidden`}>
             <Menu className="h-6 w-6" />
           </button>
         </div>
@@ -128,11 +131,11 @@ function Header() {
 
       {/* Session fallback: the token expired while this tab was open. */}
       {sessionExpired && !user && (
-        <div className="bg-sky-50 text-sky-600 border-t border-sky/20" role="status" dir="rtl">
+        <div className="bg-sky-50 text-sky-600 border-t border-sky/20" role="status" dir={dir}>
           <div className="jm-container py-2 text-sm flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-            <span>ההתחברות פגה, התחבר/י שוב</span>
+            <span>{t("nav.sessionExpired")}</span>
             <Link href={signInHref} className="font-semibold underline underline-offset-2 hover:text-sky">
-              להתחברות
+              {t("nav.toSignIn")}
             </Link>
           </div>
         </div>

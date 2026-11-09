@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogoMark } from "@/app/components/Logo";
 import SocialSignIn from "@/app/components/SocialSignIn";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 function SignUp() {
+  const { t, dir } = useT();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
@@ -115,65 +117,65 @@ function SignUp() {
 
         <div className="w-full max-w-md lg:max-w-lg mx-auto my-auto py-8 sm:py-10 space-y-6">
           <div>
-            <h1 className="jm-title">Create Your Account</h1>
+            <h1 className="jm-title">{t("auth.createAccount")}</h1>
             {ref && <p className="jm-chip jm-chip-teal mt-2">🤝 {partnerName ? `Joining as part of ${partnerName}` : `Invite code ${ref}`}</p>}
             <p className="jm-subtitle">
-              Sign up now to start posting and managing your jobs with ease.
+              {t("auth.signUpSub")}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4" encType="multipart/form-data">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label htmlFor="signup-username" className="jm-label">Username</label>
+                <label htmlFor="signup-username" className="jm-label">{t("auth.username")}</label>
                 <input
                   id="signup-username"
                   type="text"
-                  placeholder="Enter Username"
+                  placeholder={t("auth.username")}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="jm-input"
                 />
               </div>
               <div>
-                <label htmlFor="signup-fullname" className="jm-label">Full name</label>
+                <label htmlFor="signup-fullname" className="jm-label">{t("auth.fullName")}</label>
                 <input
                   id="signup-fullname"
                   type="text"
-                  placeholder="Enter Full Name"
+                  placeholder={t("auth.fullName")}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="jm-input"
                 />
               </div>
               <div>
-                <label htmlFor="signup-email" className="jm-label">Email</label>
+                <label htmlFor="signup-email" className="jm-label">{t("auth.email")}</label>
                 <input
                   id="signup-email"
                   type="email"
-                  placeholder="Enter Email"
+                  placeholder={t("auth.email")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="jm-input"
                 />
               </div>
               <div>
-                <label htmlFor="signup-confirm-email" className="jm-label">Confirm Email</label>
+                <label htmlFor="signup-confirm-email" className="jm-label">{t("auth.confirmEmail")}</label>
                 <input
                   id="signup-confirm-email"
                   type="email"
-                  placeholder="Enter Email"
+                  placeholder={t("auth.email")}
                   value={confirmEmail}
                   onChange={(e) => setConfirmEmail(e.target.value)}
                   className="jm-input"
                 />
               </div>
               <div>
-                <label htmlFor="signup-phone" className="jm-label">Phone Number</label>
+                <label htmlFor="signup-phone" className="jm-label">{t("auth.phone")}</label>
                 <input
                   id="signup-phone"
                   type="tel"
-                  placeholder="Enter Phone"
+                  placeholder={t("auth.phone")}
                   value={phone}
                   pattern="[0-9]{10}"
                   onChange={(e) => setPhone(e.target.value)}
@@ -182,7 +184,7 @@ function SignUp() {
                 />
               </div>
               <div>
-                <span className="jm-label">Resume</span>
+                <span className="jm-label">{t("auth.resume")}</span>
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"
@@ -205,22 +207,22 @@ function SignUp() {
                 </label>
               </div>
               <div>
-                <label htmlFor="signup-password" className="jm-label">Password</label>
+                <label htmlFor="signup-password" className="jm-label">{t("auth.password")}</label>
                 <input
                   id="signup-password"
                   type="password"
-                  placeholder="Enter Password"
+                  placeholder={t("auth.password")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="jm-input"
                 />
               </div>
               <div>
-                <label htmlFor="signup-confirm-password" className="jm-label">Confirm Password</label>
+                <label htmlFor="signup-confirm-password" className="jm-label">{t("auth.confirmPassword")}</label>
                 <input
                   id="signup-confirm-password"
                   type="password"
-                  placeholder="Enter Password"
+                  placeholder={t("auth.password")}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="jm-input"
@@ -241,7 +243,7 @@ function SignUp() {
               {recruiter && (
                 <input
                   type="text"
-                  placeholder="Company"
+                  placeholder={t("auth.company")}
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
                   className="jm-input"

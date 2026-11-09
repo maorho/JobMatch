@@ -12,6 +12,7 @@ import SearchProfileCard from "../components/SearchProfileCard";
 import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 import PushCard from "../components/PushCard";
+import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string; privacy?: { excludeFromTraining?: boolean } };
 
@@ -19,6 +20,7 @@ const card = "jm-card p-6 space-y-4";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t, dir } = useT();
   const { user, loading, mutateUser } = useCurrentUser();
   const [p, setP] = useState<Profile | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -99,14 +101,14 @@ export default function SettingsPage() {
   if (!user) return <SignInGate text="צריך להתחבר כדי לערוך הגדרות." next="/Settings" />;
 
   return (
-    <div className="jm-page" dir="rtl">
-      <PageHeader title="הגדרות חשבון" subtitle="פרופיל, קורות חיים, חיבורים ואבטחה" />
+    <div className="jm-page" dir={dir}>
+      <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
       <div className="max-w-3xl space-y-6">
         {msg && <div className={`jm-alert ${msg.kind === "ok" ? "jm-alert-ok" : "jm-alert-err"}`} role="status">{msg.text}</div>}
 
         {p && (
           <form onSubmit={saveProfile} className={card}>
-            <h2 className="jm-h2">פרופיל</h2>
+            <h2 className="jm-h2">{t("settings.profile")}</h2>
             <div className="grid sm:grid-cols-2 gap-4">
               <label className="block"><span className="jm-label">שם מלא</span><input className="jm-input" value={p.fullname || ""} onChange={(e) => setP({ ...p, fullname: e.target.value })} required /></label>
               <label className="block"><span className="jm-label">טלפון</span><input className="jm-input" value={p.phone || ""} onChange={(e) => setP({ ...p, phone: e.target.value })} dir="ltr" /></label>
@@ -124,7 +126,7 @@ export default function SettingsPage() {
         )}
 
         <div className={card}>
-          <h2 className="jm-h2">קורות חיים והתאמה</h2>
+          <h2 className="jm-h2">{t("settings.resume")}</h2>
           <p className="text-sm text-ink-600 leading-relaxed">
             {p?.resumeUpdatedAt ? `קורות החיים עודכנו ב-${new Date(p.resumeUpdatedAt).toLocaleDateString("he-IL")}${p.resumeScore ? ` · ציון ${p.resumeScore}/100` : ""}.` : "עדיין לא העלית קורות חיים — הפיד לא מותאם אישית."}
           </p>
@@ -134,7 +136,7 @@ export default function SettingsPage() {
         </div>
 
         <div className={card}>
-          <h2 className="jm-h2">📬 מעקב סטטוס מהמייל (Gmail)</h2>
+          <h2 className="jm-h2">{t("settings.gmail")}</h2>
           <p className="text-sm text-ink-600 leading-relaxed">
             {gmail?.connected
               ? <>מחובר ל-<span dir="ltr">{gmail.address}</span>. הסוכן קורא (לקריאה בלבד) מיילים שקשורים למועמדויות שלך ומעדכן את הסטטוס בדשבורד.</>
@@ -150,48 +152,54 @@ export default function SettingsPage() {
         </div>
 
         <div id="search-profile" className={card}>
-          <h2 className="jm-h2">🎯 מה אני מחפש</h2>
+          <h2 className="jm-h2">{t("settings.lookingFor")}</h2>
           <SearchProfileCard />
         </div>
 
+        <div className={card}>
+          <h2 className="jm-h2">{t("settings.language")}</h2>
+          <p className="text-sm text-ink-600">{t("settings.languageText")}</p>
+          <LanguageToggle className="jm-btn jm-btn-secondary" />
+        </div>
+
         <div id="messaging" className={card}>
-          <h2 className="jm-h2">🔔 התראות בדפדפן ובטלפון</h2>
+          <h2 className="jm-h2">{t("settings.push")}</h2>
           <PushCard />
         </div>
 
         <div className={card}>
-          <h2 className="jm-h2">💬 התאמות ועדכונים בוואטסאפ / טלגרם</h2>
+          <h2 className="jm-h2">{t("settings.channels")}</h2>
           <ChannelsCard />
         </div>
 
         <div id="insider" className={card}>
-          <h2 className="jm-h2">🧑‍💻 אני עובד/ת בחברת הייטק: להיות ממליץ/ה מבפנים</h2>
+          <h2 className="jm-h2">{t("settings.insider")}</h2>
           <InsiderCard />
         </div>
 
         <div id="contacts" className={card}>
-          <h2 className="jm-h2">🤝 אנשי קשר והפניות (LinkedIn)</h2>
+          <h2 className="jm-h2">{t("settings.contacts")}</h2>
           <ContactsCard />
         </div>
 
         <div id="auto-apply" className={card}>
-          <h2 className="jm-h2">⚡ הגשה אוטומטית <span className="jm-chip jm-chip-sky align-middle">בטא</span></h2>
+          <h2 className="jm-h2">{t("settings.autoApply")} <span className="jm-chip jm-chip-sky align-middle">{t("settings.beta")}</span></h2>
           <AutoApplyCard />
         </div>
 
         <div id="partner" className={card}>
-          <h2 className="jm-h2">🤝 תוכנית שותפים</h2>
+          <h2 className="jm-h2">{t("settings.partners")}</h2>
           <PartnerCard current={user?.partner || null} />
         </div>
 
         <div id="mcp" className={card}>
-          <h2 className="jm-h2">🔌 סוכני AI חיצוניים (MCP)</h2>
+          <h2 className="jm-h2">{t("settings.mcp")}</h2>
           <McpCard />
         </div>
 
         {(!p?.authProvider || p.authProvider === "local") && (
           <form onSubmit={changePassword} className={card}>
-            <h2 className="jm-h2">שינוי סיסמה</h2>
+            <h2 className="jm-h2">{t("settings.password")}</h2>
             <input className="jm-input" type="password" placeholder="סיסמה נוכחית" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} required dir="ltr" />
             <div className="grid sm:grid-cols-2 gap-4">
               <input className="jm-input" type="password" placeholder="סיסמה חדשה (8+ תווים)" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} required minLength={8} dir="ltr" />
@@ -204,7 +212,7 @@ export default function SettingsPage() {
         )}
 
         <div id="privacy" className={card}>
-          <h2 className="jm-h2">🔒 פרטיות</h2>
+          <h2 className="jm-h2">{t("settings.privacy")}</h2>
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" className="mt-1 h-4 w-4 accent-teal" checked={!!p?.privacy?.excludeFromTraining} disabled={!p} onChange={(e) => setTrainingOptOut(e.target.checked)} />
             <span className="text-sm text-ink-600 leading-relaxed">
@@ -216,8 +224,8 @@ export default function SettingsPage() {
         </div>
 
         <div className={`${card} border-red-200`}>
-          <h2 className="jm-h2 text-red-700">מחיקת חשבון</h2>
-          <p className="text-sm text-ink-600 leading-relaxed">מוחק מיד ולצמיתות את החשבון, קורות החיים, המועמדויות, ההודעות, אנשי הקשר וההתראות. אין דרך חזרה.</p>
+          <h2 className="jm-h2 text-red-700">{t("settings.delete")}</h2>
+          <p className="text-sm text-ink-600 leading-relaxed">{t("settings.deleteText")}</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <input className="jm-input" placeholder='הקלד/י DELETE לאישור' value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} dir="ltr" />
             <button onClick={deleteAccount} disabled={confirmDelete !== "DELETE"} className="jm-btn jm-btn-danger shrink-0">מחק חשבון</button>

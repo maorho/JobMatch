@@ -60,7 +60,15 @@ export default function RootLayout({
     // The UI is Hebrew. Direction stays the default (ltr) on purpose: pages and
     // containers set dir="rtl"/"ltr" themselves (≈40 of each), and flipping it
     // here would mirror every ml-/mr-/text-left layout that assumes ltr.
-    <html lang="he" className={`${inter.variable} ${serif.variable}`}>
+    <html lang="he" className={`${inter.variable} ${serif.variable}`} suppressHydrationWarning>
+      <head>
+        {/* The interface language before first paint: the stored choice (localStorage, then the jm_lang cookie), else Hebrew. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var l=localStorage.getItem("jm:lang")||(document.cookie.match(/(?:^|; )jm_lang=(he|en)/)||[])[1];if(l==="he"||l==="en"){document.documentElement.setAttribute("lang",l);document.documentElement.setAttribute("data-lang",l);}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="w-full min-h-screen flex flex-col font-sans">
         <LayoutWrapper>{children}</LayoutWrapper>
       </body>

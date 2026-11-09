@@ -17,6 +17,7 @@ import { EmptyState, Spinner } from "../components/ui";
 import { Modal } from "../components/Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import { isSelfAddedJob } from "../../../utils/isSelfAddedJob";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 const LOGIN_HREF = "/Login?next=%2FDashboard";
 
@@ -44,6 +45,7 @@ const fetcher = async ([url, body]: [string, any]) => {
 
 const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
+  const { t } = useT();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -99,10 +101,10 @@ const DashboardPage: React.FC = () => {
       <div className="jm-page">
         <EmptyState
           icon="🔒"
-          title="You are not logged in."
+          title={t("common.youAreNotLoggedIn")}
           action={
             <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
-              Go to Login
+              {t("common.goToLogin")}
             </Link>
           }
         />
@@ -115,10 +117,10 @@ const DashboardPage: React.FC = () => {
       <div className="jm-page">
         <EmptyState
           icon="🧭"
-          title="You are a recruiter"
+          title={t("common.youAreRecruiter")}
           action={
             <Link href="/RecruiterDashboard" className="jm-btn jm-btn-primary">
-              Go to RecruiterDashboard
+              {t("common.goToRecruiter")}
             </Link>
           }
         />
@@ -147,7 +149,7 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
             Welcome, {user.fullname}! 👋
           </h1>
-          <p className="text-sm sm:text-base text-white/80">Manage your job applications, track your progress, and find your next opportunity. </p>
+          <p className="text-sm sm:text-base text-white/80">{t("dashboard.subtitle")}</p>
           <div>
             <button
               onClick={() => setShowModal(true)}
@@ -169,7 +171,7 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {error && (
-        <p className="jm-alert jm-alert-err">Something went wrong</p>
+        <p className="jm-alert jm-alert-err">{t("common.somethingWrong")}</p>
       )}
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -195,11 +197,11 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 sm:flex gap-3">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
-              <option value="">Filter by Status</option>
+              <option value="">{t("dashboard.filterStatus")}</option>
               {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => job.status).filter(Boolean))].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
-              <option value="">Filter by Type</option>
+              <option value="">{t("dashboard.filterType")}</option>
               {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => (isSelfAddedJob(job) ? job.jobType : job.jobId?.type)).filter(Boolean))].map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>

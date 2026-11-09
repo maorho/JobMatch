@@ -17,9 +17,11 @@ import { LogoMark } from "@/app/components/Logo";
 import { mutate } from "swr";
 import SocialSignIn from "@/app/components/SocialSignIn";
 import { safeNextPath } from "../lib/hooks/nextPath";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 function LoginForm() {
   const router = useRouter();
+  const { t, dir } = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -83,7 +85,7 @@ function LoginForm() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/60 to-navy/20" />
         <p className="absolute bottom-4 inset-x-4 sm:inset-x-6 text-white text-sm sm:text-base font-medium">
-          Your next role, matched to you.
+          {t("auth.tagline")}
         </p>
       </div>
 
@@ -96,34 +98,34 @@ function LoginForm() {
 
         <div className="w-full max-w-md mx-auto my-auto py-8 sm:py-10 space-y-6">
           <div>
-            <h1 className="jm-title">Welcome Back</h1>
-            <p className="jm-subtitle">Sign in to access your account.</p>
+            <h1 className="jm-title">{t("auth.welcomeBack")}</h1>
+            <p className="jm-subtitle">{t("auth.signInSub")}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" dir={dir}>
             <div>
-              <label htmlFor="login-username" className="jm-label">Username</label>
+              <label htmlFor="login-username" className="jm-label">{t("auth.username")}</label>
               <input
                 id="login-username"
                 type="text"
                 className="jm-input"
-                placeholder="Enter Username"
+                placeholder={t("auth.enterUsername")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
             </div>
             <div>
               <div className="flex items-center justify-between gap-3 mb-1.5">
-                <label htmlFor="login-password" className="jm-label mb-0">Password</label>
+                <label htmlFor="login-password" className="jm-label mb-0">{t("auth.password")}</label>
                 <Link href="/PasswordReset" className="text-sm font-medium text-sky hover:text-sky-600">
-                  Forgot Password?
+                  {t("auth.forgot")}
                 </Link>
               </div>
               <input
                 id="login-password"
                 type="password"
                 className="jm-input"
-                placeholder="Enter Password"
+                placeholder={t("auth.enterPassword")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -132,7 +134,7 @@ function LoginForm() {
             {error && <p className="jm-alert jm-alert-err">{error}</p>}
 
             <button type="submit" disabled={loading} className="jm-btn jm-btn-primary w-full">
-              {loading ? "Logging in..." : "Sign In"}
+              {loading ? t("auth.signingIn") : t("auth.signIn")}
             </button>
 
             <p className="text-center text-sm text-ink-600">
@@ -161,7 +163,7 @@ function LoginForm() {
         <div className="absolute bottom-0 inset-x-0 p-10 xl:p-14 text-white">
           <p className="text-xs font-semibold uppercase tracking-wider text-sky mb-2">JobMatch</p>
           <p className="text-2xl xl:text-3xl font-semibold leading-tight max-w-md">
-            Your next role, matched to you.
+            {t("auth.tagline")}
           </p>
         </div>
       </div>

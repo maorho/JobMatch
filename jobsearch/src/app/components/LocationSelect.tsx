@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { MapPin, ChevronDown } from "lucide-react";
 import type { Job } from "./JobTable";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 interface LocationSelectProps {
   jobs: Job[];
@@ -12,6 +13,7 @@ interface LocationSelectProps {
 }
 
 export default function LocationSelect({ jobs, cities, selectedCities, setSelectedCities }: LocationSelectProps) {
+  const { t } = useT();
   const [isOpen, setIsOpen] = useState(false);
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement | null>(null);
@@ -66,12 +68,12 @@ export default function LocationSelect({ jobs, cities, selectedCities, setSelect
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search city…"
+            placeholder={t("filters.cityPlaceholder")}
             className="jm-input py-2 text-sm mb-2"
             aria-label="Search city"
           />
           <div role="listbox" aria-multiselectable className="max-h-56 overflow-y-auto jm-scroll space-y-0.5">
-            {visible.length === 0 && <p className="jm-muted px-2 py-1">No matches</p>}
+            {visible.length === 0 && <p className="jm-muted px-2 py-1">{t("filters.noMatches")}</p>}
             {visible.map((city) => (
               <label key={city} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-canvas cursor-pointer text-sm text-ink-600">
                 <input type="checkbox" checked={selectedCities.includes(city)} onChange={() => toggleCity(city)} className="h-4 w-4 accent-teal" />

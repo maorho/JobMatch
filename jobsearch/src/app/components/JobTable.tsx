@@ -13,6 +13,7 @@ import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf, POSTED_WINDOWS } from "../lib/jobTaxonomy";
 import PushCard from "./PushCard";
 import Link from "next/link";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 
 interface BaseJob {
@@ -97,6 +98,7 @@ function appendUnique(prev: Job[], next: Job[]): Job[] {
 
 function JobTable() {
   const { user } = useCurrentUser();
+  const { t, lang, dir } = useT();
   const [allJobs, setAllJobs] = useState<Job[]>([]); 
   const [jobs, setJobs] = useState<Job[]>([]); 
   const [page, setPage] = useState(1);
@@ -385,14 +387,14 @@ function JobTable() {
     return () => io.disconnect();
   }, [page, totalPages, loading]);
 
-  const postedLabel = POSTED_WINDOWS.find((w) => String(w.days) === posted)?.label;
-  const expLabel = (k: string) => facets?.experience?.find((b) => b.key === k)?.label ?? `${k} years`;
+  const postedLabel = POSTED_WINDOWS.some((w) => String(w.days) === posted) ? t(`posted.${posted}` as any) : undefined;
+  const expLabel = (k: string) => t(`exp.${k}` as any);
   const activeFilters: { label: string; clear: () => void }[] = [
     ...(postedLabel ? [{ label: postedLabel, clear: () => setPosted("") }] : []),
     ...experience.map((v) => ({ label: expLabel(v), clear: () => setExperience((s) => s.filter((x) => x !== v)) })),
     ...tech.map((v) => ({ label: v, clear: () => setTech((s) => s.filter((x) => x !== v)) })),
-    ...seniority.map((v) => ({ label: v, clear: () => setSeniority((s) => s.filter((x) => x !== v)) })),
-    ...jobType.map((v) => ({ label: v, clear: () => setJobType((s) => s.filter((x) => x !== v)) })),
+    ...seniority.map((v) => ({ label: t(`level.${v}` as any), clear: () => setSeniority((s) => s.filter((x) => x !== v)) })),
+    ...jobType.map((v) => ({ label: t(`mode.${v}` as any), clear: () => setJobType((s) => s.filter((x) => x !== v)) })),
     ...country.map((v) => ({ label: v, clear: () => setCountry((s) => s.filter((x) => x !== v)) })),
     ...city.map((v) => ({ label: v, clear: () => setCity((s) => s.filter((x) => x !== v)) })),
     ...company.map((v) => ({ label: v, clear: () => setCompany((s) => s.filter((x) => x !== v)) })),
@@ -410,13 +412,13 @@ function JobTable() {
   };
   // One-tap shortcuts under the hero search; each toggles a single filter.
   const quick = [
-    { label: "New today", on: posted === "1", toggle: () => setPosted((p) => (p === "1" ? "" : "1")) },
-    { label: "0-2 years", on: experience.includes("0-2"), toggle: () => setExperience((s) => (s.includes("0-2") ? s.filter((x) => x !== "0-2") : [...s, "0-2"])) },
-    { label: "Junior", on: seniority.includes("Junior"), toggle: () => setSeniority((s) => (s.includes("Junior") ? s.filter((x) => x !== "Junior") : [...s, "Junior"])) },
-    { label: "Remote", on: jobType.includes("Remote"), toggle: () => setJobType((s) => (s.includes("Remote") ? s.filter((x) => x !== "Remote") : [...s, "Remote"])) },
-    { label: "Hybrid", on: jobType.includes("Hybrid"), toggle: () => setJobType((s) => (s.includes("Hybrid") ? s.filter((x) => x !== "Hybrid") : [...s, "Hybrid"])) },
-    { label: "Tel Aviv", on: city.includes("Tel Aviv"), toggle: () => setCity((s) => (s.includes("Tel Aviv") ? s.filter((x) => x !== "Tel Aviv") : [...s, "Tel Aviv"])) },
-    { label: "Israel", on: country.includes("Israel"), toggle: () => setCountry((s) => (s.includes("Israel") ? s.filter((x) => x !== "Israel") : [...s, "Israel"])) },
+    { label: t("home.quick.newToday"), on: posted === "1", toggle: () => setPosted((p) => (p === "1" ? "" : "1")) },
+    { label: t("home.quick.years02"), on: experience.includes("0-2"), toggle: () => setExperience((s) => (s.includes("0-2") ? s.filter((x) => x !== "0-2") : [...s, "0-2"])) },
+    { label: t("home.quick.junior"), on: seniority.includes("Junior"), toggle: () => setSeniority((s) => (s.includes("Junior") ? s.filter((x) => x !== "Junior") : [...s, "Junior"])) },
+    { label: t("home.quick.remote"), on: jobType.includes("Remote"), toggle: () => setJobType((s) => (s.includes("Remote") ? s.filter((x) => x !== "Remote") : [...s, "Remote"])) },
+    { label: t("home.quick.hybrid"), on: jobType.includes("Hybrid"), toggle: () => setJobType((s) => (s.includes("Hybrid") ? s.filter((x) => x !== "Hybrid") : [...s, "Hybrid"])) },
+    { label: t("home.quick.telAviv"), on: city.includes("Tel Aviv"), toggle: () => setCity((s) => (s.includes("Tel Aviv") ? s.filter((x) => x !== "Tel Aviv") : [...s, "Tel Aviv"])) },
+    { label: t("home.quick.israel"), on: country.includes("Israel"), toggle: () => setCountry((s) => (s.includes("Israel") ? s.filter((x) => x !== "Israel") : [...s, "Israel"])) },
   ];
 
   const filtersPanel = (
@@ -449,18 +451,18 @@ function JobTable() {
         <div className="pointer-events-none absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" aria-hidden="true" />
         <div className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" aria-hidden="true" />
         <div className="relative max-w-3xl mx-auto text-center animate-rise">
-          <span className="jm-eyebrow" dir="rtl">
+          <span className="jm-eyebrow" dir={dir}>
             {stats
-              ? `${(stats.jobs || catalogTotal || jobCount).toLocaleString()} משרות פתוחות · ${stats.companies.toLocaleString()} חברות · ${polledAgo !== null && polledAgo < 90 ? (polledAgo <= 1 ? "עודכן הרגע" : `עודכן לפני ${polledAgo} דק׳`) : "מתעדכן כל חצי שעה"}`
+              ? t("home.eyebrowStats", { jobs: (stats.jobs || catalogTotal || jobCount).toLocaleString(), companies: stats.companies.toLocaleString(), updated: polledAgo !== null && polledAgo < 90 ? (polledAgo <= 1 ? t("home.updatedNow") : t("home.updatedAgo", { min: polledAgo })) : t("home.updatedEvery") })
               : (catalogTotal || jobCount) > 0
-                ? `${(catalogTotal || jobCount).toLocaleString()} משרות פתוחות · מתעדכן כל חצי שעה`
-                : "משרות חדשות כל חצי שעה"}
+                ? t("home.eyebrowCount", { jobs: (catalogTotal || jobCount).toLocaleString() })
+                : t("home.eyebrowEmpty")}
           </span>
-          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]" dir="rtl">
-            המשרות ישירות מדפי הקריירה של החברות. <span className="italic text-teal">לפני כולם.</span>
+          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]" dir={dir}>
+            {t("home.headline1")} <span className="italic text-teal">{t("home.headline2")}</span>
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-2xl mx-auto leading-relaxed" dir="rtl">
-            אנחנו סורקים את דפי הדרושים של {stats ? stats.companies.toLocaleString() : "מאות"} חברות כל חצי שעה, מדרגים כל משרה מול קורות החיים שלך, ומצרפים שנות ניסיון, טכנולוגיות, הכנה לראיון והגשה אוטומטית. בחינם, בלי למכור את המידע שלך.
+          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-2xl mx-auto leading-relaxed" dir={dir}>
+            {t("home.sub", { companies: stats ? stats.companies.toLocaleString() : t("home.companiesFallback") })}
           </p>
 
           <form
@@ -475,15 +477,16 @@ function JobTable() {
               <input
                 className="w-full h-12 lg:h-14 ps-12 pe-4 rounded-full bg-transparent text-base placeholder:text-ink-400 focus:outline-none focus:bg-canvas"
                 type="search"
-                placeholder="Search jobs, companies, or keywords..."
+                placeholder={t("home.searchPlaceholder")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                aria-label="Search jobs"
+                aria-label={t("home.searchAria")}
+                dir={dir}
               />
             </label>
             <LocationSelect jobs={allJobs} cities={facets?.cities} selectedCities={city} setSelectedCities={setCity} />
             <button type="submit" className="jm-btn jm-btn-primary h-12 lg:h-14 lg:px-7">
-              Search jobs <ArrowRight className="h-4 w-4" />
+              {t("home.searchBtn")} <ArrowRight className={`h-4 w-4 ${dir === "rtl" ? "rotate-180" : ""}`} />
             </button>
           </form>
 
@@ -518,11 +521,11 @@ function JobTable() {
       </section>
 
       {!user && (
-        <section className="mt-8 grid gap-4 sm:grid-cols-3" dir="rtl" aria-label="איך זה עובד">
+        <section className="mt-8 grid gap-4 sm:grid-cols-3" dir={dir} aria-label={t("home.howAria")}>
           {[
-            { n: "1", t: "מוצאים לפני כולם", d: `סריקה של ${stats ? stats.sources.toLocaleString() : "מאות"} דפי קריירה כל חצי שעה, ישירות מה-ATS של החברה, כולל משרות שלא מגיעות ללוחות הדרושים.` },
-            { n: "2", t: "רואים כמה זה מתאים", d: "מעלים קורות חיים ומקבלים לכל משרה ציון התאמה, סיכוי לראיון, שנות הניסיון שנדרשות והטכנולוגיות שמופיעות בה." },
-            { n: "3", t: "מגישים ומתכוננים", d: "קורות חיים מותאמים למשרה, הגשה אוטומטית בטופס של החברה, ראיון דמה בקול, והשאלות שהחברה הזו באמת שואלת." },
+            { n: "1", t: t("home.step1.t"), d: t("home.step1.d", { sources: stats ? stats.sources.toLocaleString() : t("home.companiesFallback") }) },
+            { n: "2", t: t("home.step2.t"), d: t("home.step2.d") },
+            { n: "3", t: t("home.step3.t"), d: t("home.step3.d") },
           ].map((s) => (
             <div key={s.n} className="jm-card p-5">
               <div className="h-8 w-8 rounded-full bg-teal-50 text-teal font-semibold flex items-center justify-center">{s.n}</div>
@@ -531,13 +534,13 @@ function JobTable() {
             </div>
           ))}
           <p className="sm:col-span-3 text-sm text-ink-600 text-center">
-            המידע שלך נשאר שלך: אין פרסומות, אין מכירת פרופילים למגייסים, ואפשר למחוק הכל בלחיצה.{" "}
-            <Link href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">מדיניות הפרטיות</Link>
+            {t("home.privacy")}{" "}
+            <Link href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">{t("home.privacyLink")}</Link>
           </p>
-          <nav className="sm:col-span-3 flex flex-wrap justify-center gap-2 text-sm" aria-label="משרות לפי תפקיד ומיקום">
+          <nav className="sm:col-span-3 flex flex-wrap justify-center gap-2 text-sm" aria-label={t("home.hubsAria")}>
             {[
-              ["/jobs/role/backend", "Backend"], ["/jobs/role/frontend", "Frontend"], ["/jobs/role/fullstack", "Full Stack"], ["/jobs/role/data", "Data ו-ML"], ["/jobs/role/devops", "DevOps"], ["/jobs/role/qa", "QA"], ["/jobs/role/mobile", "Mobile"],
-              ["/jobs/in/Tel%20Aviv", "תל אביב"], ["/jobs/in/Haifa", "חיפה"], ["/jobs/in/Jerusalem", "ירושלים"], ["/jobs/in/remote", "מרחוק"],
+              ["/jobs/role/backend", "Backend"], ["/jobs/role/frontend", "Frontend"], ["/jobs/role/fullstack", "Full Stack"], ["/jobs/role/data", "Data / ML"], ["/jobs/role/devops", "DevOps"], ["/jobs/role/qa", "QA"], ["/jobs/role/mobile", "Mobile"],
+              ["/jobs/in/Tel%20Aviv", lang === "he" ? "תל אביב" : "Tel Aviv"], ["/jobs/in/Haifa", lang === "he" ? "חיפה" : "Haifa"], ["/jobs/in/Jerusalem", lang === "he" ? "ירושלים" : "Jerusalem"], ["/jobs/in/remote", t("home.quick.remote")],
             ].map(([href, label]) => (
               <Link key={href} href={href} className="jm-chip hover:bg-canvas">{label}</Link>
             ))}
@@ -556,14 +559,14 @@ function JobTable() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 id="positions" className="jm-title scroll-mt-24">Available positions</h2>
+              <h2 id="positions" className="jm-title scroll-mt-24">{t("home.positions")}</h2>
               <p className="jm-subtitle">
-                {loading && page === 1 ? "Searching the catalog…" : user && !isSearching && catalogTotal > jobCount ? `Your best ${jobCount.toLocaleString()} matches of ${catalogTotal.toLocaleString()} open jobs · ranked by your resume` : `Showing ${jobCount.toLocaleString()} jobs${user && !isSearching ? " · ranked by your resume" : ""}`}
+                {loading && page === 1 ? t("home.searching") : user && !isSearching && catalogTotal > jobCount ? t("home.bestMatches", { n: jobCount.toLocaleString(), total: catalogTotal.toLocaleString() }) : `${t("home.showing", { n: jobCount.toLocaleString() })}${user && !isSearching ? t("home.rankedSuffix") : ""}`}
               </p>
             </div>
             <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary" aria-haspopup="dialog" aria-expanded={showmodal}>
               <SlidersHorizontal className="h-4 w-4" />
-              Filter
+              {t("home.filter")}
               {activeFilters.length > 0 && <span className="jm-chip jm-chip-navy px-2 py-0">{activeFilters.length}</span>}
             </button>
           </div>
@@ -581,7 +584,7 @@ function JobTable() {
                 </button>
               ))}
               <button type="button" onClick={clearAll} className="text-sm text-ink-400 hover:text-navy underline-offset-2 hover:underline ms-1">
-                Clear all
+                {t("home.clearAll")}
               </button>
             </div>
           )}
@@ -610,11 +613,11 @@ function JobTable() {
             <div className="mt-6">
               <EmptyState
                 icon="🔎"
-                title="No jobs match these filters"
-                text="Try fewer filters or a broader search term — the catalog is refreshed every day."
+                title={t("home.noJobsTitle")}
+                text={t("home.noJobsText")}
                 action={
                   <button type="button" onClick={clearAll} className="jm-btn jm-btn-primary">
-                    Clear filters
+                    {t("home.clearFilters")}
                   </button>
                 }
               />
@@ -632,7 +635,7 @@ function JobTable() {
                   {/* Scroll sentinel: when visible, the next page loads automatically. */}
                   <div ref={loadMoreRef} aria-hidden="true" className="h-px" />
                   <button className="jm-btn jm-btn-secondary" onClick={loadMore} disabled={loading}>
-                    {loading ? "Loading…" : "Load more"}
+                    {loading ? t("home.loading") : t("home.loadMore")}
                   </button>
                 </div>
               )}
@@ -649,21 +652,21 @@ function JobTable() {
           ref={sheetRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Filters"
+          aria-label={t("home.filtersAria")}
           tabIndex={-1}
           className={`absolute top-0 right-0 h-full w-[88%] max-w-[400px] bg-surface shadow-card-hover flex flex-col
           transition-transform duration-300 ease-out ${showmodal ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center justify-between px-6 h-[72px] border-b border-line shrink-0">
             <span className="jm-h2 tracking-[0.08em] uppercase text-[15px]">Filter</span>
-            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-ghost jm-btn-icon" aria-label="Close filters">
+            <button type="button" onClick={closeSheet} className="jm-btn jm-btn-ghost jm-btn-icon" aria-label={t("home.closeFilters")}>
               <X className="h-5 w-5" />
             </button>
           </div>
           <div className="px-6 flex-1 overflow-y-auto jm-scroll">{filtersPanel}</div>
           <div className="px-6 py-4 border-t border-line flex items-center justify-between gap-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={clearAll} disabled={activeFilters.length === 0} className="text-sm text-ink-600 hover:text-navy underline-offset-4 hover:underline disabled:opacity-40 disabled:no-underline">
-              Clear all{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+              {activeFilters.length > 0 ? t("home.clearAllN", { n: activeFilters.length }) : t("home.clearAll")}
             </button>
             <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
               View {jobCount.toLocaleString()} jobs

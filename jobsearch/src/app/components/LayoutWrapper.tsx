@@ -7,6 +7,7 @@ import RevealObserver from "./RevealObserver";
 import BackgroundAurora from "./BackgroundAurora";
 import AccessibilityMenu from "./AccessibilityMenu";
 import PwaRegister from "./PwaRegister";
+import { LanguageProvider } from "../lib/i18n/LanguageProvider";
 
 export default function LayoutWrapper({
   children,
@@ -17,7 +18,7 @@ export default function LayoutWrapper({
   const hideFooterAndHeader = ["/Login", "/SignUp", "/PasswordReset"].includes(pathname);
 
   return (
-    <>
+    <LanguageProvider>
       <a href="#main-content" className="jm-skip-link">דלג לתוכן</a>
       <BackgroundAurora />
       <RevealObserver />
@@ -26,6 +27,6 @@ export default function LayoutWrapper({
       {!hideFooterAndHeader && <Footer />}
       <AccessibilityMenu />
       <PwaRegister />
-    </>
+    </LanguageProvider>
   );
 }

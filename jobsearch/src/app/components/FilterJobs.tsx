@@ -3,6 +3,7 @@ import React from "react";
 import {ChevronDown} from "lucide-react";
 import { Job, getJobType, getSeniorityLevel } from "./JobTable";
 import { POSTED_WINDOWS } from "../lib/jobTaxonomy";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 /** One choice out of a few (radio), with "Any time" to clear: the "Posted" filter. */
 const ChoiceRender: React.FC<{ title: string; options: { value: string; label: string }[]; selected: string; setSelected: (v: string) => void; anyLabel: string; defaultOpen?: boolean }> = ({ title, options, selected, setSelected, anyLabel, defaultOpen = true }) => {
@@ -48,6 +49,7 @@ interface FilterRenderProps {
 const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, setSelected, searchable, defaultOpen = true, labels }) => {
   const [isOpen, setIsOpen] = React.useState<boolean>(defaultOpen);
   const [q, setQ] = React.useState("");
+  const { t } = useT();
   const toggleElement = (value: string) => {
     if (selected.includes(value)) setSelected(selected.filter((v) => v !== value));
     else setSelected([...selected, value]);
@@ -80,13 +82,13 @@ const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, s
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={`Search ${title.toLowerCase()}…`}
+              placeholder={t("filters.search", { what: title })}
               className="jm-input py-2 text-sm mb-2"
-              aria-label={`Search ${title}`}
+              aria-label={t("filters.search", { what: title })}
             />
           )}
           <div className={`space-y-0.5 ${searchable ? "max-h-56 overflow-y-auto jm-scroll pe-1" : ""}`}>
-            {visible.length === 0 && <p className="jm-muted py-1">No matches</p>}
+            {visible.length === 0 && <p className="jm-muted py-1">{t("filters.noMatches")}</p>}
             {visible.map((value) => (
               <label key={value} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-canvas cursor-pointer text-sm text-ink-600">
                 <input
@@ -164,6 +166,7 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   setJobType,
   setSeniority,
 }) => {
+  const { t } = useT();
   const getUniqueValues = (arr: Job[], key: keyof Job) => {
     const values = arr
       .map((job) => {
@@ -187,18 +190,18 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   return (
     <div className="w-full">
       {/* Posted within: the freshest postings first, still ranked by match */}
-      <ChoiceRender title="Posted" options={POSTED_WINDOWS.map((w) => ({ value: String(w.days), label: w.label }))} selected={posted} setSelected={setPosted} anyLabel="Any time" />
+      <ChoiceRender title={t("filters.posted")} options={POSTED_WINDOWS.map((w) => ({ value: String(w.days), label: t(`posted.${w.days}` as any) }))} selected={posted} setSelected={setPosted} anyLabel={t("filters.anyTime")} />
       {/* Years of experience required, read from the description (not the title) */}
-      <FilterRender title="Experience" options={(facets?.experience ?? []).map((b) => b.key)} labels={Object.fromEntries((facets?.experience ?? []).map((b) => [b.key, b.label]))} selected={experience} setSelected={setExperience} defaultOpen={false} />
+      <FilterRender title={t("filters.experience")} options={(facets?.experience ?? []).map((b) => b.key)} labels={Object.fromEntries((facets?.experience ?? []).map((b) => [b.key, t(`exp.${b.key}` as any)]))} selected={experience} setSelected={setExperience} defaultOpen={false} />
       {/* Technologies named in the posting */}
-      <FilterRender title="Technologies" options={facets?.tech ?? []} selected={tech} setSelected={setTech} searchable defaultOpen={false} />
+      <FilterRender title={t("filters.tech")} options={facets?.tech ?? []} selected={tech} setSelected={setTech} searchable defaultOpen={false} />
       {/* Seniority (Intern / Junior / Mid / Senior) */}
-      <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
+      <FilterRender title={t("filters.seniority")} options={uniqueSeniority} labels={Object.fromEntries(uniqueSeniority.map((v) => [v, t(`level.${v}` as any)]))} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
       {/* Work mode (On Site / Hybrid / Remote) */}
-      <FilterRender title="Job Type" options={uniqueJobTypes} selected={jobType} setSelected={setJobType} defaultOpen={false} />
-      <FilterRender title="Country" options={uniqueCountries} selected={country} setSelected={setCountry} searchable defaultOpen={false} />
-      <FilterRender title="Cities" options={uniqueCities} selected={city} setSelected={setCity} searchable defaultOpen={false} />
-      <FilterRender title="Companies" options={uniqueCompanies} selected={company} setSelected={setCompany} searchable defaultOpen={false} />
+      <FilterRender title={t("filters.jobType")} options={uniqueJobTypes} labels={Object.fromEntries(uniqueJobTypes.map((v) => [v, t(`mode.${v}` as any)]))} selected={jobType} setSelected={setJobType} defaultOpen={false} />
+      <FilterRender title={t("filters.country")} options={uniqueCountries} selected={country} setSelected={setCountry} searchable defaultOpen={false} />
+      <FilterRender title={t("filters.cities")} options={uniqueCities} selected={city} setSelected={setCity} searchable defaultOpen={false} />
+      <FilterRender title={t("filters.companies")} options={uniqueCompanies} selected={company} setSelected={setCompany} searchable defaultOpen={false} />
     </div>
   );
 };

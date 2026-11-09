@@ -1,5 +1,7 @@
+"use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 /**
  * Small shared layout pieces. Styling lives in globals.css (`jm-*`); these
@@ -65,10 +67,11 @@ export function Spinner({ label }: { label?: ReactNode }) {
 
 /** Centered "you need to sign in" block used by every account page. */
 export function SignInGate({ text, next }: { text: ReactNode; next?: string }) {
+  const { t } = useT();
   const href = next ? `/Login?next=${encodeURIComponent(next)}` : "/Login";
   return (
     <div className="jm-page">
-      <EmptyState icon="🔒" title={text} action={<Link href={href} className="jm-btn jm-btn-primary">Sign in</Link>} />
+      <EmptyState icon="🔒" title={text} action={<Link href={href} className="jm-btn jm-btn-primary">{t("common.signIn")}</Link>} />
     </div>
   );
 }

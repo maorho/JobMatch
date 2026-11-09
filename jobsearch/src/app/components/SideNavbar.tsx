@@ -9,6 +9,7 @@ import LogoutButton from "./Logout";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { NAV_LINKS, dashboardHref, userInitial } from "./nav";
 import { loginHref } from "../lib/hooks/nextPath";
+import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
 
 interface SideNavbarProps {
   closeNav: () => void;
@@ -19,6 +20,7 @@ interface SideNavbarProps {
 const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const pathname = usePathname();
   const { user, sessionExpired } = useCurrentUser();
+  const { t } = useT();
   const lastPathRef = useRef(pathname);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -68,7 +70,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
       {/* The root is never dir="rtl" (see layout.tsx), so the panel always parks off the right edge (Tailwind 4's ltr:/rtl: variants both matched and the rtl one left a 56px strip on screen). The wrapper's overflow-hidden is essential: without it the parked panel's right edge widens the phone's layout viewport and the whole page lays out wider than the screen. */}
       <aside
         role="dialog"
-        aria-label="Menu"
+        aria-label={t("nav.menu")}
         className={`absolute top-0 end-0 h-full w-[86%] max-w-sm bg-surface text-ink shadow-card-hover flex flex-col
           transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
@@ -77,7 +79,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
             <LogoMark size={32} className="text-teal" />
             <span className="font-extrabold text-navy tracking-[-0.02em]">Job<span className="text-teal">Match</span></span>
           </Link>
-          <button onClick={closeNav} aria-label="Close menu" className="jm-btn jm-btn-ghost jm-btn-icon">
+          <button onClick={closeNav} aria-label={t("nav.closeMenu")} className="jm-btn jm-btn-ghost jm-btn-icon">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -99,8 +101,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
-                <Link href={signInHref} className="jm-btn jm-btn-secondary">Sign in</Link>
-                <Link href="/SignUp" className="jm-btn jm-btn-accent">Sign up</Link>
+                <Link href={signInHref} className="jm-btn jm-btn-secondary">{t("nav.signIn")}</Link>
+                <Link href="/SignUp" className="jm-btn jm-btn-accent">{t("nav.signUp")}</Link>
               </div>
             </div>
           )}
@@ -108,12 +110,15 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
           <nav className="space-y-1">
             {NAV_LINKS.map((l) => (
               <Link key={l.href} href={l.href} className={item(isActive(l.href))}>
-                {l.label}
+                {t(l.key)}
               </Link>
             ))}
             <Link href="/ResumeAI" className={item(isActive("/ResumeAI"))}>
-              <Sparkles className="h-5 w-5 text-teal" /> ResumeAI
+              <Sparkles className="h-5 w-5 text-teal" /> {t("nav.resumeAI")}
             </Link>
+            <div className="px-3 pt-2">
+              <LanguageToggle className="jm-btn jm-btn-secondary jm-btn-sm" />
+            </div>
           </nav>
 
           {user && (

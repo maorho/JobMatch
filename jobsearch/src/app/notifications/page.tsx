@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { PageHeader, Spinner, SignInGate, EmptyState } from "../components/ui";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 dayjs.extend(relativeTime);
 
@@ -23,6 +24,7 @@ const ICON: Record<string, string> = {
 
 export default function NotificationsPage() {
   const { user, loading } = useCurrentUser();
+  const { t } = useT();
   const { data, mutate } = useSWR(user ? "/api/notifications?limit=100" : null, fetcher, { refreshInterval: 30_000 });
   const items: Item[] = data?.items ?? [];
   const unread: number = data?.unreadCount ?? 0;
@@ -57,23 +59,23 @@ export default function NotificationsPage() {
     }
   };
 
-  if (loading) return <Spinner label="טוען…" />;
-  if (!user) return <SignInGate text="צריך להתחבר כדי לראות התראות." next="/notifications" />;
+  if (loading) return <Spinner label={t("common.loading")} />;
+  if (!user) return <SignInGate text={t("common.youAreNotLoggedIn")} next="/notifications" />;
 
   return (
     <div className="jm-page" dir="rtl">
       <PageHeader
-        title="התראות"
+        title={t("notif.title")}
         subtitle="סטטוס מועמדויות, הודעות חדשות ומשרות שמתאימות לך"
         actions={unread > 0 ? (
           <button onClick={() => markRead()} className="jm-btn jm-btn-secondary jm-btn-sm">
-            סמן הכל כנקרא ({unread})
+            {t("notif.markAll", { n: unread })}
           </button>
         ) : undefined}
       />
 
       {items.length === 0 ? (
-        <EmptyState icon="🔔" title="אין התראות עדיין" text="כשמשהו יקרה — סטטוס מועמדות, הודעה חדשה או משרות שמתאימות לך — זה יופיע כאן." />
+        <EmptyState icon="🔔" title={t("notif.empty")} text="כשמשהו יקרה — סטטוס מועמדות, הודעה חדשה או משרות שמתאימות לך — זה יופיע כאן." />
       ) : (
         <ul className="space-y-3 max-w-3xl">
           {items.map((n) => {
@@ -89,7 +91,7 @@ export default function NotificationsPage() {
                   </div>
                   {n.body && <p className="mt-1 text-sm text-ink-600 whitespace-pre-line" dir="auto">{n.body}</p>}
                 </div>
-                {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" role="img" aria-label="לא נקרא" />}
+                {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" role="img" aria-label={t("notif.unread")} />}
                 {n.link && <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">←</span>}
               </div>
             );

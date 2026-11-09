@@ -1,12 +1,12 @@
 /** Navigation shared by the header and the mobile drawer. */
 export const NAV_LINKS = [
-  { href: "/", label: "Jobs" },
-  { href: "/Companies", label: "Companies" },
-  { href: "/interview-questions", label: "Interview Qs" },
-  { href: "/practice", label: "Practice" },
-  { href: "/Articels", label: "Articles" },
-  { href: "/ContactUs", label: "Contact" },
-];
+  { href: "/", key: "nav.jobs" },
+  { href: "/Companies", key: "nav.companies" },
+  { href: "/interview-questions", key: "nav.interviewQs" },
+  { href: "/practice", key: "nav.practice" },
+  { href: "/Articels", key: "nav.articles" },
+  { href: "/ContactUs", key: "nav.contact" },
+] as const;
 
 /** Where "my dashboard" points for this account. */
 export function dashboardHref(user: any): string {

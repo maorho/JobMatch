@@ -8,6 +8,8 @@ import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTab
 import CompanyLogo from "./CompanyLogo";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
+import { useT } from "../lib/i18n/LanguageProvider";
+import "dayjs/locale/he.js";
 
 dayjs.extend(relativeTime);
 
@@ -26,6 +28,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const href = isInternalJob(job) ? `/job/internal/${job._id}` : `/job/external/${job._id}`;
   const open = () => router.push(href);
   const signals = useJobSignals();
+  const { t, lang } = useT();
   const id = String(job._id || job.id || "");
   const isSaved = signals.saved.has(id);
   const [hidden, setHidden] = useState(false);
@@ -45,12 +48,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   // When it was posted: the employer's date, else when we first saw it, else when it was added here.
   const postedRaw = job.postedAt || job.firstSeenAt || job.createdAt;
   const posted = postedRaw && dayjs(postedRaw).isValid() && !dayjs(postedRaw).isAfter(dayjs().add(1, "day")) ? dayjs(postedRaw) : null;
-  const time = posted ? `Posted ${posted.fromNow()}` : "";
-  const timeTitle = posted ? `${job.postedAt ? "Posted" : "First seen"} ${posted.format("D MMM YYYY, HH:mm")}` : "";
+  const time = posted ? t("card.posted", { ago: posted.locale(lang).fromNow() }) : "";
+  const timeTitle = posted ? `${job.postedAt ? t("card.postedAt") : t("card.firstSeen")} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   const why = (job as any).why as string | undefined;
   const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
   // Years of experience required, read from the description — more honest than the title.
-  const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? `${job.experienceMin}-${job.experienceMax} yrs` : `${job.experienceMin}+ yrs`) : "";
+  const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("card.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("card.years", { n: job.experienceMin })) : "";
   const techChips = (job.tech || []).slice(0, 3);
   const reposted = (job.repostCount || 0) > 0;
 
@@ -68,10 +71,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
     >
       {/* Actions sit on their own row above the title, so the title keeps the full card width on one line */}
       <div className="flex items-center justify-end gap-0.5 -me-1.5 -mt-2 mb-1">
-          <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? "Unsave" : "Save"} title={isSaved ? "שמור ✓" : "שמור"} className={`h-7 w-7 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
+          <button type="button" onClick={(e) => act(e, "saved")} aria-pressed={isSaved} aria-label={isSaved ? t("card.saved") : t("card.save")} title={isSaved ? t("card.saved") : t("card.save")} className={`h-7 w-7 rounded-full inline-flex items-center justify-center transition-colors ${isSaved ? "bg-teal text-white" : "text-ink-400 hover:bg-canvas hover:text-navy"}`}>
             <Bookmark className="h-3.5 w-3.5" fill={isSaved ? "currentColor" : "none"} />
           </button>
-          <button type="button" onClick={(e) => act(e, "dismissed")} aria-label="Not relevant" title="לא רלוונטי" className="h-7 w-7 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+          <button type="button" onClick={(e) => act(e, "dismissed")} aria-label={t("card.notRelevant")} title={t("card.notRelevant")} className="h-7 w-7 rounded-full inline-flex items-center justify-center text-ink-400 hover:bg-red-50 hover:text-red-600 transition-colors">
             <X className="h-3.5 w-3.5" />
           </button>
       </div>
@@ -93,8 +96,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             <span className="truncate">{meta}</span>
           </span>
         )}
-        {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{level}</span>}
-        {years && <span className="jm-chip shrink-0" title="Years of experience required (from the description)">{years}</span>}
+        {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{t(`level.${level}` as any)}</span>}
+        {years && <span className="jm-chip shrink-0" title={t("card.yearsTitle")}>{years}</span>}
         {time && (
           <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">
             <Clock className="h-3 w-3" />
@@ -108,7 +111,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           {techChips.map((t) => (
             <span key={t} className="rounded-full border border-line bg-canvas px-2 py-0.5 text-ink-600" dir="ltr">{t}</span>
           ))}
-          {reposted && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700" title="This posting was closed and listed again">Reposted</span>}
+          {reposted && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700" title={t("card.repostedTitle")}>{t("card.reposted")}</span>}
         </div>
       )}
 
@@ -128,14 +131,14 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       {/* Footer: the score on one side, the action on the other; always at the bottom */}
       <div className="mt-auto pt-4 flex items-center justify-between gap-3">
         {typeof job.matchScore === "number" ? (
-          <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5" title={job.likelihood ? `התאמה ${job.matchScore}% · סיכוי לראיון ~${job.likelihood.pct}%` : "Match to your résumé"}>
+          <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5" title={job.likelihood ? t("card.matchFull", { score: job.matchScore, pct: job.likelihood.pct }) : t("card.matchTitle")}>
             <span className="text-base font-semibold text-teal-600 leading-none">{job.matchScore}%</span>
-            <span className="text-xs text-teal-600/80">{job.likelihood ? `ראיון ~${job.likelihood.pct}%` : "match"}</span>
+            <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : t("card.match")}</span>
           </span>
         ) : (
           <span />
         )}
-        <span className="jm-btn jm-btn-accent jm-btn-sm">View job</span>
+        <span className="jm-btn jm-btn-accent jm-btn-sm">{t("card.viewJob")}</span>
       </div>
     </motion.article>
   );

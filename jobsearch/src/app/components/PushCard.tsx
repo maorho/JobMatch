@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { readPushState, enablePush, disablePush, type PushState } from "../lib/push/client";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 /**
  * "Get new matches on this device": the Web Push switch. `variant="banner"`
@@ -11,6 +12,7 @@ import { readPushState, enablePush, disablePush, type PushState } from "../lib/p
  */
 export default function PushCard({ variant = "card" }: { variant?: "card" | "banner" }) {
   const { user } = useCurrentUser();
+  const { t, dir } = useT();
   const [state, setState] = useState<PushState | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -49,27 +51,27 @@ export default function PushCard({ variant = "card" }: { variant?: "card" | "ban
 
   if (variant === "banner") {
     return (
-      <div className="jm-card p-3 sm:p-4 flex flex-wrap items-center gap-3 bg-teal-50/60" role="region" aria-label="התראות" dir="rtl">
+      <div className="jm-card p-3 sm:p-4 flex flex-wrap items-center gap-3 bg-teal-50/60" role="region" aria-label={t("settings.push")} dir={dir}>
         <Bell className="h-5 w-5 text-teal shrink-0" />
-        <p className="text-sm text-navy flex-1 min-w-[12rem]">רוצה לדעת כשמשרה חדשה מתאימה לך? נשלח התראה למכשיר הזה, בלי מייל ובלי אפליקציה.</p>
-        <button type="button" onClick={toggle} disabled={busy} className="jm-btn jm-btn-primary jm-btn-sm">{busy ? "רגע…" : "הפעל התראות"}</button>
-        <button type="button" onClick={dismiss} className="jm-btn jm-btn-ghost jm-btn-sm">לא עכשיו</button>
+        <p className="text-sm text-navy flex-1 min-w-[12rem]">{t("home.pushBannerText")}</p>
+        <button type="button" onClick={toggle} disabled={busy} className="jm-btn jm-btn-primary jm-btn-sm">{busy ? t("push.wait") : t("home.pushEnable")}</button>
+        <button type="button" onClick={dismiss} className="jm-btn jm-btn-ghost jm-btn-sm">{t("home.notNow")}</button>
         {msg && <p className="w-full text-xs text-red-700">{msg}</p>}
       </div>
     );
   }
   return (
-    <div className="space-y-3" dir="rtl">
+    <div className="space-y-3" dir={dir}>
       <p className="text-sm text-ink-600 leading-relaxed">
-        התראות בדפדפן על משרות חדשות שמתאימות לך ועל עדכונים במועמדויות, ישירות למכשיר הזה. עובד גם בטלפון כשהאתר מותקן כאפליקציה.
-        {state.permission === "denied" && <span className="block mt-1 text-red-700">ההתראות חסומות בדפדפן הזה. אפשר לפתוח אותן בהגדרות האתר של הדפדפן.</span>}
+        {t("push.cardText")}
+        {state.permission === "denied" && <span className="block mt-1 text-red-700">{t("push.denied")}</span>}
       </p>
       <div className="flex items-center gap-3">
         <button type="button" onClick={toggle} disabled={busy || state.permission === "denied"} className={`jm-btn ${state.subscribed ? "jm-btn-secondary" : "jm-btn-primary"} inline-flex items-center gap-2`}>
           {state.subscribed ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-          {busy ? "רגע…" : state.subscribed ? "כבה התראות במכשיר הזה" : "הפעל התראות במכשיר הזה"}
+          {busy ? t("push.wait") : state.subscribed ? t("push.disable") : t("push.enable")}
         </button>
-        {state.subscribed && <span className="jm-chip jm-chip-teal">פעיל</span>}
+        {state.subscribed && <span className="jm-chip jm-chip-teal">{t("push.active")}</span>}
       </div>
       {msg && <p className="text-sm text-red-700">{msg}</p>}
     </div>

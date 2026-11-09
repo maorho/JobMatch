@@ -16,12 +16,14 @@ import FitCard from "./FitCard";
 import { InlineNotice, Modal } from "./Dialog";
 import type { IUser } from "../models/User";
 import dayjs from "dayjs";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 interface JobDescriptionProps {
   job: any;
 }
 
 const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
+  const { t } = useT();
   const { user } = useCurrentUser();
   const pathname = usePathname();
   const [showModal, setShowModal] = useState(false);
@@ -60,13 +62,13 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       : "";
   const metaChips = !internal
     ? ([
-        cityCountryLabel && { label: "Location", value: cityCountryLabel },
-        workMode && { label: "Work mode", value: workMode },
-        seniorityLabel && { label: "Seniority", value: seniorityLabel },
-        postedLabel && { label: "Posted", value: postedLabel },
-        job?.experienceMin != null && { label: "Experience", value: job.experienceMax != null && job.experienceMax !== job.experienceMin ? `${job.experienceMin}-${job.experienceMax} years` : `${job.experienceMin}+ years` },
-        (job?.repostCount || 0) > 0 && { label: "Listed", value: `re-listed ${job.repostCount} time${job.repostCount === 1 ? "" : "s"}` },
-        sourceLabel && { label: "Source", value: sourceLabel },
+        cityCountryLabel && { label: t("job.location"), value: cityCountryLabel },
+        workMode && { label: t("job.workMode"), value: t(`mode.${workMode}` as any) },
+        seniorityLabel && { label: t("job.seniority"), value: t(`level.${seniorityLabel}` as any) },
+        postedLabel && { label: t("job.posted"), value: postedLabel },
+        job?.experienceMin != null && { label: t("job.experience"), value: job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("job.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("job.years", { n: job.experienceMin }) },
+        (job?.repostCount || 0) > 0 && { label: t("job.listed"), value: job.repostCount === 1 ? t("job.relistedOne") : t("job.relisted", { n: job.repostCount }) },
+        sourceLabel && { label: t("job.source"), value: sourceLabel },
       ].filter(Boolean) as { label: string; value: string }[])
     : [];
   const techTags: string[] = !internal && Array.isArray(job?.tech) ? job.tech : [];
@@ -161,7 +163,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         {(metaChips.length > 0 || internalLocation || typeof job?.matchScore === "number") && (
           <div className="mt-4 flex flex-wrap gap-2">
             {typeof job?.matchScore === "number" && (
-              <span className="jm-chip jm-chip-teal">{job.matchScore}% התאמה</span>
+              <span className="jm-chip jm-chip-teal">{t("job.match", { score: job.matchScore })}</span>
             )}
             {internalLocation && (
               <span className="jm-chip" title="Location">
@@ -178,9 +180,9 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
 
         {closed && (
           <div className="mt-5 jm-alert bg-canvas text-ink-600 border-line" role="status" dir="rtl">
-            <span className="font-semibold text-navy">המשרה נסגרה.</span> התיאור נשאר כאן לעיון; אפשר לחפש משרות דומות ב
+            <span className="font-semibold text-navy">{t("job.closed")}</span> {t("job.closedText")}
             <Link href={companyName ? `/?company=${encodeURIComponent(companyName)}` : "/"} className="underline underline-offset-2 ms-1">
-              {companyName || "הפיד"}
+              {companyName || t("job.feed")}
             </Link>
             .
           </div>
@@ -194,7 +196,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
                 className="jm-btn jm-btn-accent hidden lg:inline-flex"
                 disabled={submitting}
               >
-                Apply
+                {t("job.apply")}
               </button>
             )}
             {jobKey && (
@@ -265,8 +267,8 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px] items-start">
         <div className="min-w-0 space-y-6">
           {(requirementList.length > 0 || techTags.length > 0) && (
-            <section className="jm-card p-5 sm:p-6" aria-label="At a glance">
-              <h3 className="jm-h2 mb-3">At a glance</h3>
+            <section className="jm-card p-5 sm:p-6" aria-label={t("job.glance")}>
+              <h3 className="jm-h2 mb-3">{t("job.glance")}</h3>
               {requirementList.length > 0 && (
                 <ul className="list-disc ps-5 space-y-1 text-ink-600 leading-relaxed marker:text-teal" dir="auto">
                   {requirementList.map((r, i) => (
@@ -276,8 +278,8 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
               )}
               {techTags.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${requirementList.length ? "mt-4" : ""}`} dir="ltr">
-                  {techTags.map((t) => (
-                    <Link key={t} href={`/?tech=${encodeURIComponent(t)}`} className="jm-chip hover:bg-canvas" title={`More postings that mention ${t}`}>{t}</Link>
+                  {techTags.map((tag) => (
+                    <Link key={tag} href={`/?tech=${encodeURIComponent(tag)}`} className="jm-chip hover:bg-canvas" title={t("job.techMore", { tech: tag })}>{tag}</Link>
                   ))}
                 </div>
               )}
@@ -296,7 +298,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
 
           {qualifications.length > 0 && (
             <section className="jm-card p-5 sm:p-6">
-              <h3 className="jm-h2 mb-4">{internal ? "Qualifications" : "Skills"}</h3>
+              <h3 className="jm-h2 mb-4">{internal ? t("job.qualifications") : t("job.skills")}</h3>
               {internal ? (
                 <ol className="list-decimal ps-5 space-y-1 text-ink-600 leading-relaxed marker:text-teal">
                   {qualifications.map((q: string, i: number) => (

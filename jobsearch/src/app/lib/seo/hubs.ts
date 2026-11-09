@@ -22,7 +22,17 @@ const SELECT = "job company city country remote logoUrl companyDomain firstSeenA
 const LIST = 60;
 const HUB_TTL = ttl(10 * 60_000);
 
+const EMPTY: HubData = { total: 0, juniorCount: 0, jobs: [], cities: [], tech: [], companies: 0 };
+
+/** Never throws: a hub page renders (empty) even when the database is unreachable at build time. */
 async function hubFor(match: Record<string, unknown>, key: string): Promise<HubData> {
+  return hubForOrThrow(match, key).catch((e) => {
+    console.warn(`[hubs] ${key}: ${(e as Error)?.message}`);
+    return EMPTY;
+  });
+}
+
+async function hubForOrThrow(match: Record<string, unknown>, key: string): Promise<HubData> {
   return memo(`hub:${key}`, HUB_TTL, async () => {
     await connectToDatabase();
     const filter = { ...OPEN_JOBS, ...match };
@@ -62,6 +72,10 @@ export const cityHub = (city: string) =>
 
 /** The cities worth a hub page: the most common ones in the open catalogue. */
 export async function topCities(limit = 25): Promise<{ city: string; n: number }[]> {
+  return topCitiesOrThrow(limit).catch(() => []);
+}
+
+async function topCitiesOrThrow(limit: number): Promise<{ city: string; n: number }[]> {
   return memo(`hub:cities:${limit}`, HUB_TTL, async () => {
     await connectToDatabase();
     const rows: any[] = await ExternalJobs.aggregate([{ $match: { ...OPEN_JOBS, country: "Israel", city: { $nin: ["", null, "Unknown"] } } }, { $group: { _id: "$city", n: { $sum: 1 } } }, { $sort: { n: -1 } }, { $limit: limit }]);
