@@ -49,6 +49,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const timeTitle = posted ? `${job.postedAt ? "Posted" : "First seen"} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   const why = (job as any).why as string | undefined;
   const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
+  // Years of experience required, read from the description — more honest than the title.
+  const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? `${job.experienceMin}-${job.experienceMax} yrs` : `${job.experienceMin}+ yrs`) : "";
+  const techChips = (job.tech || []).slice(0, 3);
+  const reposted = (job.repostCount || 0) > 0;
 
   return (
     <motion.article
@@ -90,6 +94,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           </span>
         )}
         {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{level}</span>}
+        {years && <span className="jm-chip shrink-0" title="Years of experience required (from the description)">{years}</span>}
         {time && (
           <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">
             <Clock className="h-3 w-3" />
@@ -97,6 +102,15 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           </time>
         )}
       </div>
+
+      {(techChips.length > 0 || reposted) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+          {techChips.map((t) => (
+            <span key={t} className="rounded-full border border-line bg-canvas px-2 py-0.5 text-ink-600" dir="ltr">{t}</span>
+          ))}
+          {reposted && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700" title="This posting was closed and listed again">Reposted</span>}
+        </div>
+      )}
 
       {/* Two lines: why it fits (reranked) or the posting's own words */}
       {why ? (

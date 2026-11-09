@@ -137,6 +137,25 @@ describe("GET /api/jobs/search", () => {
     expect(body.total).toBe(2); // the count honours the window too
   });
 
+  it("exp= and tech= filter on the structured fields; 0-2 also admits junior titles without a stated number; facets list both", async () => {
+    await ExternalJobs.insertMany([
+      ext({ job: "Quartz Backend Developer", description: "Requirements:\n• 2+ years of experience with Python and Kafka", experienceMin: 2, tech: ["Python", "Kafka"], enrichedAt: new Date() }),
+      ext({ job: "Quartz Senior Backend Developer", description: "6+ years of experience with Java", experienceMin: 6, tech: ["Java"], enrichedAt: new Date() }),
+      ext({ job: "Quartz Junior QA Engineer", description: "Join us", enrichedAt: new Date() }), // no years stated, junior title
+      ext({ job: "Quartz Account Executive", description: "Sales", enrichedAt: new Date() }),
+    ]);
+    const titles = async (qs: string) => ((await (await searchGET(new NextRequest(`http://localhost/api/jobs/search?q=quartz${qs}`))).json()).jobs as any[]).map((j) => j.job).sort();
+    expect(await titles("&exp=0-2")).toEqual(["Quartz Backend Developer", "Quartz Junior QA Engineer"]);
+    expect(await titles("&exp=5-10")).toEqual(["Quartz Senior Backend Developer"]);
+    expect(await titles("&tech=Kafka")).toEqual(["Quartz Backend Developer"]);
+    expect(await titles("&tech=Java,Kafka")).toEqual(["Quartz Backend Developer", "Quartz Senior Backend Developer"]);
+    expect(await titles("&exp=0-2&tech=Java")).toEqual([]);
+    const facets = await (await facetsGET()).json();
+    expect(facets.tech).toEqual(expect.arrayContaining(["Python", "Kafka", "Java"]));
+    expect(facets.experience.map((b: any) => b.key)).toEqual(["0-2", "3-5", "5-10", "10+"]);
+    await ExternalJobs.deleteMany({ job: /^Quartz/ }); // the paging test below counts the whole fixture set
+  });
+
   it("is not personalised without a session", async () => {
     const { body } = await call("q=react");
     expect(body.personalized).toBe(false);

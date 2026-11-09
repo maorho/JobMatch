@@ -6,6 +6,15 @@ import { getLogoUrl, resolveLogoDomain } from "./logo";
 import { isIsraelOrRemote } from "./locationFilter";
 import { NormalizedPosting, toPartialPostings } from "./types";
 import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
+import { enrich, titleKey } from "@/app/lib/jobs/enrich";
+
+/** A posting that closed this long ago and comes back under a new id is the same posting again (a repost). */
+const REPOST_WINDOW_MS = 180 * 24 * 3600_000;
+
+function repostFields(prior: any): Record<string, unknown> {
+  if (!prior) return {};
+  return { repostOf: prior._id, repostCount: (Number(prior.repostCount) || 0) + 1, originalFirstSeenAt: prior.originalFirstSeenAt || prior.firstSeenAt };
+}
 
 /**
  * Canonical city/country/remote for a posting (location agent, rules stage).
@@ -246,6 +255,17 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
           // company name and logo come from each posting; ATS sources use the
           // configured company + domain.
           const isAggregator = src.atsType === "serpapi";
+          // Reposts: the same title at this source that was soft-closed recently. The new document points at
+          // the original and inherits its first-seen date, so a monthly re-listing never looks brand new.
+          const keys = Array.from(new Set(fresh.map((p) => titleKey(p.title)).filter(Boolean)));
+          const priors: any[] = keys.length
+            ? await ExternalJobs.find({ companySource: src._id, titleKey: { $in: keys }, active: false, closedAt: { $gte: new Date(Date.now() - REPOST_WINDOW_MS) } })
+                .select("titleKey firstSeenAt originalFirstSeenAt repostCount closedAt")
+                .sort({ closedAt: -1 })
+                .lean()
+            : [];
+          const priorByKey = new Map<string, any>();
+          for (const r of priors) if (!priorByKey.has(r.titleKey)) priorByKey.set(r.titleKey, r);
           const docs = fresh.map((p: NormalizedPosting) => {
             const link =
               p.applyUrl || `https://jobs.local/${src.atsType}/${p.sourceJobId}`;
@@ -274,6 +294,10 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
               active: true,
               companyDomain: domain,
               logoUrl: getLogoUrl(domain),
+              ...enrich(p.title, p.description),
+              enrichedAt: new Date(),
+              titleKey: titleKey(p.title),
+              ...repostFields(priorByKey.get(titleKey(p.title))),
             };
           });
 
@@ -325,6 +349,9 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
                     $set: {
                       job: p.title,
                       description: p.description,
+                      ...enrich(p.title, p.description),
+                      enrichedAt: new Date(),
+                      titleKey: titleKey(p.title),
                       seniority: p.seniority || [],
                       ...(p.postedAt ? { postedAt: p.postedAt } : {}),
                       ...(p.applyUrl ? { applyUrl: p.applyUrl, url: p.applyUrl, finalUrl: p.applyUrl } : {}),

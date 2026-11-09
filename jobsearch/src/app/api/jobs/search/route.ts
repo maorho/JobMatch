@@ -1,4 +1,5 @@
 import { parsePostedDays, postedSince, postedWithinFilter } from "@/app/lib/jobs/posted";
+import { parseExperienceBuckets, experienceFilter, techFilter } from "@/app/lib/jobs/structured";
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
@@ -113,6 +114,8 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
   const jobType = list(sp, "jobType");
   const seniority = list(sp, "seniority");
   const postedDays = parsePostedDays(sp.get("posted"));
+  const exp = parseExperienceBuckets(list(sp, "exp"));
+  const tech = list(sp, "tech").slice(0, 10);
   const since = postedDays ? postedSince(postedDays) : null;
   const rawPage = parseInt(sp.get("page") || "1", 10);
   const rawLimit = parseInt(sp.get("limit") || "48", 10);
@@ -138,7 +141,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     // Closed postings never appear in search results or totals.
     const extAnd: object[] = [OPEN_JOBS];
     // Everything that shapes the external filter, for the shared count cache.
-    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays })}`;
+    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays, exp, tech })}`;
     // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
     // falls back to the every-word regex when Atlas Search isn't available.
     let rankedIds: string[] | null = null;
@@ -157,11 +160,13 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     if (jobType.length) extAnd.push(externalWorkModeFilter(jobType));
     if (seniority.length) extAnd.push(seniorityFilter(seniority));
     if (since) extAnd.push(postedWithinFilter(since));
+    if (exp.length) extAnd.push(experienceFilter(exp));
+    if (tech.length) extAnd.push(techFilter(tech));
     const extFilter = { $and: extAnd };
 
     // ---------- internal postings: few, all returned on page 1 ----------
     let internalJobs: any[] = [];
-    if (page === 1) {
+    if (page === 1 && !exp.length && !tech.length) {
       const intAnd: object[] = [];
       const intText = textMatch(["job", "description", "city", "country"]);
       if (intText) intAnd.push(intText);

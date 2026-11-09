@@ -1,4 +1,5 @@
 import { postedWithin } from "@/app/lib/jobs/posted";
+import { matchesStructured } from "@/app/lib/jobs/structured";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
@@ -43,6 +44,13 @@ export type RankedJob = {
   seniority?: string;
   /** JobMatch's own "interview likelihood" (lib/matcher/likelihood.ts), 0–100. */
   likelihood?: Likelihood;
+  /** Structured fields (lib/jobs/enrich.ts). */
+  experienceMin?: number | null;
+  experienceMax?: number | null;
+  tech?: string[];
+  /** How many times this posting was re-listed after closing (0 = first listing). */
+  repostCount?: number;
+  originalFirstSeenAt?: Date;
 };
 
 export type RankOptions = {
@@ -104,12 +112,13 @@ const STALE_FEED_MAX_AGE_MS = 60 * 60_000;
 const rankKey = (profile: CandidateProfile, opts: RankOptions, wantRerank: boolean, minScore: number) =>
   `rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
 
-/** True when the only thing asked beyond the plain feed is "posted within": the view can be cut from the default list. */
-function isDateOnlyView(opts: RankOptions, minScore: number): Date | null {
+/** True when the only things asked beyond the plain feed are the cheap view filters (posted within / experience / tech). */
+function isDateOnlyView(opts: RankOptions, minScore: number): boolean {
   const f = opts.filter;
-  if (!f?.postedAfter || opts.query || opts.language || minScore !== 0) return null;
-  const others = Object.entries(f).filter(([k, v]) => k !== "postedAfter" && v !== undefined && !(Array.isArray(v) && v.length === 0));
-  return others.length ? null : f.postedAfter;
+  if (!f || opts.query || opts.language || minScore !== 0) return false;
+  const viewKeys = new Set(["postedAfter", "experienceBuckets", "tech"]);
+  const entries = Object.entries(f).filter(([, v]) => v !== undefined && !(Array.isArray(v) && v.length === 0));
+  return entries.length > 0 && entries.every(([k]) => viewKeys.has(k));
 }
 
 /** Rank the catalog for a profile (vector + optional query), with level/freshness signals and optional LLM rerank. */
@@ -218,7 +227,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
 
   // Light projection for the whole pool (descriptions are ~10KB each; only the rerank head needs them).
   // Soft-closed postings fall out here, whichever index (Atlas or the fallback) recalled them.
-  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority").lean();
+  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority experienceMin experienceMax tech repostCount originalFirstSeenAt").lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
   const ranked: RankedJob[] = ids
@@ -226,6 +235,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       const d = byId.get(id);
       if (!d) return null;
       if (opts.filter?.postedAfter && !postedWithin(d, opts.filter.postedAfter)) return null; // the index filtered a superset
+      if ((opts.filter?.tech?.length || opts.filter?.experienceBuckets?.length) && !matchesStructured(d, { tech: opts.filter.tech, experienceBuckets: opts.filter.experienceBuckets })) return null;
       const cosine = cosineOf.get(id);
       const textual = textOf.get(id);
       const lf = levelFit(profile.level, d.job, d.seniority);
@@ -234,8 +244,9 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       const lexical = textual !== undefined ? 50 + 50 * textual : undefined;
       const base = semantic !== undefined && lexical !== undefined ? 0.6 * semantic + 0.4 * lexical : semantic ?? lexical ?? 0;
       // Level is decisive: a senior role for a junior loses up to ~45 points; freshness adds a few.
-      const matchScore = Math.max(0, Math.min(100, Math.round(base * (0.55 + 0.45 * lf) + freshnessBoost(d.firstSeenAt) * 100)));
-      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority } as RankedJob;
+      // A repost is as old as its first listing: the freshness boost goes to new postings, not re-listed ones.
+      const matchScore = Math.max(0, Math.min(100, Math.round(base * (0.55 + 0.45 * lf) + freshnessBoost(d.originalFirstSeenAt || d.firstSeenAt) * 100)));
+      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority, experienceMin: d.experienceMin ?? null, experienceMax: d.experienceMax ?? null, tech: d.tech || [], repostCount: d.repostCount || 0, originalFirstSeenAt: d.originalFirstSeenAt } as RankedJob;
     })
     .filter(Boolean) as RankedJob[];
   // "What I'm looking for" is a contract, not a hint: wrong role family, wrong seniority band or wrong place → out.

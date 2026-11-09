@@ -64,9 +64,13 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         workMode && { label: "Work mode", value: workMode },
         seniorityLabel && { label: "Seniority", value: seniorityLabel },
         postedLabel && { label: "Posted", value: postedLabel },
+        job?.experienceMin != null && { label: "Experience", value: job.experienceMax != null && job.experienceMax !== job.experienceMin ? `${job.experienceMin}-${job.experienceMax} years` : `${job.experienceMin}+ years` },
+        (job?.repostCount || 0) > 0 && { label: "Listed", value: `re-listed ${job.repostCount} time${job.repostCount === 1 ? "" : "s"}` },
         sourceLabel && { label: "Source", value: sourceLabel },
       ].filter(Boolean) as { label: string; value: string }[])
     : [];
+  const techTags: string[] = !internal && Array.isArray(job?.tech) ? job.tech : [];
+  const requirementList: string[] = !internal && Array.isArray(job?.requirements) ? job.requirements : [];
 
   // Internal postings only carry a free-text location.
   const internalLocation = internal
@@ -260,6 +264,26 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       {/* Body: description + sidebar */}
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px] items-start">
         <div className="min-w-0 space-y-6">
+          {(requirementList.length > 0 || techTags.length > 0) && (
+            <section className="jm-card p-5 sm:p-6" aria-label="At a glance">
+              <h3 className="jm-h2 mb-3">At a glance</h3>
+              {requirementList.length > 0 && (
+                <ul className="list-disc ps-5 space-y-1 text-ink-600 leading-relaxed marker:text-teal" dir="auto">
+                  {requirementList.map((r, i) => (
+                    <li key={`${i}-${r.slice(0, 20)}`}>{r}</li>
+                  ))}
+                </ul>
+              )}
+              {techTags.length > 0 && (
+                <div className={`flex flex-wrap gap-2 ${requirementList.length ? "mt-4" : ""}`} dir="ltr">
+                  {techTags.map((t) => (
+                    <Link key={t} href={`/?tech=${encodeURIComponent(t)}`} className="jm-chip hover:bg-canvas" title={`More postings that mention ${t}`}>{t}</Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {job?.description && (
             <section className="jm-card p-5 sm:p-6">
               {internal ? (

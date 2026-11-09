@@ -1,4 +1,5 @@
 import { postedWithinFilter } from "@/app/lib/jobs/posted";
+import { experienceFilter, techFilter } from "@/app/lib/jobs/structured";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { cosineSimilarity } from "./cosine";
@@ -58,7 +59,7 @@ function markFailed(e: unknown) {
 }
 
 export type VectorHit = { _id: string; score: number };
-export type VectorFilter = { company?: string[]; country?: string[]; city?: string[]; remote?: boolean; firstSeenAfter?: Date; /** "posted within": postedAt, or firstSeenAt when the ATS gave no date (lib/jobs/posted.ts) */ postedAfter?: Date };
+export type VectorFilter = { company?: string[]; country?: string[]; city?: string[]; remote?: boolean; firstSeenAfter?: Date; /** "posted within": postedAt, or firstSeenAt when the ATS gave no date (lib/jobs/posted.ts) */ postedAfter?: Date; /** structured filters (lib/jobs/structured.ts), applied on the loaded documents by rankAll */ experienceBuckets?: string[]; tech?: string[] };
 
 function atlasFilter(f?: VectorFilter): Record<string, unknown> | undefined {
   const and: Record<string, unknown>[] = [];
@@ -82,6 +83,8 @@ function mongoFilter(f?: VectorFilter): Record<string, unknown> {
   if (f?.remote !== undefined) q.remote = f.remote;
   if (f?.firstSeenAfter) q.firstSeenAt = { $gt: f.firstSeenAfter };
   if (f?.postedAfter) Object.assign(q, postedWithinFilter(f.postedAfter));
+  if (f?.tech?.length) Object.assign(q, techFilter(f.tech));
+  if (f?.experienceBuckets?.length) q.$and = [...((q.$and as unknown[]) || []), experienceFilter(f.experienceBuckets)];
   return q;
 }
 

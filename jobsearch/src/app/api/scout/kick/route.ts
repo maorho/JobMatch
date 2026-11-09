@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { requireCron } from "@/app/lib/cron/requireCron";
 import { kickScoutIfStale, SCOUT_STALE_MIN } from "@/app/lib/scout/selfDrive";
 import { runDiscoveryTick, discoveryTickEnabled } from "@/app/lib/scout/discoverTick";
+import { runEnrichBackfill } from "@/app/lib/jobs/enrichBackfill";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +31,11 @@ export async function GET(req: NextRequest) {
   const result = await kickScoutIfStale(staleMin);
   const discovery = flagOn(req, "discover") && discoveryTickEnabled() ? "scheduled" : "off";
   if (discovery === "scheduled") {
-    after(() =>
-      runDiscoveryTick({ deadline: startedAt + DISCOVERY_BUDGET_MS }).catch((e) => console.warn("[discover] tick failed:", (e as Error)?.message))
-    );
+    after(async () => {
+      // Structured fields for postings that arrived without them (rules only, seconds), then the discovery batch.
+      if (process.env.NODE_ENV !== "test") await runEnrichBackfill({ limit: 1000 }).catch((e) => console.warn("[enrich] backfill failed:", (e as Error)?.message));
+      await runDiscoveryTick({ deadline: startedAt + DISCOVERY_BUDGET_MS }).catch((e) => console.warn("[discover] tick failed:", (e as Error)?.message));
+    });
   }
   return NextResponse.json({ result, staleMin, discovery, at: new Date().toISOString() });
 }

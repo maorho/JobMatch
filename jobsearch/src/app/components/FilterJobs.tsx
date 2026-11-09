@@ -41,9 +41,11 @@ interface FilterRenderProps {
   /** Lists longer than this get a search box and a scroll area. */
   searchable?: boolean;
   defaultOpen?: boolean;
+  /** Display text per option value (values stay as the API expects them). */
+  labels?: Record<string, string>;
 }
 
-const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, setSelected, searchable, defaultOpen = true }) => {
+const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, setSelected, searchable, defaultOpen = true, labels }) => {
   const [isOpen, setIsOpen] = React.useState<boolean>(defaultOpen);
   const [q, setQ] = React.useState("");
   const toggleElement = (value: string) => {
@@ -67,7 +69,7 @@ const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, s
         <span className="font-semibold text-navy text-[15px]">
           {title}
           {selected.length > 0 && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0">{selected.length}</span>}
-          {!isOpen && selected.length > 0 && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{selected.join(", ")}</span>}
+          {!isOpen && selected.length > 0 && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{selected.map((v) => labels?.[v] ?? v).join(", ")}</span>}
         </span>
         <ChevronDown className={`h-4 w-4 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
@@ -93,8 +95,8 @@ const FilterRender: React.FC<FilterRenderProps> = ({ title, options, selected, s
                   onChange={() => toggleElement(value)}
                   className="h-4 w-4 accent-teal rounded"
                 />
-                <span className="truncate" title={value}>
-                  {value}
+                <span className="truncate" title={labels?.[value] ?? value}>
+                  {labels?.[value] ?? value}
                 </span>
               </label>
             ))}
@@ -112,6 +114,10 @@ export interface JobFacets {
   countries: string[];
   jobTypes: string[];
   seniority: string[];
+  /** Technologies named in open postings, most common first (lib/jobs/enrich.ts). */
+  tech?: string[];
+  /** Years-of-experience buckets on the required minimum. */
+  experience?: { key: string; label: string }[];
 }
 
 interface JobFiltersProps {
@@ -126,6 +132,11 @@ interface JobFiltersProps {
   /** "Posted within" in days ("" = any time); see lib/jobs/posted.ts. */
   posted: string;
   setPosted: (v: string) => void;
+  /** Experience buckets ("0-2", "3-5", "5-10", "10+") and technologies, from lib/jobs/enrich.ts. */
+  experience: string[];
+  setExperience: React.Dispatch<React.SetStateAction<string[]>>;
+  tech: string[];
+  setTech: React.Dispatch<React.SetStateAction<string[]>>;
   setCompany: React.Dispatch<React.SetStateAction<string[]>>;
   setCountry: React.Dispatch<React.SetStateAction<string[]>>;
   setCity: React.Dispatch<React.SetStateAction<string[]>>;
@@ -143,6 +154,10 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
   seniority,
   posted,
   setPosted,
+  experience,
+  setExperience,
+  tech,
+  setTech,
   setCompany,
   setCountry,
   setCity,
@@ -173,6 +188,10 @@ export const JobsFilters: React.FC<JobFiltersProps> = ({
     <div className="w-full">
       {/* Posted within: the freshest postings first, still ranked by match */}
       <ChoiceRender title="Posted" options={POSTED_WINDOWS.map((w) => ({ value: String(w.days), label: w.label }))} selected={posted} setSelected={setPosted} anyLabel="Any time" />
+      {/* Years of experience required, read from the description (not the title) */}
+      <FilterRender title="Experience" options={(facets?.experience ?? []).map((b) => b.key)} labels={Object.fromEntries((facets?.experience ?? []).map((b) => [b.key, b.label]))} selected={experience} setSelected={setExperience} defaultOpen={false} />
+      {/* Technologies named in the posting */}
+      <FilterRender title="Technologies" options={facets?.tech ?? []} selected={tech} setSelected={setTech} searchable defaultOpen={false} />
       {/* Seniority (Intern / Junior / Mid / Senior) */}
       <FilterRender title="Seniority" options={uniqueSeniority} selected={seniority} setSelected={setSeniority} defaultOpen={false} />
       {/* Work mode (On Site / Hybrid / Remote) */}

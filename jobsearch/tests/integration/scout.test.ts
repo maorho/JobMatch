@@ -65,6 +65,29 @@ describe("runScout ingestion", () => {
     expect(await ExternalJobs.countDocuments()).toBe(0);
   });
 
+  it("writes the structured fields on ingest, and a posting re-listed after closing points at the original", async () => {
+    board.acme = [{ ...gh(1, "Backend Engineer (Java)", "Tel Aviv, Israel"), content: "<p>Requirements:</p><ul><li>3+ years of experience with Java and Kafka</li><li>BSc</li></ul><p>Nice to have:</p><ul><li>Go</li></ul>" }];
+    await runScout();
+    const first: any = await ExternalJobs.findOne({ sourceJobId: "1" }).lean();
+    expect(first).toMatchObject({ experienceMin: 3, experienceMax: null, titleKey: "backend engineer" }); // bracketed suffixes drop out of the key
+    expect(first.tech).toEqual(expect.arrayContaining(["Java", "Kafka"]));
+    expect(first.requirements).toEqual(["3+ years of experience with Java and Kafka", "BSc"]);
+    expect(first.enrichedAt).toBeInstanceOf(Date);
+    expect(first.repostOf).toBeUndefined();
+
+    // The board drops it (soft-closed; a non-empty board, since an empty fetch never closes anything), then lists
+    // the same title again under a new id: a repost, not a new job.
+    board.acme = [gh(2, "Office Manager", "Tel Aviv, Israel")];
+    await runScout();
+    expect(((await ExternalJobs.findOne({ sourceJobId: "1" }).lean()) as any).active).toBe(false);
+    board.acme = [{ ...gh(7, "Backend Engineer (Java)", "Tel Aviv, Israel"), content: "<p>3+ years of experience</p>" }];
+    await runScout();
+    const again: any = await ExternalJobs.findOne({ sourceJobId: "7" }).lean();
+    expect(String(again.repostOf)).toBe(String(first._id));
+    expect(again.repostCount).toBe(1);
+    expect(new Date(again.originalFirstSeenAt).getTime()).toBe(new Date(first.firstSeenAt).getTime());
+  });
+
   it("records a source error without stopping the others", async () => {
     delete board.acme; // 404
     const r = await runScout();

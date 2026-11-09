@@ -110,7 +110,41 @@ const ExternalJobSchema = new mongoose.Schema({
     // go through this field instead.
     embeddedAt:{
         type: Date,
-    }
+    },
+    // Structured fields from the text (lib/jobs/enrich.ts): years of experience
+    // required, technologies named, and the requirements list. Rules, no model.
+    experienceMin:{
+        type: Number,
+    },
+    experienceMax:{
+        type: Number,
+    },
+    tech:{
+        type: [String],
+        default: undefined,
+    },
+    requirements:{
+        type: [String],
+        default: undefined,
+    },
+    enrichedAt:{
+        type: Date,
+    },
+    // Repost detection: a normalised title key per company source; a posting that
+    // reappears under a new id after the old one closed points at the original.
+    titleKey:{
+        type: String,
+    },
+    repostOf:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ExternalJobs",
+    },
+    repostCount:{
+        type: Number,
+    },
+    originalFirstSeenAt:{
+        type: Date,
+    },
 },{timestamps:true});
 
 /** Filter for everything a user may still apply to. `$ne:false` so legacy docs without the field stay open. */
@@ -147,5 +181,10 @@ ExternalJobSchema.index({ remote: 1 });
 ExternalJobSchema.index({ active: 1, company: 1 });
 ExternalJobSchema.index({ active: 1, city: 1 });
 ExternalJobSchema.index({ active: 1, country: 1 });
+// Structured filters (experience / technology) and the repost lookup.
+ExternalJobSchema.index({ active: 1, experienceMin: 1 });
+ExternalJobSchema.index({ active: 1, tech: 1 });
+ExternalJobSchema.index({ enrichedAt: 1 });
+ExternalJobSchema.index({ companySource: 1, titleKey: 1 });
 
 export default mongoose.models.ExternalJobs || mongoose.model('ExternalJobs',ExternalJobSchema);

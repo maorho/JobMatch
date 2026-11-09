@@ -4,6 +4,7 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company"; // registers the model for populate()
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { SENIORITY_LEVELS, WORK_MODES } from "@/app/lib/jobTaxonomy";
+import { EXPERIENCE_BUCKETS } from "@/app/lib/jobs/enrich";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
 
 export const runtime = "nodejs";
@@ -43,7 +44,7 @@ async function computeFacets() {
   {
     await connectToDatabase();
 
-    const [extCompanies, extCities, extCountries, internal] = await Promise.all([
+    const [extCompanies, extCities, extCountries, internal, techTop] = await Promise.all([
       // Only open postings: a closed company shouldn't stay in the dropdown with zero results.
       // Served by the {active, field} compound indexes on ExternalJobs. Kept as
       // $ne:false (not active:true): it's the same OPEN_JOBS every reader uses,
@@ -55,6 +56,8 @@ async function computeFacets() {
       Job.find({}, "company city country")
         .populate({ path: "company", model: Company, select: "companyName" })
         .lean(),
+      // Technologies named in open postings, most common first (the filter list).
+      ExternalJobs.aggregate([{ $match: { ...OPEN_JOBS, "tech.0": { $exists: true } } }, { $unwind: "$tech" }, { $group: { _id: "$tech", n: { $sum: 1 } } }, { $sort: { n: -1, _id: 1 } }, { $limit: 80 }]),
     ]);
 
     const internalCompanies = internal.map((j: any) => j.company?.companyName);
@@ -67,6 +70,8 @@ async function computeFacets() {
       countries: clean([...extCountries, ...internalCountries], { location: true }),
       jobTypes: [...WORK_MODES],
       seniority: [...SENIORITY_LEVELS],
+      tech: (techTop as any[]).map((t) => String(t._id)),
+      experience: EXPERIENCE_BUCKETS.map((b) => ({ key: b.key, label: b.label })),
     };
   }
 }

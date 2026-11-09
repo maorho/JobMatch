@@ -5,6 +5,7 @@ import { PRIVATE_CACHE, memo, ttl } from "@/app/lib/cache";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { parsePostedDays, postedSince } from "@/app/lib/jobs/posted";
+import { parseExperienceBuckets } from "@/app/lib/jobs/structured";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +34,10 @@ export async function GET(req: NextRequest) {
   try {
     // One ranked list per user (cached briefly, LLM-reranked head cached per résumé version); each page is a slice of it.
     const postedDays = parsePostedDays(sp.get("posted"));
-    const { jobs: matches, total } = await rankForUser(userId, { limit, skip, ...(postedDays ? { filter: { postedAfter: postedSince(postedDays) } } : {}) });
+    const experienceBuckets = parseExperienceBuckets(sp.getAll("exp").flatMap((v) => v.split(",")).map((v) => v.trim()));
+    const tech = Array.from(new Set(sp.getAll("tech").flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean))).slice(0, 10);
+    const filter = { ...(postedDays ? { postedAfter: postedSince(postedDays) } : {}), ...(experienceBuckets.length ? { experienceBuckets } : {}), ...(tech.length ? { tech } : {}) };
+    const { jobs: matches, total } = await rankForUser(userId, { limit, skip, ...(Object.keys(filter).length ? { filter } : {}) });
 
     if (matches.length === 0 && page === 1) {
       // No profile vector (or no embedded jobs) → let the client use the normal feed.
