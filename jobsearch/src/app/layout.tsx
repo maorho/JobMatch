@@ -27,6 +27,8 @@ const serif = localFont({
 });
 
 export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "JobMatch" },
   // siteUrl() is "" in production without APP_URL (env.ts refuses to boot then, but `next build`
   // must not crash on it): new URL("") throws and fails the whole build.
   ...(siteUrl() ? { metadataBase: new URL(siteUrl()) } : {}),

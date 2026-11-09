@@ -6,6 +6,7 @@ import Footer from "./Footer";
 import RevealObserver from "./RevealObserver";
 import BackgroundAurora from "./BackgroundAurora";
 import AccessibilityMenu from "./AccessibilityMenu";
+import PwaRegister from "./PwaRegister";
 
 export default function LayoutWrapper({
   children,
@@ -24,6 +25,7 @@ export default function LayoutWrapper({
       <main id="main-content" tabIndex={-1} className="flex-1 w-full mx-auto outline-none">{children}</main>
       {!hideFooterAndHeader && <Footer />}
       <AccessibilityMenu />
+      <PwaRegister />
     </>
   );
 }

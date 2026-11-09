@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import Notification, { type NotificationType } from "@/app/models/Notification";
 import { deliverToChannels } from "@/app/lib/messaging/channels";
+import { pushToUser } from "@/app/lib/push/webpush";
 
 export type NotifyPayload = {
   type: NotificationType;
@@ -33,8 +34,14 @@ export async function notify(userId: string | mongoose.Types.ObjectId, payload: 
       link: safeLink(payload.link),
       meta: payload.meta,
     });
-    // The same notification, on WhatsApp / Telegram when linked (awaited so cron ticks don't lose it, but it never throws).
-    if (payload.push !== false) await deliverToChannels(userId, { title: payload.title, body: payload.body, link: safeLink(payload.link), kind: payload.type === "job_match" ? "matches" : "updates" });
+    // The same notification, on WhatsApp / Telegram when linked and on the person's own devices (Web Push);
+    // awaited so cron ticks don't lose it, and neither ever throws.
+    if (payload.push !== false) {
+      await Promise.all([
+        deliverToChannels(userId, { title: payload.title, body: payload.body, link: safeLink(payload.link), kind: payload.type === "job_match" ? "matches" : "updates" }),
+        pushToUser(String(userId), { title: payload.title, body: payload.body, url: safeLink(payload.link) || "/notifications", tag: payload.type }),
+      ]);
+    }
     return doc;
   } catch (err) {
     console.warn("[notify] failed:", (err as Error)?.message);

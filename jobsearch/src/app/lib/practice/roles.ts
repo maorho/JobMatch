@@ -50,6 +50,11 @@ const ROLE_RE: Record<PracticeRole, RegExp> = {
   mobile: /\b(mobile|android|ios|kotlin|swift|react native|flutter)\b/gi,
 };
 
+/** The title pattern of one role family, as a fresh non-global RegExp (safe for Mongo `$regex` and repeated `.test`). */
+export function roleTitleRegex(role: PracticeRole): RegExp {
+  return new RegExp(ROLE_RE[role].source, "i");
+}
+
 /** Does a job title belong to one of these role families? (fullstack titles count for frontend and backend too.) */
 export function roleTitleMatches(title: string, roles: PracticeRole[]): boolean {
   const t = title || "";

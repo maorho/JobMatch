@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "JobMatch",
+  "short_name": "JobMatch",
+  "description": "משרות הייטק ישירות מדפי הקריירה של החברות, מדורגות לפי קורות החיים שלך.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#f7f8fb",
+  "theme_color": "#2f4ad6",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -33,6 +33,21 @@ const COLUMNS = [
   },
 ];
 
+/** The public hub pages: the entrances search engines send people to. */
+const HUBS = [
+  { href: "/jobs/role/backend", label: "משרות Backend" },
+  { href: "/jobs/role/frontend", label: "משרות Frontend" },
+  { href: "/jobs/role/fullstack", label: "משרות Full Stack" },
+  { href: "/jobs/role/data", label: "משרות Data ו-ML" },
+  { href: "/jobs/role/devops", label: "משרות DevOps" },
+  { href: "/jobs/role/qa", label: "משרות QA" },
+  { href: "/jobs/role/mobile", label: "משרות Mobile" },
+  { href: "/jobs/in/Tel%20Aviv", label: "משרות בתל אביב" },
+  { href: "/jobs/in/Haifa", label: "משרות בחיפה" },
+  { href: "/jobs/in/Jerusalem", label: "משרות בירושלים" },
+  { href: "/jobs/in/remote", label: "משרות מרחוק" },
+];
+
 const SOCIAL = [
   { href: "https://www.linkedin.com/in/maor-homri-a78665229/", label: "LinkedIn", Icon: Linkedin },
   { href: "https://www.github.com/maorho/JobMatch", label: "GitHub", Icon: Github },
@@ -82,6 +97,15 @@ function Footer() {
             </ul>
           </div>
         ))}
+      </div>
+      <div className="border-t border-line">
+        <nav className="jm-container py-5 flex flex-wrap gap-x-4 gap-y-2 text-sm" aria-label="משרות לפי תפקיד ומיקום" dir="rtl">
+          {HUBS.map((h) => (
+            <Link key={h.href} href={h.href} className="text-ink-600 hover:text-sky transition-colors">
+              {h.label}
+            </Link>
+          ))}
+        </nav>
       </div>
       <div className="border-t border-line">
         <div className="jm-container py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-ink-400">

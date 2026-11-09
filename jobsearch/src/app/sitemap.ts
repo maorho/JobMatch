@@ -5,6 +5,7 @@ import Job from "./models/Job";
 import { listArticles } from "./lib/content/articles";
 import { companiesWithQuestions } from "./lib/outcomes/questions";
 import { siteUrl } from "./lib/seo/site";
+import { HUB_ROLES, topCities } from "./lib/seo/hubs";
 
 export const revalidate = 3600;
 
@@ -23,7 +24,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/ContactUs`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
     { url: `${SITE_URL}/TermsOfConditions`, lastModified: now, changeFrequency: "yearly", priority: 0.1 },
   ];
+  for (const r of HUB_ROLES) entries.push({ url: `${SITE_URL}/jobs/role/${r}`, lastModified: now, changeFrequency: "hourly", priority: 0.9 });
+  entries.push({ url: `${SITE_URL}/jobs/in/remote`, lastModified: now, changeFrequency: "hourly", priority: 0.8 });
   try {
+    for (const c of await topCities(25)) entries.push({ url: `${SITE_URL}/jobs/in/${encodeURIComponent(c.city)}`, lastModified: now, changeFrequency: "hourly", priority: 0.8 });
     for (const a of await listArticles()) entries.push({ url: `${SITE_URL}/Articels/${a.slug}`, lastModified: new Date(a.date), changeFrequency: "monthly", priority: 0.6 });
     await connectToDatabase();
     const [external, internal]: [any[], any[]] = await Promise.all([

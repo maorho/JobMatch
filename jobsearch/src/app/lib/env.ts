@@ -105,6 +105,11 @@ export const envShape = z.object({
     CONTACT_TO_EMAIL: z.string().email().optional(),
     ALERT_EMAIL: z.string().email().optional(),
     // Messaging channels (optional): WhatsApp Cloud API and/or a Telegram bot.
+    // Web Push (VAPID): both keys or neither; the public one is also NEXT_PUBLIC_ for the browser.
+    VAPID_PUBLIC_KEY: z.string().min(40).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(20).optional(),
+    VAPID_SUBJECT: z.string().regex(/^mailto:|^https:\/\//).optional(),
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(40).optional(),
     WHATSAPP_TOKEN: z.string().min(1).optional(),
     WHATSAPP_PHONE_NUMBER_ID: z.string().min(1).optional(),
     WHATSAPP_DISPLAY_NUMBER: z.string().min(5).optional(),
@@ -218,6 +223,8 @@ export function checkEnv(source: EnvSource = process.env): EnvReport {
   if (derivedAppUrl) warn(`APP_URL unset on a Vercel preview: using ${derivedAppUrl}`);
 
   // 3. Optional features: "if you turn X on, you also need Y" — the feature self-disables without Y.
+  if (!!env.VAPID_PUBLIC_KEY !== !!env.VAPID_PRIVATE_KEY) warn("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together: browser push notifications are off");
+  if (env.VAPID_PUBLIC_KEY && env.NEXT_PUBLIC_VAPID_PUBLIC_KEY && env.VAPID_PUBLIC_KEY !== env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) warn("NEXT_PUBLIC_VAPID_PUBLIC_KEY differs from VAPID_PUBLIC_KEY: browsers will subscribe with the wrong key");
   if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_WEBHOOK_SECRET) warn("TELEGRAM_BOT_TOKEN is set without TELEGRAM_WEBHOOK_SECRET: the Telegram webhook refuses every update (503) until it is set");
   if (env.WHATSAPP_TOKEN && !env.WHATSAPP_APP_SECRET) warn("WHATSAPP_TOKEN is set without WHATSAPP_APP_SECRET: the WhatsApp webhook refuses every delivery (503) until it is set");
   if ((env.RESEND_API_KEY || env.SMTP_HOST) && !env.EMAIL_FROM) warn("RESEND_API_KEY/SMTP_HOST is set without EMAIL_FROM: mail goes out from a fallback sender (Resend's sandbox sender only reaches the account owner)");

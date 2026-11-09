@@ -11,6 +11,7 @@ import ChannelsCard from "../components/ChannelsCard";
 import SearchProfileCard from "../components/SearchProfileCard";
 import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
+import PushCard from "../components/PushCard";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string; privacy?: { excludeFromTraining?: boolean } };
 
@@ -154,6 +155,11 @@ export default function SettingsPage() {
         </div>
 
         <div id="messaging" className={card}>
+          <h2 className="jm-h2">🔔 התראות בדפדפן ובטלפון</h2>
+          <PushCard />
+        </div>
+
+        <div className={card}>
           <h2 className="jm-h2">💬 התאמות ועדכונים בוואטסאפ / טלגרם</h2>
           <ChannelsCard />
         </div>

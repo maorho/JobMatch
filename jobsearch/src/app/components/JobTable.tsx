@@ -11,6 +11,8 @@ import { EmptyState } from "./ui";
 import { useModalBehavior } from "./Dialog";
 import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf, POSTED_WINDOWS } from "../lib/jobTaxonomy";
+import PushCard from "./PushCard";
+import Link from "next/link";
 
 
 interface BaseJob {
@@ -148,6 +150,19 @@ function JobTable() {
 
   // Filter options for the WHOLE catalog (every company/city in the DB).
   const [facets, setFacets] = useState<JobFacets | null>(null);
+  // The landing page states live numbers (open jobs, companies, last poll), from a cached public route.
+  const [stats, setStats] = useState<{ jobs: number; companies: number; sources: number; newLast24h: number; lastPolledAt: string | null } | null>(null);
+  const [polledAgo, setPolledAgo] = useState<number | null>(null); // minutes since the last source poll, computed when the stats arrive
+  useEffect(() => {
+    fetch("/api/catalog/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (!s) return;
+        setStats(s);
+        setPolledAgo(s.lastPolledAt ? Math.max(0, Math.round((Date.now() - new Date(s.lastPolledAt).getTime()) / 60_000)) : null);
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     fetch("/api/jobs/facets")
       .then((r) => (r.ok ? r.json() : null))
@@ -434,14 +449,18 @@ function JobTable() {
         <div className="pointer-events-none absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" aria-hidden="true" />
         <div className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" aria-hidden="true" />
         <div className="relative max-w-3xl mx-auto text-center animate-rise">
-          <span className="jm-eyebrow">
-            {(catalogTotal || jobCount) > 0 ? `${(catalogTotal || jobCount).toLocaleString()} open positions · updated daily` : "Fresh openings every day"}
+          <span className="jm-eyebrow" dir="rtl">
+            {stats
+              ? `${(stats.jobs || catalogTotal || jobCount).toLocaleString()} משרות פתוחות · ${stats.companies.toLocaleString()} חברות · ${polledAgo !== null && polledAgo < 90 ? (polledAgo <= 1 ? "עודכן הרגע" : `עודכן לפני ${polledAgo} דק׳`) : "מתעדכן כל חצי שעה"}`
+              : (catalogTotal || jobCount) > 0
+                ? `${(catalogTotal || jobCount).toLocaleString()} משרות פתוחות · מתעדכן כל חצי שעה`
+                : "משרות חדשות כל חצי שעה"}
           </span>
-          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]">
-            The tech job you&apos;re <span className="italic text-teal">actually</span> a fit for.
+          <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]" dir="rtl">
+            המשרות ישירות מדפי הקריירה של החברות. <span className="italic text-teal">לפני כולם.</span>
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-xl mx-auto leading-relaxed">
-            Live postings from companies&apos; own careers pages, ranked against your resume, with interview prep, real interview questions and auto-apply built in.
+          <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-2xl mx-auto leading-relaxed" dir="rtl">
+            אנחנו סורקים את דפי הדרושים של {stats ? stats.companies.toLocaleString() : "מאות"} חברות כל חצי שעה, מדרגים כל משרה מול קורות החיים שלך, ומצרפים שנות ניסיון, טכנולוגיות, הכנה לראיון והגשה אוטומטית. בחינם, בלי למכור את המידע שלך.
           </p>
 
           <form
@@ -498,7 +517,39 @@ function JobTable() {
         )}
       </section>
 
-      
+      {!user && (
+        <section className="mt-8 grid gap-4 sm:grid-cols-3" dir="rtl" aria-label="איך זה עובד">
+          {[
+            { n: "1", t: "מוצאים לפני כולם", d: `סריקה של ${stats ? stats.sources.toLocaleString() : "מאות"} דפי קריירה כל חצי שעה, ישירות מה-ATS של החברה, כולל משרות שלא מגיעות ללוחות הדרושים.` },
+            { n: "2", t: "רואים כמה זה מתאים", d: "מעלים קורות חיים ומקבלים לכל משרה ציון התאמה, סיכוי לראיון, שנות הניסיון שנדרשות והטכנולוגיות שמופיעות בה." },
+            { n: "3", t: "מגישים ומתכוננים", d: "קורות חיים מותאמים למשרה, הגשה אוטומטית בטופס של החברה, ראיון דמה בקול, והשאלות שהחברה הזו באמת שואלת." },
+          ].map((s) => (
+            <div key={s.n} className="jm-card p-5">
+              <div className="h-8 w-8 rounded-full bg-teal-50 text-teal font-semibold flex items-center justify-center">{s.n}</div>
+              <h2 className="mt-3 font-semibold text-navy">{s.t}</h2>
+              <p className="mt-1 text-sm text-ink-600 leading-relaxed">{s.d}</p>
+            </div>
+          ))}
+          <p className="sm:col-span-3 text-sm text-ink-600 text-center">
+            המידע שלך נשאר שלך: אין פרסומות, אין מכירת פרופילים למגייסים, ואפשר למחוק הכל בלחיצה.{" "}
+            <Link href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">מדיניות הפרטיות</Link>
+          </p>
+          <nav className="sm:col-span-3 flex flex-wrap justify-center gap-2 text-sm" aria-label="משרות לפי תפקיד ומיקום">
+            {[
+              ["/jobs/role/backend", "Backend"], ["/jobs/role/frontend", "Frontend"], ["/jobs/role/fullstack", "Full Stack"], ["/jobs/role/data", "Data ו-ML"], ["/jobs/role/devops", "DevOps"], ["/jobs/role/qa", "QA"], ["/jobs/role/mobile", "Mobile"],
+              ["/jobs/in/Tel%20Aviv", "תל אביב"], ["/jobs/in/Haifa", "חיפה"], ["/jobs/in/Jerusalem", "ירושלים"], ["/jobs/in/remote", "מרחוק"],
+            ].map(([href, label]) => (
+              <Link key={href} href={href} className="jm-chip hover:bg-canvas">{label}</Link>
+            ))}
+          </nav>
+        </section>
+      )}
+
+      {user && (
+        <div className="mt-6">
+          <PushCard variant="banner" />
+        </div>
+      )}
 
       {/* Filters + results */}
       <section className="mt-8 lg:mt-10">
