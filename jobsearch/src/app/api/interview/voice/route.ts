@@ -12,8 +12,8 @@ import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
 import { reportedQuestionsText } from "@/app/lib/outcomes/questions";
-import { buildCompanyBrief } from "@/app/lib/interview/simulator";
-import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, REALTIME_MODEL } from "@/app/lib/interview/voice";
+import { buildCompanyBrief, pickStyle, adaptiveSteer } from "@/app/lib/interview/simulator";
+import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, longAnswerLimit, REALTIME_MODEL } from "@/app/lib/interview/voice";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 
 /** Run work after the response is sent (Next `after`); inline when outside a request scope (tests). */
@@ -26,7 +26,7 @@ function background(fn: () => Promise<unknown>) {
   }
 }
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
-import { loadCoachMemory, memoryToText } from "@/app/lib/interview/coachMemory";
+import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/coachMemory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,12 +67,14 @@ export async function POST(req: NextRequest) {
     const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, await reportedQuestionsText(prep.company, { limit: 12 }).catch(() => ""));
     const resumeText = (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
     const who = pickVoice();
-    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(await loadCoachMemory(userId)) || undefined });
+    const memory = await loadCoachMemory(userId);
+    const style = pickStyle(stage);
+    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style });
     const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice });
 
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief,
-      mode: "voice", realtime: { model: secret.model, voice: secret.voice, name: who.name, gender: who.gender }, transcript: [],
+      mode: "voice", realtime: { model: secret.model, voice: secret.voice, name: who.name, gender: who.gender }, transcript: [], persona: style,
     });
     return NextResponse.json({
       ok: true,
@@ -85,6 +87,7 @@ export async function POST(req: NextRequest) {
       endpoint: secret.endpoint,
       targetQuestions,
       stage,
+      longAnswerSec: longAnswerLimit(stage),
     });
   } catch (err: any) {
     console.error("❌ voice session start:", err);
@@ -124,13 +127,16 @@ export async function PATCH(req: NextRequest) {
   session.transcript = turns;
   if (body?.wrappedUp === true) session.wrappedUp = true;
   if (impression) session.impression = impression;
-  session.delivery = computeDelivery(turns, session.impression);
+  session.delivery = computeDelivery(turns, session.impression, session.stage);
   await session.save();
+  // Adaptive difficulty for a live call: the browser injects this note into the conversation.
+  const liveScores = [...(session.reviews || [])].sort((a: any, b: any) => a.index - b.index).map((r: any) => Number(r.score)).filter((n: number) => Number.isFinite(n));
+  const steer = adaptiveSteer(liveScores);
   // Keep the debrief one step behind the conversation: review the new
   // answers now; when the interviewer has said goodbye, write the whole thing.
   const id = String(session._id);
   background(() => (session.wrappedUp ? generateAndStoreFeedback(id) : reviewPendingAnswers(id)));
-  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery, reviews: (session.reviews || []).length });
+  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery, reviews: (session.reviews || []).length, steer: steer.steer ? { kind: steer.steer, note: steer.note } : null });
 }
 
 const num = (v: unknown, lo: number, hi: number) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : 0);

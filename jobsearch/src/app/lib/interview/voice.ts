@@ -15,6 +15,9 @@ export const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE || "";
 export const END_TOOL = "end_interview";
 /** Seconds of silence after which the interviewer reacts (follow-up or next question). */
 export const SILENCE_MS = 2500;
+/** An answer that runs longer than this gets a polite cut-in (seconds); technical stages get more room. */
+export const LONG_ANSWER_SEC: Record<string, number> = { hr: 90, behavioral: 100, final: 90, technical: 150, system_design: 180, home_assignment: 150 };
+export const longAnswerLimit = (stage: string) => LONG_ANSWER_SEC[stage] ?? 90;
 
 /** A believable interviewer per call: the voice decides the name's gender. */
 export const VOICES: { voice: string; gender: "female" | "male"; names: string[] }[] = [
@@ -39,6 +42,7 @@ THIS IS A LIVE VOICE CALL, not text:
 - When they ask you something, answer it (briefly, honestly) and then wait for their reaction instead of jumping to your next question.
 - If you can't hear or understand something, say so briefly and ask them to repeat.
 - Keep each of your turns under 25 seconds of speech.
+- TIME: a single answer should stay under about ${longAnswerLimit(input.stage)} seconds. The system tells you when the candidate has run long; when it does, cut in politely at the next breath ("תודה — אני רוצה להספיק עוד כמה דברים", "let me stop you there, I want to cover a few more things"), summarise what you got in half a sentence, and move on. Real interviewers manage the clock; so do you.
 - Listen to HOW they speak as well as what they say (confidence, energy, clarity, pace, hesitation) — you will report it at the end, never during the call.
 - When the interview is over: say your closing (1–2 sentences), then call the ${END_TOOL} tool with your honest vocal impression. Do not call it before the closing is spoken.`;
 }
@@ -166,6 +170,9 @@ export type DeliveryMetrics = {
   fillerWords: number;
   fillersPerMinute: number | null;
   shortAnswers: number; // under 8 words
+  /** Answers that ran past the stage's limit (see LONG_ANSWER_SEC). */
+  longAnswers: number;
+  longAnswerLimitSec: number;
   tone: ToneSummary;
   impression?: VocalImpression;
 };
@@ -196,7 +203,7 @@ export function summarizeTone(turns: VoiceTurn[]): ToneSummary {
   };
 }
 
-export function computeDelivery(turns: VoiceTurn[], impression?: VocalImpression): DeliveryMetrics {
+export function computeDelivery(turns: VoiceTurn[], impression?: VocalImpression, stage = "hr"): DeliveryMetrics {
   const answers = turns.filter((t) => t.role === "candidate");
   const words = answers.reduce((n, t) => n + t.content.split(/\s+/).filter(Boolean).length, 0);
   const seconds = answers.reduce((n, t) => n + (t.seconds || 0), 0);
@@ -211,6 +218,8 @@ export function computeDelivery(turns: VoiceTurn[], impression?: VocalImpression
     fillerWords,
     fillersPerMinute: minutes > 0.25 ? Math.round((fillerWords / minutes) * 10) / 10 : null,
     shortAnswers: answers.filter((t) => t.content.split(/\s+/).filter(Boolean).length < 8).length,
+    longAnswers: answers.filter((t) => (t.seconds || 0) > longAnswerLimit(stage)).length,
+    longAnswerLimitSec: longAnswerLimit(stage),
     tone: summarizeTone(turns),
     ...(impression ? { impression } : {}),
   };
@@ -223,6 +232,7 @@ export function describeDelivery(m: DeliveryMetrics, language: "he" | "en"): str
     m.wordsPerMinute !== null ? `pace ≈ ${m.wordsPerMinute} words/min (${language === "he" ? "Hebrew" : "English"}; comfortable conversational pace is ~110–160)` : "",
     `${m.fillerWords} filler words${m.fillersPerMinute !== null ? ` (${m.fillersPerMinute}/min)` : ""}`,
     m.shortAnswers ? `${m.shortAnswers} very short answers (< 8 words)` : "",
+    m.longAnswers ? `${m.longAnswers} answer(s) ran past the ${m.longAnswerLimitSec}s a real interviewer would allow (longest ${m.longestAnswerSeconds}s) — say so, with the time` : "",
   ].filter(Boolean);
   const t = m.tone;
   if (t.measuredAnswers > 0) {

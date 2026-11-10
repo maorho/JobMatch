@@ -25,6 +25,9 @@ vi.mock("@langchain/openai", () => ({
       const asked = Number(/Interviewer turns so far: (\d+)/.exec(sys)?.[1] || 0);
       turns++;
       if (asked >= target) return { content: "תודה רבה, זה הכול מצידי. נחזור אליך בימים הקרובים. <<END>>" };
+      const lastAnswer = String(msgs[msgs.length - 1]?.content || "");
+      if (sys.includes("CODING EXERCISE (once per interview)") && lastAnswer.includes("give me code")) return { content: "בוא/י נראה קצת קוד עכשיו — תקבל/י תרגיל קצר בעוד רגע. <<CODE_TASK>>" };
+      if (lastAnswer.startsWith("[CODE SUBMITTED]")) return { content: "ראיתי את הפתרון. למה בחרת ב-Map ולא במערך?" };
       return { content: asked === 0 ? "היי, אני מהנדס בכיר ב-Acme. נדבר על React — מה זה hook?" : `הבנתי. שאלה ${asked + 1}: ספר/י על באג קשה שפתרת.` };
     }
   },
@@ -35,7 +38,11 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { signJwt } from "@/app/lib/jwt";
-import { buildInterviewerPrompt, buildCompanyBrief, END_MARK } from "@/app/lib/interview/simulator";
+import { buildInterviewerPrompt, buildCompanyBrief, END_MARK, CODE_MARK, adaptiveSteer, pickStyle, FOLLOWUP_BUDGET } from "@/app/lib/interview/simulator";
+import mongoose from "mongoose";
+import PracticeTask from "@/app/models/PracticeTask";
+import PracticeAttempt from "@/app/models/PracticeAttempt";
+import { peerComparison, percentileOf } from "@/app/lib/interview/peers";
 import { GET as sessGET, POST as sessPOST, PATCH as sessPATCH } from "@/app/api/interview/session/route";
 import { POST as finishPOST } from "@/app/api/interview/session/finish/route";
 
@@ -76,6 +83,50 @@ describe("interviewer prompt", () => {
     expect(sys).toMatch(/Interviewer turns so far: 1/);
     expect(sys).toMatch(/OPENING/);
   });
+
+  it("carries the interviewer's character, the stage's follow-up budget, the live read, the re-tests and the coding-exercise protocol", () => {
+    const base = { plan: PLAN as any, job: { title: "Dev", company: "Acme" }, companyBrief: "b", language: "he" as const, targetQuestions: 6, transcript: [] };
+    const tech = buildInterviewerPrompt({ ...base, stage: "technical", style: "probing", liveScores: [3, 4], retest: ['the question they struggled with last time (3/10): "tell me about a bug"'], codeTask: { allowed: true, done: false } });
+    expect(tech).toMatch(/STYLE — skeptical and probing/);
+    expect(tech).toMatch(new RegExp(`up to ${FOLLOWUP_BUDGET.technical} follow-ups`));
+    expect(tech).toMatch(/LIVE READ .*\[3, 4\]/);
+    expect(tech).toMatch(/STEP DOWN/);
+    expect(tech).toMatch(/RE-TEST .*tell me about a bug/);
+    expect(tech).toMatch(/COMPANY-ANCHORED QUESTIONS/);
+    expect(tech).toContain(CODE_MARK);
+    const hr = buildInterviewerPrompt({ ...base, stage: "hr", style: "dry", liveScores: [8, 9] });
+    expect(hr).toMatch(/STYLE — dry and formal/);
+    expect(hr).toMatch(/up to 1 follow-up /);
+    expect(hr).toMatch(/STEP UP/);
+    expect(hr).not.toContain(CODE_MARK);
+    const done = buildInterviewerPrompt({ ...base, stage: "technical", codeTask: { allowed: true, done: true, title: "Two sum", score: 80 } });
+    expect(done).toMatch(/CODING EXERCISE: done \("Two sum", automatic grade 80\/100\)/);
+    expect(adaptiveSteer([7, 7]).steer).toBe("step_up");
+    expect(adaptiveSteer([4, 2]).steer).toBe("step_down");
+    expect(adaptiveSteer([4, 8]).steer).toBeNull();
+    expect(adaptiveSteer([2]).steer).toBeNull();
+    // Styles are drawn from a pool per stage: deterministic for a seed, never outside the four.
+    expect(["warm", "dry", "probing", "brisk"]).toContain(pickStyle("technical", 0.1));
+    expect(pickStyle("hr", 0.2)).toBe(pickStyle("hr", 0.2));
+  });
+});
+
+describe("peers", () => {
+  it("ranks a score among the other candidates of the same company, one best score per person, and needs a minimum pool", async () => {
+    expect(percentileOf(70, [50, 60, 80])).toBe(67);
+    expect(percentileOf(60, [60, 60])).toBe(50);
+    const mk = (userId: string, stage: string, score: number) => InterviewSession.create({ userId, prepId, jobId: new mongoose.Types.ObjectId(), source: "external", jobTitle: "Dev", company: "PeerCo", stage, status: "finished", transcript: [], feedback: { overallScore: score } } as any);
+    const u = () => String(new mongoose.Types.ObjectId());
+    const a = u(), b = u(), c = u();
+    await Promise.all([mk(a, "technical", 50), mk(a, "technical", 65), mk(b, "technical", 80), mk(c, "hr", 90), mk(me, "technical", 40)]);
+    const few = await peerComparison({ userId: me, company: "PeerCo", stage: "technical", score: 70 });
+    expect(few.sameStage).toEqual({ n: 2, median: null, percentile: null }); // a and b (a's best = 65)
+    expect(few.anyStage).toMatchObject({ n: 3, median: 80, percentile: 33 }); // 65, 80, 90 → 70 beats one of three
+    expect(few.ownPrevious).toBe(0);
+    await mk(u(), "technical", 55);
+    const enough = await peerComparison({ userId: me, company: "PeerCo", stage: "technical", score: 70 });
+    expect(enough.sameStage).toEqual({ n: 3, median: 65, percentile: 67 });
+  });
 });
 
 describe("a full mock interview", () => {
@@ -111,6 +162,31 @@ describe("a full mock interview", () => {
 
     const list = await j(await sessGET(new NextRequest(`${O}/api/interview/session?prepId=${prepId}`, { headers: await cookie(me) })));
     expect(list.body.sessions[0]).toMatchObject({ stage: "technical", status: "finished", overallScore: 74, verdict: "lean hire" });
+  });
+
+  it("hands out a timed coding exercise when the interviewer asks for one, and brings the graded solution back as a turn", async () => {
+    await PracticeTask.create({ kind: "coding", role: "frontend", level: "junior", key: "two-sum-t", title: "Two sum", prompt: "Return the two indices…", language: "typescript", timeLimitMin: 30, createdBy: "examiner", rubric: [] } as any);
+    const started = await j(await sessPOST(new NextRequest(`${O}/api/interview/session`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId, stage: "technical", questions: 5 }) })));
+    const id = started.body.session.sessionId;
+    expect(["warm", "dry", "probing", "brisk"]).toContain(started.body.session.persona);
+    // Not yet: nothing open → 409.
+    expect((await sessPATCH(new NextRequest(`${O}/api/interview/session`, { method: "PATCH", headers: await cookie(me), body: JSON.stringify({ sessionId: id, codeSubmitted: true }) }))).status).toBe(409);
+    const handed = await j(await sessPATCH(new NextRequest(`${O}/api/interview/session`, { method: "PATCH", headers: await cookie(me), body: JSON.stringify({ sessionId: id, answer: "ok, give me code" }) })));
+    expect(handed.status).toBe(200);
+    expect(handed.body.message).not.toContain(CODE_MARK);
+    expect(handed.body.session.codeTask).toMatchObject({ title: "Two sum", status: "open", timeLimitMin: 30 });
+    const attemptId = handed.body.session.codeTask.attemptId;
+    expect(((await PracticeAttempt.findById(attemptId).lean()) as any).interviewSessionId.toString()).toBe(id);
+    // Still in progress on /practice → the interview waits.
+    expect((await sessPATCH(new NextRequest(`${O}/api/interview/session`, { method: "PATCH", headers: await cookie(me), body: JSON.stringify({ sessionId: id, codeSubmitted: true }) }))).status).toBe(409);
+    await PracticeAttempt.updateOne({ _id: attemptId }, { $set: { status: "graded", answer: "const m = new Map();", score: 80, verdict: "pass", durationSec: 600 } });
+    const back = await j(await sessPATCH(new NextRequest(`${O}/api/interview/session`, { method: "PATCH", headers: await cookie(me), body: JSON.stringify({ sessionId: id, codeSubmitted: true }) })));
+    expect(back.status).toBe(200);
+    expect(back.body.session.codeTask).toMatchObject({ status: "done", score: 80 });
+    const turns = back.body.session.transcript;
+    expect(turns[turns.length - 2].content).toMatch(/^\[CODE SUBMITTED\] "Two sum" — automatic grade 80\/100 \(pass\)/);
+    expect(turns[turns.length - 2].content).toContain("const m = new Map();");
+    expect(turns[turns.length - 1].content).toMatch(/Map/); // the interviewer asks about the solution
   });
 
   it("lets the candidate stop early (feedback on what was answered) and keeps sessions private", async () => {

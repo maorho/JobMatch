@@ -6,6 +6,7 @@ import { finalFeedback, reviewAnswer, type AnswerReview, type SessionTurn, type 
 import { computeDelivery, describeDelivery } from "./voice";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { loadCoachMemory, memoryToText, rebuildCoachMemory } from "./coachMemory";
+import { peerComparison, calibration, calibrationNote } from "./peers";
 
 /**
  * Background work that makes the debrief instant: while the interview runs,
@@ -89,18 +90,25 @@ export async function generateAndStoreFeedback(sessionId: string, opts: { force?
   const transcript: SessionTurn[] = claimed.transcript.map((t: any) => ({ role: t.role, content: t.content }));
   // Make sure every answer has its review first (cheap), so the big call stays small.
   await reviewPendingAnswers(sessionId).catch(() => 0);
-  const fresh: any = await InterviewSession.findById(sessionId).select("reviews impression language mode").lean();
+  const fresh: any = await InterviewSession.findById(sessionId).select("reviews impression language mode codeTask").lean();
   const priorReviews: AnswerReview[] = (fresh?.reviews || []).sort((a: any, b: any) => a.index - b.index).map(({ index: _i, ...r }: any) => r);
   const resumeText = await resumeTextFor(String(claimed.userId));
   const language = detectLanguage(transcript, claimed.language);
   let deliveryNote: string | undefined;
   let delivery: any;
   if (claimed.mode === "voice") {
-    delivery = computeDelivery(claimed.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody })), fresh?.impression);
+    delivery = computeDelivery(claimed.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody })), fresh?.impression, claimed.stage);
     deliveryNote = describeDelivery(delivery, language);
   }
   const memory = await loadCoachMemory(String(claimed.userId));
-  const feedback = await finalFeedback({ plan: prep.plan, stage: claimed.stage, job: { title: claimed.jobTitle, company: claimed.company }, companyBrief: claimed.companyBrief, resumeText, language, transcript, deliveryNote, priorReviews: priorReviews.length ? priorReviews : undefined, coachMemory: memoryToText(memory) || undefined });
+  // How the simulator's scores have matched real outcomes so far (null until there is enough data).
+  const cal = await calibration(claimed.company).catch(() => null);
+  const codeTask = fresh?.codeTask?.status ? { allowed: true, done: fresh.codeTask.status === "done", title: fresh.codeTask.title, score: fresh.codeTask.score ?? null } : undefined;
+  const feedback = await finalFeedback({ plan: prep.plan, stage: claimed.stage, job: { title: claimed.jobTitle, company: claimed.company }, companyBrief: claimed.companyBrief, resumeText, language, transcript, deliveryNote, priorReviews: priorReviews.length ? priorReviews : undefined, coachMemory: memoryToText(memory) || undefined, calibrationNote: calibrationNote(cal), codeTask });
+  // Where this score sits among the other candidates who simulated an interview at this company.
+  feedback.peerComparison = await peerComparison({ userId: String(claimed.userId), company: claimed.company, stage: claimed.stage, score: feedback.overallScore }).catch(() => undefined);
+  if (cal) feedback.calibration = cal;
+  if (codeTask?.done) feedback.codeTask = { title: codeTask.title || "", score: codeTask.score ?? null, verdict: fresh?.codeTask?.verdict || "" };
   await InterviewSession.updateOne({ _id: sessionId }, { $set: { feedback, status: "finished", wrappedUp: true, finishedAt: new Date(), language, ...(delivery ? { delivery } : {}) } });
   // The coach remembers this one from now on.
   await rebuildCoachMemory(String(claimed.userId)).catch((e) => console.warn("[coachMemory] rebuild skipped:", (e as Error)?.message));

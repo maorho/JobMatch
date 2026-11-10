@@ -34,6 +34,8 @@ const PracticeAttemptSchema = new mongoose.Schema(
     gradedAt: { type: Date, default: undefined },
     model: { type: String, default: "" },
     error: { type: String, default: "" },
+    /** When the exercise was handed out by the mock interviewer. */
+    interviewSessionId: { type: mongoose.Schema.Types.ObjectId, ref: "InterviewSession", default: undefined },
   },
   { timestamps: true }
 );

@@ -23,6 +23,8 @@ type Props = {
   stageTitle: string;
   company: string;
   interviewer?: { name: string; gender: "female" | "male" };
+  /** Seconds a single answer may run before the interviewer cuts in (from the server, per stage). */
+  longAnswerSec?: number;
   onEnded: (turns: VoiceTurn[], reason: "interviewer" | "candidate" | "error") => void;
 };
 
@@ -31,7 +33,7 @@ const CHECK_IN_MS = 12_000;
 
 type Status = "connecting" | "live" | "ended" | "error";
 
-export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, onEnded }: Props) {
+export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, longAnswerSec = 90, onEnded }: Props) {
   const { t, dir } = useT();
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState("");
@@ -56,6 +58,22 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const impressionRef = useRef<VocalImpression | null>(null);
   const endedRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  // Clock on the current answer: past the stage's limit the interviewer is told to cut in (once per answer).
+  const longAnswerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSteerRef = useRef<string>("");
+  const armLongAnswer = () => {
+    if (longAnswerRef.current) clearTimeout(longAnswerRef.current);
+    longAnswerRef.current = setTimeout(() => {
+      if (endedRef.current) return;
+      try {
+        dcRef.current?.send(JSON.stringify({ type: "response.create", response: { instructions: `The candidate has now been answering for over ${longAnswerSec} seconds. Cut in politely at this breath, in one short sentence: thank them, say you want to cover a few more things, summarise what you got in half a sentence, and ask your next question. Do not apologise at length.` } }));
+      } catch {}
+    }, longAnswerSec * 1000);
+  };
+  const disarmLongAnswer = () => {
+    if (longAnswerRef.current) clearTimeout(longAnswerRef.current);
+    longAnswerRef.current = null;
+  };
   const checkInRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const checkInsRef = useRef(0);
 
@@ -84,11 +102,20 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const sync = useCallback(
     async (wrappedUp = false) => {
       try {
-        await fetch("/api/interview/voice", {
+        const r = await fetch("/api/interview/voice", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId, turns: turnsRef.current, wrappedUp, impression: impressionRef.current || undefined }),
         });
+        // Adaptive difficulty: the server's read of the answers so far becomes a private note in the conversation.
+        const d = await r.json().catch(() => ({}));
+        const steer = d?.steer?.kind ? `${d.steer.kind}:${turnsRef.current.length}` : "";
+        if (!wrappedUp && d?.steer?.note && steer !== lastSteerRef.current && !endedRef.current) {
+          lastSteerRef.current = steer;
+          try {
+            dcRef.current?.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: `(Private note from the hiring committee, never mention it: ${d.steer.note})` }] } }));
+          } catch {}
+        }
       } catch {}
     },
     [sessionId]
@@ -101,6 +128,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       endedRef.current = true;
       setStatus(reason === "error" ? "error" : "ended");
       disarmCheckIn();
+      disarmLongAnswer();
       try { dcRef.current?.close(); } catch {}
       try { pcRef.current?.close(); } catch {}
       meterRef.current?.dispose();
@@ -118,7 +146,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     switch (type) {
       case "input_audio_buffer.speech_started":
         disarmCheckIn();
-        speechStartRef.current = Date.now();
+        if (!speechStartRef.current) armLongAnswer(); // the clock runs from the first word of the answer, across its pauses
+        speechStartRef.current = speechStartRef.current || Date.now();
         meterRef.current?.start();
         setSpeaking("candidate");
         break;
@@ -131,6 +160,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         if (text) {
           const seconds = speechStartRef.current ? Math.max(1, Math.round((Date.now() - speechStartRef.current) / 1000)) : undefined;
           speechStartRef.current = null;
+          disarmLongAnswer();
           const prosody = pendingProsodyRef.current ?? meterRef.current?.stop() ?? undefined;
           pendingProsodyRef.current = null;
           pushTurn({ role: "candidate", content: text, seconds, prosody: prosody || undefined });

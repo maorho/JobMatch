@@ -25,6 +25,8 @@ export type SessionPoint = {
   avgAnswerSeconds?: number;
   expressiveness?: string | null;
   company: string;
+  /** The lowest-scored answer of that interview: what to test again next time. */
+  weakest?: { question: string; score: number };
 };
 export type CoachMemory = {
   updatedAt: string;
@@ -49,7 +51,36 @@ const toPoint = (s: any): SessionPoint => ({
   avgAnswerSeconds: s.delivery?.avgAnswerSeconds,
   expressiveness: s.delivery?.tone?.expressiveness ?? null,
   company: s.company || "",
+  weakest: weakestOf(s.feedback?.answerReviews),
 });
+
+function weakestOf(reviews: any[] | undefined): SessionPoint["weakest"] | undefined {
+  const scored = (reviews || []).filter((r) => r && typeof r.score === "number" && r.question);
+  if (!scored.length) return undefined;
+  const w = scored.reduce((a, b) => (b.score < a.score ? b : a));
+  return { question: String(w.question).slice(0, 200), score: w.score };
+}
+
+/**
+ * What the next interviewer should test again: the recurring improvement
+ * themes still open, and the weakest answers of the last interviews
+ * (same stage first). Short strings for the prompt; at most `max`.
+ */
+export function retestItems(m: CoachMemory | null | undefined, stage: string, max = 2): string[] {
+  if (!m || !m.sessions) return [];
+  const out: string[] = [];
+  const weak = [...m.points].reverse().filter((p) => p.weakest && p.weakest.score <= 6);
+  for (const p of [...weak.filter((p) => p.stage === stage), ...weak.filter((p) => p.stage !== stage)]) {
+    const q = p.weakest!.question;
+    if (!out.includes(q)) out.push(`the question they struggled with last time (${p.weakest!.score}/10): "${q}"`);
+    if (out.length >= max) return out;
+  }
+  for (const t of m.themes.filter((t) => t.status !== "improving")) {
+    out.push(`the recurring weak spot: ${t.theme}`);
+    if (out.length >= max) break;
+  }
+  return out.slice(0, max);
+}
 
 const delta = (pts: SessionPoint[], key: keyof SessionPoint): number | null => {
   const vals = pts.map((p) => p[key]).filter((v): v is number => typeof v === "number");
@@ -91,6 +122,7 @@ export function memoryToText(m: CoachMemory | null | undefined): string {
     m.trend.fillersDelta !== null ? `filler words/min trend ${m.trend.fillersDelta > 0 ? "+" : ""}${m.trend.fillersDelta}` : "",
     m.trend.paceDelta !== null ? `pace trend ${m.trend.paceDelta > 0 ? "+" : ""}${m.trend.paceDelta} wpm` : "",
     m.themes.length ? `recurring themes: ${m.themes.map((t) => `${t.theme} (${t.status}, ${t.count}×)`).join("; ")}` : "",
+    last?.weakest ? `weakest answer last time (${last.weakest.score}/10): "${last.weakest.question}"` : "",
   ].filter(Boolean);
   return bits.join(". ");
 }

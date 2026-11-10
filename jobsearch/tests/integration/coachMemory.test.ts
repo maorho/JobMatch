@@ -20,7 +20,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { signJwt } from "@/app/lib/jwt";
-import { rebuildCoachMemory, memoryToText, loadCoachMemory } from "@/app/lib/interview/coachMemory";
+import { rebuildCoachMemory, memoryToText, loadCoachMemory, retestItems } from "@/app/lib/interview/coachMemory";
 import { generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 import { buildInterviewerPrompt, buildFeedbackPrompt } from "@/app/lib/interview/simulator";
 import { GET as progressGET } from "@/app/api/interview/progress/route";
@@ -41,6 +41,22 @@ beforeAll(async () => {
   me = String((await User.create({ username: "me", email: "me@test.dev", password: "x", fullname: "Me", phone: "0", resumeText: "Junior dev" } as any))._id);
   jobId = String((await ExternalJobs.create({ job: "Dev", company: "Acme", city: "TLV", country: "Israel", url: "u", finalUrl: "u", description: "x", skills: [], seniority: [], source: "greenhouse", sourceJobId: "a1" } as any))._id);
   prepId = String((await InterviewPrep.create({ userId: me, jobId, source: "external", jobTitle: "Dev", company: "Acme", plan: PLAN, model: "t" }))._id);
+});
+
+describe("re-test items", () => {
+  it("names last time's weakest answer (same stage first) and the open themes, never more than asked", () => {
+    const m: any = {
+      updatedAt: "", sessions: 2, trend: { scoreDelta: null, fillersDelta: null, paceDelta: null }, summary: "",
+      points: [
+        { sessionId: "1", at: "2026-01-01", stage: "hr", mode: "chat", score: 50, company: "Acme", weakest: { question: "why us?", score: 3 } },
+        { sessionId: "2", at: "2026-01-02", stage: "technical", mode: "chat", score: 60, company: "Acme", weakest: { question: "explain closures", score: 4 } },
+      ],
+      themes: [{ theme: "concrete examples", count: 2, status: "persistent" }, { theme: "pace", count: 1, status: "improving" }],
+    };
+    expect(retestItems(m, "hr")).toEqual(['the question they struggled with last time (3/10): "why us?"', 'the question they struggled with last time (4/10): "explain closures"']);
+    expect(retestItems(m, "technical", 3)).toEqual(['the question they struggled with last time (4/10): "explain closures"', 'the question they struggled with last time (3/10): "why us?"', "the recurring weak spot: concrete examples"]);
+    expect(retestItems(null, "hr")).toEqual([]);
+  });
 });
 
 describe("coach memory", () => {

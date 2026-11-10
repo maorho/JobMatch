@@ -33,8 +33,12 @@ type Feedback = {
   improvements: string[];
   answerReviews: { question: string; answerSummary: string; score: number; whatWorked: string; betterAnswer: string }[];
   nextSteps: string[];
+  peerComparison?: { company: string; stage: string; sameStage: { n: number; median: number | null; percentile: number | null }; anyStage: { n: number; median: number | null; percentile: number | null }; ownPrevious: number } | null;
+  calibration?: { scope: "company" | "global"; company: string; samples: number; medianReachedInterview: number | null; medianRejected: number | null } | null;
+  codeTask?: { title: string; score: number | null; verdict: string } | null;
 };
-type Session = { sessionId: string; stage: string; status: string; mode?: "chat" | "voice"; delivery?: Delivery | null; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null };
+type CodeTask = { attemptId: string; title: string; timeLimitMin: number; status: "open" | "done"; score: number | null };
+type Session = { sessionId: string; stage: string; status: string; mode?: "chat" | "voice"; delivery?: Delivery | null; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null; persona?: string; codeTask?: CodeTask | null };
 type SessionRow = { sessionId: string; stage: string; status: string; asked: number; targetQuestions: number; overallScore: number | null; verdict: string; startedAt: string };
 
 const STAGE_ICON: Record<string, string> = { hr: "☎️", technical: "💻", home_assignment: "🏠", system_design: "🧩", behavioral: "🤝", final: "🏁" };
@@ -62,7 +66,7 @@ export default function InterviewPrepPage() {
   useEffect(() => {
     fetch("/api/interview/phone/status").then(async (r) => r.ok && setPhoneCfg(await r.json())).catch(() => setPhoneCfg({ configured: false }));
   }, []);
-  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" } } | null>(null);
+  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" }; longAnswerSec?: number } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -174,7 +178,7 @@ export default function InterviewPrepPage() {
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: questions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
       } else if (mode === "voice") {
         const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
-        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer });
+        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer, longAnswerSec: d.longAnswerSec });
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
       } else {
         const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
@@ -223,6 +227,45 @@ export default function InterviewPrepPage() {
       setBusy("");
     }
   };
+  // The coding exercise lives on /practice: poll its attempt until it is handed in, then feed the solution back into the interview.
+  const codeContinue = async () => {
+    if (!session?.codeTask || session.codeTask.status !== "open") return;
+    setBusy("turn");
+    setError("");
+    try {
+      const d = await call("/api/interview/session", "PATCH", { sessionId: session.sessionId, codeSubmitted: true });
+      setSession(d.session);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  };
+  const openCode = session?.codeTask?.status === "open" ? session.codeTask.attemptId : "";
+  useEffect(() => {
+    if (!openCode) return;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const r = await fetch(`/api/practice/attempts/${openCode}`, { cache: "no-store" });
+        const d = r.ok ? await r.json() : null;
+        if (d?.attempt?.status && d.attempt.status !== "in_progress") {
+          stopped = true;
+          codeContinue();
+          return;
+        }
+      } catch {}
+      if (!stopped) timer = setTimeout(tick, 6000);
+    };
+    let timer = setTimeout(tick, 6000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCode]);
+
   const finish = async () => {
     if (!session) return;
     setBusy("finish");
@@ -407,7 +450,7 @@ export default function InterviewPrepPage() {
                     <button onClick={async () => { await fetch("/api/interview/phone", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) }); setCalling(null); setSession(null); }} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.cancelCall")}</button>
                   </div>
                 ) : voice ? (
-                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} onEnded={onVoiceEnded} />
+                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} longAnswerSec={voice.longAnswerSec} onEnded={onVoiceEnded} />
                 ) : session.feedback ? (
                   <FeedbackView fb={session.feedback} delivery={session.delivery || null} onNew={() => setSession(null)} stageTitle={stage.title} />
                 ) : session.mode === "voice" ? (
@@ -429,6 +472,25 @@ export default function InterviewPrepPage() {
                           </div>
                         </div>
                       ))}
+                      {session.codeTask && (
+                        <div className={`rounded-control border p-4 space-y-2 ${session.codeTask.status === "open" ? "border-teal/40 bg-teal-50" : "border-line bg-canvas"}`} dir={dir}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold text-navy">💻 {t("interview.code.title")}</span>
+                            <span className="jm-chip">{session.codeTask.status === "done" ? t("interview.code.submitted", { score: session.codeTask.score ?? "–" }) : session.codeTask.timeLimitMin ? t("interview.code.minutes", { n: session.codeTask.timeLimitMin }) : ""}</span>
+                          </div>
+                          <div className="text-sm text-ink" dir="auto">{session.codeTask.title}</div>
+                          {session.codeTask.status === "open" && (
+                            <>
+                              <p className="text-sm text-ink-600 leading-relaxed">{t("interview.code.text")}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <a href={`/practice/${session.codeTask.attemptId}`} target="_blank" rel="noopener noreferrer" className="jm-btn jm-btn-primary jm-btn-sm">{t("interview.code.open")}</a>
+                                <button type="button" onClick={codeContinue} disabled={busy !== ""} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.code.continue")}</button>
+                                <span className="jm-muted text-xs">{t("interview.code.waiting")}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
                       {busy === "turn" && <div className="jm-muted flex items-center gap-2"><span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" /> {t("interview.thinking")}</div>}
                       {session.wrappedUp && !session.feedback && (
                         <div className="jm-alert jm-alert-info">{t("interview.wrappedUp")}</div>
@@ -471,6 +533,34 @@ export default function InterviewPrepPage() {
   );
 }
 
+function PeerBlock({ fb, stageTitle }: { fb: Feedback; stageTitle: string }) {
+  const { t } = useT();
+  const p = fb.peerComparison;
+  const c = fb.calibration;
+  if (!p && !c) return null;
+  const line = p
+    ? p.sameStage.median !== null && p.sameStage.percentile !== null
+      ? t("interview.peers.sameStage", { n: p.sameStage.n, stage: stageTitle, company: p.company, median: p.sameStage.median, pct: p.sameStage.percentile })
+      : p.anyStage.median !== null && p.anyStage.percentile !== null
+        ? t("interview.peers.anyStage", { n: p.anyStage.n, company: p.company, median: p.anyStage.median, pct: p.anyStage.percentile })
+        : t("interview.peers.few", { company: p.company, n: p.anyStage.n, min: 3 })
+    : "";
+  return (
+    <div className="rounded-control border border-sky/30 bg-sky-50 p-4 space-y-2">
+      <h3 className="font-semibold text-sky-600">👥 {t("interview.peers.title", { company: p?.company || c?.company || "" })}</h3>
+      {line && <p className="text-sm text-ink-600 leading-relaxed">{line}</p>}
+      {p && p.ownPrevious > 0 && <p className="text-xs text-ink-600">{t("interview.peers.own", { n: p.ownPrevious + 1, company: p.company })}</p>}
+      {c && c.medianReachedInterview !== null && c.medianRejected !== null && (
+        <p className="text-sm text-ink-600 leading-relaxed">
+          {t("interview.peers.calibration", { samples: c.samples, where: c.scope === "company" ? t("interview.peers.atCompany", { company: c.company }) : t("interview.peers.everywhere"), good: c.medianReachedInterview, bad: c.medianRejected })}
+        </p>
+      )}
+      {fb.codeTask && <p className="text-xs text-ink-600">💻 {t("interview.code.inFeedback", { title: fb.codeTask.title, score: fb.codeTask.score ?? "–" })}</p>}
+      <p className="text-xs text-ink-400">{t("interview.peers.anon")}</p>
+    </div>
+  );
+}
+
 function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; delivery?: Delivery | null; onNew: () => void; stageTitle: string }) {
   const { t } = useT();
   const tone = delivery?.tone;
@@ -489,6 +579,8 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
         </div>
         <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.newInterview")}</button>
       </div>
+
+      <PeerBlock fb={fb} stageTitle={stageTitle} />
 
       {fb.progress?.note && (
         <div className="rounded-control border border-teal/30 bg-teal-50 p-4 space-y-2">

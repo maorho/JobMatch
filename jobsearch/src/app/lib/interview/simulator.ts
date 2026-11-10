@@ -15,6 +15,56 @@ import { modelFor } from "@/app/lib/llm/models";
 export type SessionTurn = { role: "interviewer" | "candidate"; content: string };
 
 export const END_MARK = "<<END>>";
+/** The interviewer asks the system to hand the candidate a timed coding exercise (technical stages, chat mode). */
+export const CODE_MARK = "<<CODE_TASK>>";
+/** A candidate turn that carries the solution back into the conversation starts with this. */
+export const CODE_SUBMITTED_PREFIX = "[CODE SUBMITTED]";
+
+/**
+ * Interviewers have characters. The style is picked once per interview (and
+ * stored on the session) so the candidate meets different people over time:
+ * the warm chatty one, the dry formal one, the skeptic, the clock-watcher.
+ */
+export const STYLES = ["warm", "dry", "probing", "brisk"] as const;
+export type InterviewerStyle = (typeof STYLES)[number];
+const STYLE_RULES: Record<InterviewerStyle, string> = {
+  warm: "STYLE — warm and talkative: you sound like you enjoy the conversation, react with a short personal remark before moving on, now and then share one sentence about how the team actually works; still one question at a time.",
+  dry: "STYLE — dry and formal: minimal reactions ('Okay.', 'Noted.'), no small talk, precise questions, and you never fill a silence with encouragement; the candidate has to carry the conversation.",
+  probing: "STYLE — skeptical and probing: you take nothing at face value. When they claim something you ask for the specific example, the number, and their own part in it; you push back politely on vague answers ('that's the team — what did YOU do?').",
+  brisk: "STYLE — brisk and time-boxed: you run a tight schedule, keep answers moving ('let's keep this one short'), cut tangents off politely, and cover more ground with shorter questions.",
+};
+const STYLE_POOL: Record<string, InterviewerStyle[]> = {
+  hr: ["warm", "brisk", "warm", "dry"],
+  technical: ["probing", "dry", "brisk", "warm"],
+  system_design: ["probing", "dry", "probing", "warm"],
+  behavioral: ["probing", "warm", "dry"],
+  home_assignment: ["probing", "warm", "dry"],
+  final: ["dry", "warm", "brisk"],
+};
+export const isStyle = (s: unknown): s is InterviewerStyle => (STYLES as readonly string[]).includes(String(s));
+export function pickStyle(stage: string, seed = Math.random()): InterviewerStyle {
+  const pool = STYLE_POOL[stage] || STYLE_POOL.hr;
+  return pool[Math.floor(seed * pool.length) % pool.length];
+}
+
+/** How deep an interviewer may dig into one subject at each stage (follow-ups after a main question). */
+export const FOLLOWUP_BUDGET: Record<string, number> = { hr: 1, behavioral: 2, technical: 3, system_design: 3, home_assignment: 2, final: 1 };
+
+/**
+ * Adaptive difficulty from the live per-answer reviews (0–10, in order):
+ * two thin answers in a row → step down; two strong ones → step up.
+ */
+export function adaptiveSteer(scores: number[]): { steer: "step_down" | "step_up" | null; note: string } {
+  const last = scores.slice(-2);
+  if (last.length === 2 && last.every((x) => x <= 4)) {
+    return { steer: "step_down", note: "The last two answers were thin (scored ≤ 4/10). STEP DOWN for the next question: a shorter, more concrete, open question on something they clearly know from their résumé; help them get a good answer out before you climb again." };
+  }
+  if (last.length === 2 && last.every((x) => x >= 7)) {
+    return { steer: "step_up", note: "The last two answers were strong (≥ 7/10). STEP UP: push to the next level — trade-offs, what breaks at 10× scale, failure modes, 'what would you do differently with what you know now', the part of the design they did not mention." };
+  }
+  return { steer: null, note: "" };
+}
+
 export const INTERVIEWER_MODEL = modelFor("interviewer");
 export const FEEDBACK_MODEL = modelFor("coach");
 
@@ -40,6 +90,14 @@ export type SimInput = {
   interviewer?: { name: string; gender: "female" | "male" };
   /** The coach's memory of previous mock interviews (coachMemory.ts → memoryToText). */
   coachMemory?: string;
+  /** Specific things to test again, from the previous interviews' weak spots (coachMemory.ts → retestItems). */
+  retest?: string[];
+  /** The interviewer's character for this session (pickStyle). */
+  style?: InterviewerStyle;
+  /** Scores of the answers reviewed so far (0–10, in order): drives adaptive difficulty. */
+  liveScores?: number[];
+  /** Whether a timed coding exercise may be handed out, and what happened with it. */
+  codeTask?: { allowed: boolean; done: boolean; title?: string; score?: number | null };
 };
 
 /** A compact, factual brief the interviewer can quote from. */
@@ -64,9 +122,23 @@ export function buildInterviewerPrompt(input: SimInput): string {
   const lang = input.language === "en" ? "English" : "Hebrew (natural spoken register; technical terms in English)";
   const asked = input.transcript.filter((t) => t.role === "interviewer").length;
   const who = input.interviewer ? `${input.interviewer.name} (${input.interviewer.gender}), ${persona.en}` : persona.en;
+  const budget = FOLLOWUP_BUDGET[input.stage] ?? 1;
+  const steer = adaptiveSteer(input.liveScores || []);
+  const live = input.liveScores?.length
+    ? `\n- LIVE READ (your private hiring-committee notes so far, one score 0–10 per answered question, in order): [${input.liveScores.join(", ")}]. ${steer.note || "Keep the current level."} Never mention these notes.`
+    : "";
+  const retest = input.retest?.length
+    ? `\n- RE-TEST (from their previous mock interviews — never mention that you know): ask, in your own words and in this stage's context, at least one question that tests: ${input.retest.slice(0, 2).join(" | ")}.`
+    : "";
+  const code = input.codeTask?.allowed
+    ? input.codeTask.done
+      ? `\n- CODING EXERCISE: done ("${input.codeTask.title || "exercise"}", automatic grade ${input.codeTask.score ?? "n/a"}/100). Do not hand out another one.`
+      : `\n- CODING EXERCISE (once per interview): after at least 2 main questions and before your last one, hand the candidate a short timed coding exercise. Write ONE lead-in sentence ("I'd like to see you code something small now — you'll get it in a moment, take your time") and end that message with the exact token ${CODE_MARK}. Do not describe or invent the exercise yourself — the system presents it and the clock. When their solution comes back (a candidate turn starting with "${CODE_SUBMITTED_PREFIX}", with an automatic grade), spend your next 1–2 questions on it: why that approach, its complexity, an edge case, what they would change with more time. The exercise counts as one main question.`
+    : "";
   return `
 You are ${who} at ${input.job.company}, interviewing a candidate for "${input.job.title}". This is the "${stage.title}" stage${stage.description ? ` — ${stage.description}` : ""}.
 Speak ${lang}. You ARE the interviewer, not a coach.
+${STYLE_RULES[input.style || "warm"]}
 
 WHAT YOU KNOW ABOUT YOUR COMPANY (use it naturally — mention real products, stack and context when relevant; never invent facts beyond this):
 """
@@ -81,7 +153,8 @@ QUESTION BANK FOR THIS STAGE (adapt, don't read verbatim; you may add your own):
 HOW TO BEHAVE:
 - Ask exactly ONE question per message. Keep messages short (under 90 words), conversational, like a real person.
 - React briefly and neutrally to the previous answer ("Got it.", "Interesting — and…").
-- FOLLOW-UPS ARE LIMITED: after a main question you may ask at most ONE follow-up on the same subject (a concrete example, a number, a trade-off, "what would you do differently"); a SECOND follow-up only if the first follow-up's answer was still vague or evasive. Never a third. If the answer was complete and concrete, do not follow up at all — acknowledge and move to the NEXT main question on a different subject. Example: "tell me about your background" → they describe a project → "what was the hardest part of that project?" → they answer → move on (or one more if the answer was thin). Do not keep drilling into the same project or story.
+- FOLLOW-UP BUDGET for this stage: up to ${budget} follow-up${budget === 1 ? "" : "s"} on the same subject after a main question. Spend them when an answer was thin, vague or evasive (ask for the example, the number, their own part in it) OR when it was strong and invites depth (a trade-off, what breaks at scale, what they'd do differently). A complete, concrete answer to an easy question needs no follow-up — acknowledge and move to the NEXT main question on a different subject. Never exceed the budget; never stay on one subject for more than ${budget + 1} questions in a row.
+- COMPANY-ANCHORED QUESTIONS: at least two of your main questions must be anchored in a specific item from what you know — a product, a recent news item, their stack, a signal from their open roles, or a sentence from the role summary ("we use X for Y — how would you approach Z?"). Only from the brief above, never invented; when the brief is thin, anchor in the role summary and the posting's title.${live}${retest}${code}
 - Do NOT evaluate, grade, coach, hint at the "right answer" or say how the candidate is doing. Feedback comes only after the interview.
 - Stay in character even if the candidate asks for feedback: politely say you'll share impressions at the end.
 - If the candidate asks YOU something (about the company, the team, the role, the process, salary range you don't know…), answer it briefly and honestly from what you know — say "I don't have that information" when you don't — then give them room to react before moving on. Candidates are expected to ask questions; it's a good sign.
@@ -91,13 +164,14 @@ HOW TO BEHAVE:
 
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
 
-export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean }> {
+export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean; codeTask: boolean }> {
   const msgs = [new SystemMessage(buildInterviewerPrompt(input)), ...input.transcript.slice(-30).map((t) => (t.role === "candidate" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (input.transcript.length === 0) msgs.push(new HumanMessage(input.language === "en" ? "(The candidate has joined the call.)" : "(המועמד/ת נכנס/ה לשיחה.)"));
   const res = await chatModel("interviewer", { temperature: 0.6 }).invoke(msgs);
   const raw = contentOf(res).trim();
   const done = raw.includes(END_MARK);
-  return { message: raw.replace(END_MARK, "").trim(), done };
+  const codeTask = !done && raw.includes(CODE_MARK) && !!input.codeTask?.allowed && !input.codeTask.done;
+  return { message: raw.replace(END_MARK, "").replace(CODE_MARK, "").trim(), done, codeTask };
 }
 
 export const feedbackSchema = z.object({
@@ -115,6 +189,11 @@ export const feedbackSchema = z.object({
     .array(z.object({ question: z.string(), answerSummary: z.string().default(""), score: z.number().min(0).max(10), whatWorked: z.string().default(""), betterAnswer: z.string().default("") }))
     .default([]),
   nextSteps: z.array(z.string()).default([]),
+  /** Attached after the model wrote the debrief (lib/interview/peers.ts). */
+  peerComparison: z.any().optional(),
+  calibration: z.any().optional(),
+  /** The coding exercise handed out mid-interview, when there was one. */
+  codeTask: z.object({ title: z.string(), score: z.number().nullable(), verdict: z.string().default("") }).optional(),
 });
 export type InterviewFeedback = z.infer<typeof feedbackSchema>;
 
@@ -143,7 +222,7 @@ Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnsw
   return { ...parsed.data, question: parsed.data.question || input.question };
 }
 
-export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[]; compact?: boolean }): { system: string; user: string } {
+export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[]; compact?: boolean; calibrationNote?: string }): { system: string; user: string } {
   const memory = input.coachMemory
     ? `\nThis candidate has done mock interviews before: ${input.coachMemory}. Add "progress": {"note": one honest paragraph comparing this interview to the previous ones (score, delivery, the recurring themes), "improved": [themes that got better], "stillOpen": [themes still showing]}. Be concrete; "no change" is a valid answer.`
     : "";
@@ -154,7 +233,7 @@ export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & {
     : "";
   const system = `You are the interviewer who just finished a "${stage.title}" interview for ${input.job.title} at ${input.job.company}, now writing the hiring-committee debrief AND an honest, useful debrief for the candidate. Write in ${lang}.
 Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance; 50–69 = borderline; below 50 = would not advance), each dimension 0–10, each answer 0–10.
-Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.
+Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.${input.calibrationNote ? `\n${input.calibrationNote}` : ""}${input.codeTask?.done ? `\nThe interview included a timed coding exercise ("${input.codeTask.title || "exercise"}") graded automatically ${input.codeTask.score ?? "n/a"}/100; its turn starts with "${CODE_SUBMITTED_PREFIX}". Weigh it as one main question and review the follow-up discussion about the code like any other answer.` : ""}
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
 ${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); base the rest on them and return "answerReviews": [] (they are attached afterwards, do not repeat them).` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${input.compact ? "\nKeep it tight: summary ≤ 120 words, ≤ 4 strengths, ≤ 4 improvements, ≤ 4 next steps, each note ≤ 40 words, betterAnswer ≤ 3 sentences." : ""}${voice}${memory}
 Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.`;
@@ -165,7 +244,7 @@ Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": strin
 /** Output budget for the debrief. Hebrew costs ~2–3 tokens per word, so a long interview with per-answer reviews can run past 4k. */
 const FEEDBACK_MAX_TOKENS = 8000;
 
-export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[] }): Promise<InterviewFeedback> {
+export async function finalFeedback(input: Omit<SimInput, "targetQuestions"> & { deliveryNote?: string; priorReviews?: AnswerReview[]; calibrationNote?: string }): Promise<InterviewFeedback> {
   const ask = async (compact: boolean) => {
     const { system, user } = buildFeedbackPrompt({ ...input, compact });
     const res = await chatModel("coach", { temperature: 0.2, maxTokens: FEEDBACK_MAX_TOKENS, timeout: 120_000, maxRetries: 1, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]);
