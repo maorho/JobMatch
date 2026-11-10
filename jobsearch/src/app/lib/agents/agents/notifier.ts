@@ -114,7 +114,7 @@ export const notifierAgent = registerAgent({
           type: "job_match",
           title: p.top.length === 1 ? "מצאנו משרה שמתאימה לקו״ח שלך" : `${p.top.length} משרות שמתאימות לקו״ח החדש שלך`,
           body: p.top.map((t) => `${t.title} · ${t.company} (${t.score}%)`).join("\n"),
-          link: "/",
+          link: `/jobs?ids=${p.top.map((t) => t.jobId).join(",")}`,
           meta: { jobIds: p.top.map((t) => t.jobId), agent: "matcher" },
         });
         return `Told the candidate about ${p.top.length} matches.`;

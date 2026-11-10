@@ -45,7 +45,7 @@ export default function CostCard() {
         </div>
         <div>
           <div className="font-semibold text-navy mb-1">{t("admin.cost.topUsers")}</div>
-          <ul className="space-y-0.5">{(data.topUsers || []).length ? data.topUsers.map((u: any) => <li key={u.userId} className="flex justify-between gap-2"><span className="truncate font-mono text-xs" dir="ltr">{u.userId}</span><span className="tabular-nums" dir="ltr">{usd(u.usd)} · {u.calls}</span></li>) : <li className="jm-muted">{t("admin.cost.noUsers")}</li>}</ul>
+          <ul className="space-y-0.5">{(data.topUsers || []).length ? data.topUsers.map((u: any) => <li key={u.userId} className="flex justify-between gap-2"><span className="truncate min-w-0" dir="ltr" title={u.userId}>{u.name ? <>{u.name}{u.email ? <span className="jm-muted text-xs"> · {u.email}</span> : null}</> : <span className="font-mono text-xs">{u.userId}</span>}</span><span className="tabular-nums" dir="ltr">{usd(u.usd)} · {u.calls}</span></li>) : <li className="jm-muted">{t("admin.cost.noUsers")}</li>}</ul>
         </div>
       </div>
       <div className="jm-muted">{t("admin.cost.busMessages", { n: data.busMessagesLastHour, storm: lim.busStorm })}</div>

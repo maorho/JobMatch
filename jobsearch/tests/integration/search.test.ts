@@ -179,6 +179,15 @@ describe("GET /api/jobs/search", () => {
     for (let i = 1; i < ext.length; i++) expect(ext[i - 1].matchScore).toBeGreaterThanOrEqual(ext[i].matchScore);
   });
 
+  it("?ids= returns exactly those postings, in that order, closed ones included", async () => {
+    const [a, b] = await ExternalJobs.find({ company: { $in: ["Google", "Nice"] } }).sort({ postedAt: 1 }).lean();
+    await ExternalJobs.updateOne({ _id: b._id }, { $set: { active: false } });
+    const { body } = await call(`ids=${b._id},${a._id},not-an-id&q=react`);
+    expect(body.jobs.map((j: any) => String(j._id))).toEqual([String(b._id), String(a._id)]);
+    expect(body.total).toBe(2);
+    await ExternalJobs.updateOne({ _id: b._id }, { $unset: { active: 1 } });
+  });
+
   it("ignores a forged/invalid session cookie", async () => {
     const res = await searchGET(new NextRequest("http://localhost/api/jobs/search?q=react", { headers: { cookie: "token=not-a-jwt" } }));
     const body = await res.json();

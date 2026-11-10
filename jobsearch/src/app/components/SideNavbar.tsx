@@ -117,7 +117,7 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
               <Sparkles className="h-5 w-5 text-teal" /> {t("nav.resumeAI")}
             </Link>
             <div className="px-3 pt-2">
-              <LanguageToggle className="jm-btn jm-btn-secondary jm-btn-sm" />
+              <LanguageToggle />
             </div>
           </nav>
 

@@ -23,7 +23,7 @@ interface JobDescriptionProps {
 }
 
 const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
-  const { t } = useT();
+  const { t, dir } = useT();
   const { user } = useCurrentUser();
   const pathname = usePathname();
   const [showModal, setShowModal] = useState(false);
@@ -142,7 +142,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
   const showAboutCompany = !internal && !!job?.company_description;
 
   return (
-    <div className="jm-page">
+    <div className="jm-page" dir={dir}>
       {/* Header card */}
       <section className="jm-card p-5 sm:p-6">
         <div className="flex items-start gap-4">
@@ -181,7 +181,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         {closed && (
           <div className="mt-5 jm-alert bg-canvas text-ink-600 border-line" role="status">
             <span className="font-semibold text-navy">{t("job.closed")}</span> {t("job.closedText")}
-            <Link href={companyName ? `/?company=${encodeURIComponent(companyName)}` : "/"} className="underline underline-offset-2 ms-1">
+            <Link href={companyName ? `/jobs?company=${encodeURIComponent(companyName)}` : "/jobs"} className="underline underline-offset-2 ms-1">
               {companyName || t("job.feed")}
             </Link>
             .
@@ -277,7 +277,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
               {techTags.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${requirementList.length ? "mt-4" : ""}`} dir="ltr">
                   {techTags.map((tag) => (
-                    <Link key={tag} href={`/?tech=${encodeURIComponent(tag)}`} className="jm-chip hover:bg-canvas" title={t("job.techMore", { tech: tag })}>{tag}</Link>
+                    <Link key={tag} href={`/jobs?tech=${encodeURIComponent(tag)}`} className="jm-chip hover:bg-canvas" title={t("job.techMore", { tech: tag })}>{tag}</Link>
                   ))}
                 </div>
               )}
@@ -331,7 +331,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
             )}
             {showAboutCompany && (
               <section className="jm-card p-5">
-                <h3 className="jm-h2 mb-2">About Us:</h3>
+                <h3 className="jm-h2 mb-2">{t("job.aboutUs")}</h3>
                 <p className="text-sm text-ink-600 leading-relaxed break-words" dir="auto">
                   {job.company_description}
                 </p>

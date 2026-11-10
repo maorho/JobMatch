@@ -1,6 +1,7 @@
 import { connectToDatabase } from "@/app/lib/db";
 import LlmUsage from "@/app/models/LlmUsage";
 import AgentMessage from "@/app/models/AgentMessage";
+import User from "@/app/models/User";
 import { alertAdmins } from "./alerts";
 
 /**
@@ -37,7 +38,7 @@ export type CostSummary = {
   estimatedShare: number; // 0–1 of today's cost that used a fallback price
   byModel: { model: string; usd: number; calls: number }[];
   byFeature: { feature: string; usd: number; calls: number }[];
-  topUsers: { userId: string; usd: number; calls: number }[];
+  topUsers: { userId: string; name: string; email: string; usd: number; calls: number }[];
   byDay: { day: string; usd: number }[];
   busMessagesLastHour: number;
   limits: { daily: number; hourly: number; userDaily: number; hardCap: number; busStorm: number };
@@ -71,6 +72,9 @@ export async function costSummary(): Promise<CostSummary> {
     LlmUsage.aggregate([{ $match: { day: { $gte: d30 } } }, { $group: { _id: "$day", usd: { $sum: "$usd" } } }, { $sort: { _id: 1 } }]),
     AgentMessage.countDocuments({ createdAt: { $gt: new Date(now.getTime() - 3600e3) } }),
   ]);
+  // Names next to the ids, so the card reads as people and not as hashes.
+  const people: any[] = topUsers.length ? await User.find({ _id: { $in: topUsers.map((x) => x.key).filter((k) => /^[a-f0-9]{24}$/i.test(k)) } }).select("fullname username email").lean().catch(() => []) : [];
+  const nameOf = new Map(people.map((u) => [String(u._id), { name: u.fullname || u.username || "", email: u.email || "" }]));
   return {
     today: r2(t.usd),
     yesterday: r2(y.usd),
@@ -80,7 +84,7 @@ export async function costSummary(): Promise<CostSummary> {
     estimatedShare: t.usd ? r2(t.est / t.usd) : 0,
     byModel: byModel.map((x) => ({ model: x.key, usd: x.usd, calls: x.calls })),
     byFeature: byFeature.map((x) => ({ feature: x.key || "(untagged)", usd: x.usd, calls: x.calls })),
-    topUsers: topUsers.map((x) => ({ userId: x.key, usd: x.usd, calls: x.calls })),
+    topUsers: topUsers.map((x) => ({ userId: x.key, name: nameOf.get(x.key)?.name || "", email: nameOf.get(x.key)?.email || "", usd: x.usd, calls: x.calls })),
     byDay: (byDayRaw as any[]).map((x) => ({ day: x._id, usd: r2(x.usd) })),
     busMessagesLastHour,
     limits: { daily: LIMITS.daily(), hourly: LIMITS.hourly(), userDaily: LIMITS.userDaily(), hardCap: LIMITS.hardCap(), busStorm: LIMITS.busStorm() },
@@ -95,7 +99,7 @@ export function breachesOf(s: CostSummary): CostBreach[] {
   if (s.today >= s.limits.hardCap) out.push({ kind: "hard_cap", detail: `today $${s.today} ≥ hard cap $${s.limits.hardCap}: model calls are refused until midnight UTC` });
   else if (s.today >= s.limits.daily) out.push({ kind: "daily", detail: `today $${s.today} ≥ $${s.limits.daily}` });
   if (s.lastHour >= s.limits.hourly) out.push({ kind: "hourly", detail: `last hour $${s.lastHour} ≥ $${s.limits.hourly}` });
-  for (const u of s.topUsers) if (u.usd >= s.limits.userDaily) out.push({ kind: "user", detail: `user ${u.userId} spent $${u.usd} today (${u.calls} calls) ≥ $${s.limits.userDaily}` });
+  for (const u of s.topUsers) if (u.usd >= s.limits.userDaily) out.push({ kind: "user", detail: `user ${u.name ? `${u.name} (${u.userId})` : u.userId} spent $${u.usd} today (${u.calls} calls) ≥ $${s.limits.userDaily}` });
   if (s.busMessagesLastHour >= s.limits.busStorm) out.push({ kind: "bus_storm", detail: `${s.busMessagesLastHour} agent messages in the last hour ≥ ${s.limits.busStorm}: a chain may be looping` });
   return out;
 }

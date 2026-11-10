@@ -16,7 +16,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   const SITE_URL = siteUrl();
   const entries: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`, lastModified: now, changeFrequency: "hourly", priority: 1 },
+    { url: `${SITE_URL}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
+    { url: `${SITE_URL}/jobs`, lastModified: now, changeFrequency: "hourly", priority: 1 },
     { url: `${SITE_URL}/Companies`, lastModified: now, changeFrequency: "daily", priority: 0.8 },
     { url: `${SITE_URL}/Articels`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
     { url: `${SITE_URL}/interview-questions`, lastModified: now, changeFrequency: "daily", priority: 0.8 },

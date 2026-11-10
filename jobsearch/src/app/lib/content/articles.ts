@@ -5,6 +5,9 @@ import { ARTICLES, type Article as StaticArticle } from "@/app/content/articles"
 /** What the public pages render: DB articles (published) merged with the static seed. */
 export type PublicArticle = StaticArticle & { seo?: { title?: string; description?: string; keywords?: string[] }; source: "agent" | "manual" | "static" };
 
+const sectionsOf = (list: any[]) => (list || []).map((s: any) => ({ heading: s.heading || undefined, paragraphs: s.paragraphs?.length ? s.paragraphs : undefined, bullets: s.bullets?.length ? s.bullets : undefined }));
+const referencesOf = (list: any[]) => (list || []).filter((r: any) => r?.url).map((r: any) => ({ title: r.title || r.url, url: r.url, note: r.note || undefined }));
+
 const fromDb = (a: any): PublicArticle => ({
   slug: a.slug,
   title: a.title,
@@ -12,7 +15,9 @@ const fromDb = (a: any): PublicArticle => ({
   date: (a.publishedAt || a.createdAt || new Date()).toISOString(),
   readMinutes: a.readMinutes || 5,
   tags: a.tags || [],
-  sections: (a.sections || []).map((s: any) => ({ heading: s.heading || undefined, paragraphs: s.paragraphs?.length ? s.paragraphs : undefined, bullets: s.bullets?.length ? s.bullets : undefined })),
+  sections: sectionsOf(a.sections),
+  references: referencesOf(a.references),
+  en: a.en?.title ? { title: a.en.title, excerpt: a.en.excerpt || "", tags: a.en.tags || [], sections: sectionsOf(a.en.sections), references: referencesOf(a.en.references) } : undefined,
   seo: a.seo,
   source: a.source || "agent",
 });

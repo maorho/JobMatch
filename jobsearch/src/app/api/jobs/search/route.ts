@@ -1,6 +1,7 @@
 import { parsePostedDays, postedSince, postedWithinFilter } from "@/app/lib/jobs/posted";
 import { parseExperienceBuckets, experienceFilter, techFilter } from "@/app/lib/jobs/structured";
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
@@ -124,8 +125,25 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 48;
   const skip = (page - 1) * limit;
 
+  // A fixed list of postings (the ones a notification was about): exactly those, in that order, closed ones included.
+  const ids = list(sp, "ids").filter((id) => mongoose.isValidObjectId(id)).slice(0, 50);
+
   try {
     await connectToDatabase();
+    if (ids.length) {
+      let vector: number[] | null = null;
+      if (userId) vector = await getCandidateVector(userId).catch(() => null);
+      const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: ids } }).select("+embedding") : ExternalJobs.find({ _id: { $in: ids } })).lean();
+      const pos = new Map(ids.map((id, i) => [id, i]));
+      const jobs = docs
+        .sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0))
+        .map((d) => {
+          const { embedding, ...rest } = d;
+          const matchScore = vector && Array.isArray(embedding) && embedding.length ? Math.round(toMatchScore(cosineSimilarity(vector, embedding))) : undefined;
+          return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
+        });
+      return { status: 200, payload: { jobs, total: jobs.length, externalTotal: jobs.length, internalTotal: 0, page: 1, pages: 1, personalized: !!vector } };
+    }
     // Multi-word queries match jobs containing EVERY word (anywhere in the
     // searchable fields), not the exact phrase — "junior developer" should
     // find a "Junior Full Stack Developer", not only that literal string.

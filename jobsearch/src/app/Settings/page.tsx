@@ -156,7 +156,7 @@ export default function SettingsPage() {
         <div className={card}>
           <h2 className="jm-h2">{t("settings.language")}</h2>
           <p className="text-sm text-ink-600">{t("settings.languageText")}</p>
-          <LanguageToggle className="jm-btn jm-btn-secondary" />
+          <LanguageToggle />
         </div>
 
         <div id="messaging" className={card}>

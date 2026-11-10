@@ -67,13 +67,32 @@ export function useT(): Ctx {
   );
 }
 
-/** The header's HE/EN switch. */
-export function LanguageToggle({ className = "" }: { className?: string }) {
+/**
+ * The HE | EN switch: a two-segment control, the active language filled.
+ * `variant="dark"` sits on the navy header; "light" on cards and drawers.
+ */
+export function LanguageToggle({ className = "", variant = "light" }: { className?: string; variant?: "light" | "dark" }) {
   const { lang, setLang, t } = useT();
-  const next: Lang = lang === "he" ? "en" : "he";
-  return (
-    <button type="button" onClick={() => setLang(next)} aria-label={t("nav.languageAria")} title={t("nav.languageAria")} className={className} lang={next}>
-      {t("nav.language")}
+  const base = variant === "dark" ? "border-white/20 bg-white/10" : "border-line bg-surface";
+  const on = variant === "dark" ? "bg-white text-navy shadow-sm" : "bg-navy text-white shadow-sm";
+  const off = variant === "dark" ? "text-white/75 hover:text-white" : "text-ink-600 hover:text-navy";
+  const seg = (l: Lang, label: string, aria: string) => (
+    <button
+      type="button"
+      onClick={() => setLang(l)}
+      aria-pressed={lang === l}
+      aria-label={aria}
+      title={aria}
+      lang={l}
+      className={`h-7 min-w-[2.25rem] px-2 rounded-full text-xs font-bold tracking-wide transition-colors ${lang === l ? on : off}`}
+    >
+      {label}
     </button>
+  );
+  return (
+    <div role="group" aria-label={t("nav.language")} dir="ltr" className={`inline-flex items-center gap-0.5 p-0.5 rounded-full border ${base} ${className}`}>
+      {seg("he", "HE", t("nav.langHe"))}
+      {seg("en", "EN", t("nav.langEn"))}
+    </div>
   );
 }

@@ -20,7 +20,7 @@ export default function HubPage({ data, path, cities, current }: { data: HubData
   return (
     <div className="jm-page" dir={dir}>
       <nav className="jm-muted text-sm mb-3" aria-label="breadcrumb">
-        <Link href="/" className="hover:text-navy">{t("hubs.jobs")}</Link> <span aria-hidden="true">/</span> <span className="text-navy">{title}</span>
+        <Link href="/jobs" className="hover:text-navy">{t("hubs.jobs")}</Link> <span aria-hidden="true">/</span> <span className="text-navy">{title}</span>
       </nav>
       <header className="mb-6">
         <h1 className="jm-title">{title}</h1>
@@ -70,7 +70,7 @@ export default function HubPage({ data, path, cities, current }: { data: HubData
               <h2 className="font-semibold text-navy mb-3">{t("hubs.tech")}</h2>
               <div className="flex flex-wrap gap-2" dir="ltr">
                 {data.tech.map((t) => (
-                  <Link key={t.tech} href={`/?tech=${encodeURIComponent(t.tech)}`} className="jm-chip hover:bg-canvas">
+                  <Link key={t.tech} href={`/jobs?tech=${encodeURIComponent(t.tech)}`} className="jm-chip hover:bg-canvas">
                     {t.tech} <span className="text-ink-400">{t.n}</span>
                   </Link>
                 ))}

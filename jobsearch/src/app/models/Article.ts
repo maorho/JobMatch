@@ -16,6 +16,8 @@ const SectionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const ReferenceSchema = new mongoose.Schema({ title: { type: String, default: "" }, url: { type: String, default: "" }, note: { type: String, default: "" } }, { _id: false });
+
 const ArticleSchema = new mongoose.Schema(
   {
     slug: { type: String, required: true, unique: true, trim: true },
@@ -24,6 +26,15 @@ const ArticleSchema = new mongoose.Schema(
     tags: { type: [String], default: [] },
     readMinutes: { type: Number, default: 5 },
     sections: { type: [SectionSchema], default: [] },
+    references: { type: [ReferenceSchema], default: [] },
+    /** The English version (the top-level text is Hebrew). */
+    en: {
+      title: { type: String, default: "" },
+      excerpt: { type: String, default: "" },
+      tags: { type: [String], default: [] },
+      sections: { type: [SectionSchema], default: [] },
+      references: { type: [ReferenceSchema], default: [] },
+    },
     seo: {
       title: { type: String, default: "" },
       description: { type: String, default: "" },

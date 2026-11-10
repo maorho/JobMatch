@@ -72,7 +72,7 @@ function Header() {
             <Sparkles className="h-4 w-4" />
             {t("nav.resumeAI")}
           </Link>
-          <LanguageToggle className="hidden sm:inline-flex h-11 px-3 rounded-full text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors" />
+          <LanguageToggle variant="dark" className="hidden sm:inline-flex" />
 
           {user && (
             <>

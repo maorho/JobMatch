@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import UsageCounter from "@/app/models/UsageCounter";
 import { enterUsageScope } from "@/app/lib/llm/usageMeter";
+import User from "@/app/models/User";
 
 /**
  * Daily caps per person on the actions that cost real money, so one account
@@ -31,12 +32,63 @@ export const DEFAULT_LIMITS: Record<string, number> = {
   question_answer: 40, // suggested answers to company interview questions (cached per résumé version)
 };
 
+/**
+ * While the service is free, a fresh account gets a much smaller allowance for
+ * its first days: enough to try everything, not enough to run up a bill before
+ * we know the person is real. Override with QUOTA_NEW_USER_DAYS and QUOTA_NEW_<KEY>.
+ */
+export const NEW_USER_DAYS = () => {
+  const n = parseInt(process.env.QUOTA_NEW_USER_DAYS || "", 10);
+  return Number.isFinite(n) && n >= 0 ? n : 7;
+};
+export const NEW_USER_LIMITS: Record<string, number> = {
+  practice_grade: 8,
+  practice_author: 2,
+  interview_session: 2,
+  voice_session: 1,
+  prep_plan: 3,
+  resume_chat: 25,
+  resume_build: 2,
+  tailor: 3,
+  research: 3,
+  explain: 20,
+  practice_turn: 40,
+  outreach: 5,
+  outcome_questions: 10,
+  interview_turn: 60,
+  progress_rebuild: 1,
+  mcp_matches: 10,
+  mcp_prep: 3,
+  mcp_apply: 2,
+  question_answer: 10,
+};
+
 export const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);
-export const limitFor = (key: string) => {
+export const limitFor = (key: string, opts: { newAccount?: boolean } = {}): number => {
+  if (opts.newAccount) {
+    const env = process.env[`QUOTA_NEW_${key.toUpperCase()}`];
+    const n = env ? parseInt(env, 10) : NaN;
+    if (Number.isFinite(n) && n >= 0) return n;
+    if (NEW_USER_LIMITS[key] !== undefined) return Math.min(NEW_USER_LIMITS[key], limitFor(key));
+  }
   const env = process.env[`QUOTA_${key.toUpperCase()}`];
   const n = env ? parseInt(env, 10) : NaN;
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_LIMITS[key] ?? 50;
 };
+
+// Account age is looked up once per instance per 10 minutes, not per call.
+const ageCache = new Map<string, { isNew: boolean; until: number }>();
+export async function isNewAccount(userId: string | mongoose.Types.ObjectId, now = Date.now()): Promise<boolean> {
+  const id = String(userId);
+  const hit = ageCache.get(id);
+  if (hit && hit.until > now) return hit.isNew;
+  const u = await User.findById(id).select("createdAt").lean<{ createdAt?: Date }>().catch(() => null);
+  const isNew = !!u?.createdAt && now - new Date(u.createdAt).getTime() < NEW_USER_DAYS() * 86_400_000;
+  ageCache.set(id, { isNew, until: now + 10 * 60_000 });
+  return isNew;
+}
+/** Test hook. */
+export const _resetAgeCache = () => ageCache.clear();
 
 export class QuotaError extends Error {
   constructor(public key: string, public limit: number, public used: number) {
@@ -50,7 +102,7 @@ export async function consumeQuota(userId: string | mongoose.Types.ObjectId, key
   enterUsageScope({ userId: String(userId), feature: key });
   if (process.env.NODE_ENV === "test" && !process.env.QUOTA_ENFORCE_IN_TESTS) return { used: 0, limit: limitFor(key), remaining: limitFor(key) };
   await connectToDatabase();
-  const limit = limitFor(key);
+  const limit = limitFor(key, { newAccount: await isNewAccount(userId) });
   const day = dayKey();
   const cost = opts.cost ?? 1;
   const row: any = await UsageCounter.findOneAndUpdate({ userId, day, key }, { $inc: { n: cost }, $setOnInsert: { userId, day, key } }, { upsert: true, new: true }).lean();
@@ -64,7 +116,10 @@ export async function consumeQuota(userId: string | mongoose.Types.ObjectId, key
 /** The response a route sends when consumeQuota throws (429 + a Hebrew hint the UI can show as is). */
 export function quotaResponse(e: unknown): NextResponse | null {
   if (!(e instanceof QuotaError)) return null;
-  return NextResponse.json({ ok: false, error: "quota", key: e.key, limit: e.limit, message: `הגעת למכסה היומית (${e.limit}). נסו שוב מחר, או כתבו לנו אם צריך יותר.` }, { status: 429, headers: { "Retry-After": "3600" } });
+  return NextResponse.json(
+    { ok: false, error: "quota", key: e.key, limit: e.limit, message: `הגעת למכסה היומית (${e.limit}). נסו שוב מחר, או כתבו לנו אם צריך יותר.`, messageEn: `You've reached today's limit (${e.limit}). Try again tomorrow, or write to us if you need more.` },
+    { status: 429, headers: { "Retry-After": "3600" } }
+  );
 }
 
 /** Today's totals across everyone (for the health page). */

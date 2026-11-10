@@ -144,6 +144,20 @@ YOUR PREVIOUS DRAFT HAD ONLY ${words} WORDS. Rewrite it as the FULL article: 900
   return { ...article, words, readMinutes: Math.max(2, Math.round(words / 180)) };
 }
 
+/** The same article in English, for the English interface: a faithful rewrite, not a word-for-word translation. */
+export async function translateArticle(a: GeneratedArticle): Promise<{ title: string; excerpt: string; tags: string[]; sections: GeneratedArticle["sections"] } | null> {
+  const llm = chatModel("quality", { temperature: 0.3, maxTokens: 10_000, timeout: 120_000, json: true });
+  const system = `You translate a Hebrew career article for Israeli tech job seekers into natural, idiomatic English for the same audience. Keep every fact, number, example and Markdown link exactly; keep the section structure (same number of sections, paragraphs and bullets); product names stay as they are. Return STRICT JSON: {"title","excerpt","tags":[...],"sections":[{"heading","paragraphs":[...],"bullets":[...]}]}. Nothing else.`;
+  try {
+    const out = extractJson(contentOf(await llm.invoke([new SystemMessage(system), new HumanMessage(JSON.stringify({ title: a.title, excerpt: a.excerpt, tags: a.tags, sections: a.sections }))])));
+    const parsed = z.object({ title: z.string().min(3), excerpt: z.string().default(""), tags: z.array(z.string()).default([]), sections: z.array(z.object({ heading: z.string().default(""), paragraphs: z.array(z.string()).default([]), bullets: z.array(z.string()).default([]) })).min(1) }).safeParse(out);
+    return parsed.success ? parsed.data : null;
+  } catch (e) {
+    console.warn("[writer] English version failed:", (e as Error)?.message);
+    return null;
+  }
+}
+
 /** Every slug in use (DB + static seed), so new ones never collide. */
 export async function existingSlugs(): Promise<string[]> {
   await connectToDatabase();
@@ -170,8 +184,9 @@ export async function writeAndStoreArticle(input: { topic: string; angle?: strin
   const a = await generateArticle({ topic: input.topic, angle: input.angle, audience: input.audience, facts, existingSlugs: slugs });
   const slug = uniqueSlug(a.slug, slugs);
   const status = input.publish ? "published" : "draft";
+  const en = await translateArticle(a);
   const doc = await Article.create({
-    slug, title: a.title, excerpt: a.excerpt, tags: a.tags, readMinutes: a.readMinutes, sections: a.sections, seo: a.seo,
+    slug, title: a.title, excerpt: a.excerpt, tags: a.tags, readMinutes: a.readMinutes, sections: a.sections, seo: a.seo, ...(en ? { en } : {}),
     status, publishedAt: input.publish ? new Date() : undefined, source: "agent", topic: input.topic, angle: input.angle || "", audience: input.audience || "", model: WRITER_MODEL, runId: input.runId, facts,
   });
   return { id: String(doc._id), slug, title: a.title, status, words: a.words };

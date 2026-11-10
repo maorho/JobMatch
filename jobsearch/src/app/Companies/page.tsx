@@ -86,7 +86,7 @@ export default function CompaniesPage() {
               {c.remote > 0 && <span className="jm-chip jm-chip-sky">{t("pages.companies.remote", { n: c.remote })}</span>}
             </div>
             <div className="mt-auto flex items-center justify-between gap-3 pt-1">
-              <Link href={`/?company=${encodeURIComponent(c.name)}`} className="jm-btn jm-btn-secondary jm-btn-sm">
+              <Link href={`/jobs?company=${encodeURIComponent(c.name)}`} className="jm-btn jm-btn-secondary jm-btn-sm">
                 {t("pages.companies.viewJobs")}
               </Link>
               {c.careersUrl && (

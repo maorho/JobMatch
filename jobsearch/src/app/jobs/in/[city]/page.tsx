@@ -49,7 +49,7 @@ export default async function CityHub({ params }: { params: Promise<{ city: stri
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList(title, data)) }} />
     <HubPage
       data={data}
-      path={remote ? "/?jobType=Remote" : `/?city=${encodeURIComponent(name)}`}
+      path={remote ? "/jobs?jobType=Remote" : `/jobs?city=${encodeURIComponent(name)}`}
       cities={cities}
       current={{ city: remote ? "remote" : name }}
     />

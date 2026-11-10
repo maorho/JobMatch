@@ -45,7 +45,7 @@ export default async function RoleHub({ params }: { params: Promise<{ role: stri
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList(title, data)) }} />
     <HubPage
       data={data}
-      path={`/?q=${encodeURIComponent(ROLE_INFO[role].en.split(" ")[0])}`}
+      path={`/jobs?q=${encodeURIComponent(ROLE_INFO[role].en.split(" ")[0])}`}
       cities={cities}
       current={{ role }}
     />

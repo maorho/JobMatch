@@ -14,7 +14,7 @@ export default function NotFound() {
         text={<Bilingual he="הקישור שהגעת ממנו לא קיים יותר, או שהמשרה הוסרה מהמאגר." en="The link you followed no longer exists, or the posting was removed from the catalogue." />}
         action={
           <div className="flex flex-wrap justify-center gap-2">
-            <Link href="/" className="jm-btn jm-btn-primary"><Bilingual he="לכל המשרות" en="All jobs" /></Link>
+            <Link href="/jobs" className="jm-btn jm-btn-primary"><Bilingual he="לכל המשרות" en="All jobs" /></Link>
             <Link href="/Articels" className="jm-btn jm-btn-secondary"><Bilingual he="מאמרים ומדריכים" en="Articles and guides" /></Link>
           </div>
         }

@@ -90,7 +90,7 @@ export default function ReferralsPage() {
         <h2 className="jm-h2 mb-1 inline-flex items-center gap-2"><Send className="h-5 w-5 text-sky" /> {t("widgets.ref.mine")}</h2>
         <p className="jm-muted mb-4">{t("widgets.ref.mineText")}</p>
         {data.mine.length === 0 ? (
-          <EmptyState icon="🤝" title={t("widgets.ref.noneMine")} text={t("widgets.ref.noneMineText")} action={<Link href="/" className="jm-btn jm-btn-primary">{t("widgets.ref.toJobs")}</Link>} />
+          <EmptyState icon="🤝" title={t("widgets.ref.noneMine")} text={t("widgets.ref.noneMineText")} action={<Link href="/jobs" className="jm-btn jm-btn-primary">{t("widgets.ref.toJobs")}</Link>} />
         ) : (
           <div className="jm-card divide-y divide-line">
             {data.mine.map((r) => (

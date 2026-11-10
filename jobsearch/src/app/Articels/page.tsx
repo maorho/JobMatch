@@ -14,6 +14,6 @@ export const metadata: Metadata = {
 export default async function ArticlesPage() {
   const articles = await listArticles();
   // Only what the list shows crosses to the client (the bodies stay on the server).
-  const summaries = articles.map(({ slug, title, excerpt, tags, date, readMinutes }) => ({ slug, title, excerpt, tags, date, readMinutes }));
+  const summaries = articles.map(({ slug, title, excerpt, tags, date, readMinutes, en }) => ({ slug, title, excerpt, tags, date, readMinutes, en: en ? { title: en.title, excerpt: en.excerpt, tags: en.tags } : undefined }));
   return <ArticlesList articles={summaries} />;
 }

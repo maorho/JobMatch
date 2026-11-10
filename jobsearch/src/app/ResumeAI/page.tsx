@@ -450,7 +450,7 @@ export default function ResumeAIPage() {
               {matchReady && (
                 <div className="jm-alert jm-alert-ok space-y-3">
                   <p>{t("resume.savedForMatching")}</p>
-                  <Link href="/" className="jm-btn jm-btn-accent jm-btn-sm w-full">
+                  <Link href="/jobs" className="jm-btn jm-btn-accent jm-btn-sm w-full">
                     {t("resume.seeMatchingJobs")}
                   </Link>
                 </div>

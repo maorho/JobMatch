@@ -1,6 +1,6 @@
 /** Navigation shared by the header and the mobile drawer. */
 export const NAV_LINKS = [
-  { href: "/", key: "nav.jobs" },
+  { href: "/jobs", key: "nav.jobs" },
   { href: "/Companies", key: "nav.companies" },
   { href: "/interview-questions", key: "nav.interviewQs" },
   { href: "/practice", key: "nav.practice" },

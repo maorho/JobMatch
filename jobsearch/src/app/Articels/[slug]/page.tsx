@@ -28,7 +28,7 @@ export default async function ArticlePage({ params }: { params: Params }) {
   const { slug } = await params;
   const a = await getArticleBySlug(slug);
   if (!a) notFound();
-  const others = (await listArticles()).filter((x) => x.slug !== a.slug).slice(0, 3).map((o) => ({ slug: o.slug, title: o.title }));
+  const others = (await listArticles()).filter((x) => x.slug !== a.slug).slice(0, 3).map((o) => ({ slug: o.slug, title: o.title, titleEn: o.en?.title }));
   const jsonLd = [articleJsonLd(a), breadcrumbJsonLd([{ name: "מאמרים", path: "/Articels" }, { name: a.title, path: `/Articels/${a.slug}` }])];
   const article = {
     slug: a.slug,
@@ -39,6 +39,8 @@ export default async function ArticlePage({ params }: { params: Params }) {
     readMinutes: a.readMinutes,
     source: a.source,
     sections: a.sections.map((s) => ({ heading: s.heading, paragraphs: s.paragraphs, bullets: s.bullets })),
+    references: a.references,
+    en: a.en ? { title: a.en.title, excerpt: a.en.excerpt, tags: a.en.tags, sections: a.en.sections.map((s) => ({ heading: s.heading, paragraphs: s.paragraphs, bullets: s.bullets })), references: a.en.references } : undefined,
   };
 
   return (

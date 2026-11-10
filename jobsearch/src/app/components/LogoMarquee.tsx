@@ -14,7 +14,7 @@ function Track({ rows, ariaHidden, onPick }: { rows: Row[]; ariaHidden?: boolean
       {rows.map((c) => (
         <li key={c.name} className="shrink-0">
           <Link
-              href={`/?company=${encodeURIComponent(c.name)}`}
+              href={`/jobs?company=${encodeURIComponent(c.name)}`}
               onClick={onPick ? (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); onPick(c.name); } : undefined}
               className="flex items-center gap-2.5 opacity-70 hover:opacity-100 transition-opacity"
               tabIndex={ariaHidden ? -1 : 0}

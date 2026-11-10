@@ -10,7 +10,10 @@ import { useT } from "../lib/i18n/LanguageProvider";
 
 dayjs.extend(relativeTime);
 
-type Item = { _id: string; type: string; title: string; body: string; link: string; read: boolean; createdAt: string };
+type Item = { _id: string; type: string; title: string; body: string; link: string; read: boolean; createdAt: string; meta?: { jobIds?: string[] } };
+
+/** Older match notifications pointed at the whole feed; the ids in `meta` open exactly those jobs. */
+const linkOf = (n: Item) => (n.type === "job_match" && n.meta?.jobIds?.length ? `/jobs?ids=${n.meta.jobIds.join(",")}` : n.link === "/" ? "/jobs" : n.link);
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
@@ -92,13 +95,13 @@ export default function NotificationsPage() {
                   {n.body && <p className="mt-1 text-sm text-ink-600 whitespace-pre-line" dir="auto">{n.body}</p>}
                 </div>
                 {!n.read && <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-teal" role="img" aria-label={t("notif.unread")} />}
-                {n.link && <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">←</span>}
+                {linkOf(n) && <span className="jm-btn jm-btn-ghost jm-btn-sm shrink-0 self-center" aria-hidden="true">{dir === "rtl" ? "←" : "→"}</span>}
               </div>
             );
             return (
               <li key={n._id}>
-                {n.link ? (
-                  <Link href={n.link} onClick={() => !n.read && markRead([n._id])} className="block">
+                {linkOf(n) ? (
+                  <Link href={linkOf(n)} onClick={() => !n.read && markRead([n._id])} className="block">
                     {inner}
                   </Link>
                 ) : (

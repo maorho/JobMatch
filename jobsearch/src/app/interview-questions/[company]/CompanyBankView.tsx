@@ -131,7 +131,7 @@ export default function CompanyBankView({ slug, company, total, reported, report
           <section className="jm-card p-5 space-y-3">
             <h3 className="jm-h2 text-base">{t("interview.company.practiceTitle")}</h3>
             <p className="text-sm text-ink-600 leading-relaxed">{t("interview.company.practiceText", { company })}</p>
-            <Link href={`/?company=${encodeURIComponent(company)}`} className="jm-btn jm-btn-primary w-full">{t("interview.company.openJobs", { company })}</Link>
+            <Link href={`/jobs?company=${encodeURIComponent(company)}`} className="jm-btn jm-btn-primary w-full">{t("interview.company.openJobs", { company })}</Link>
             {!signedIn && <p className="jm-muted text-center">{hidden > 0 ? t("interview.company.unlockN", { n: hidden }) : t("interview.company.unlock")}</p>}
           </section>
           <section className="jm-card p-5 space-y-2">

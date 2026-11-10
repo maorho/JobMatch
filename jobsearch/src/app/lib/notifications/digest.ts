@@ -56,7 +56,7 @@ export async function runJobMatchDigest(opts: { dry?: boolean; heartbeat?: () =>
         type: "job_match",
         title: scored.length === 1 ? "משרה חדשה שמתאימה לך" : `${scored.length} משרות חדשות שמתאימות לך`,
         body: scored.map((x) => `${x.j.job} · ${x.j.company} (${x.score}%)`).join("\n"),
-        link: "/",
+        link: `/jobs?ids=${scored.map((x) => String(x.j._id)).join(",")}`,
         meta: { jobIds: scored.map((x) => String(x.j._id)) },
       });
       await User.updateOne({ _id: u._id }, { $set: { lastMatchDigestAt: now } });

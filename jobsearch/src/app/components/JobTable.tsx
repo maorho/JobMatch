@@ -113,6 +113,7 @@ function JobTable() {
   const [posted, setPosted] = useState(""); // "posted within" days: "" | "1" | "3" | "7" | "14" | "30"
   const [experience, setExperience] = useState<string[]>([]); // "0-2" | "3-5" | "5-10" | "10+"
   const [tech, setTech] = useState<string[]>([]);
+  const [ids, setIds] = useState<string[]>([]); // a notification's postings (?ids=): exactly those, nothing else
   const [jobCount, setJobCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
@@ -135,7 +136,7 @@ function JobTable() {
   };
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Deep links: /?company=Google&q=react&city=Haifa&seniority=Junior
+  // Deep links: /jobs?company=Google&q=react&city=Haifa&seniority=Junior&ids=<from a notification>
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const list = (k: string) => sp.getAll(k).flatMap((v) => v.split(",")).map((v) => v.trim()).filter(Boolean);
@@ -148,6 +149,7 @@ function JobTable() {
     if (sp.get("posted")) setPosted(sp.get("posted")!);
     if (list("exp").length) setExperience(list("exp"));
     if (list("tech").length) setTech(list("tech"));
+    if (list("ids").length) setIds(list("ids"));
   }, []);
 
   // Filter options for the WHOLE catalog (every company/city in the DB).
@@ -174,6 +176,7 @@ function JobTable() {
 
   // Any term or filter active → search the DB server-side instead of the page.
   const isSearching =
+    ids.length > 0 ||
     searchTerm.trim() !== "" ||
     company.length > 0 ||
     country.length > 0 ||
@@ -190,6 +193,7 @@ function JobTable() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
+      if (ids.length) params.set("ids", ids.join(","));
       if (searchTerm.trim()) params.set("q", searchTerm.trim());
       company.forEach((v) => params.append("company", v));
       city.forEach((v) => params.append("city", v));
@@ -331,6 +335,7 @@ function JobTable() {
     posted,
     experience,
     tech,
+    ids,
     u: user?._id ?? user?.id ?? null,
   });
   const prevKeyRef = React.useRef(searchKey);
@@ -400,6 +405,7 @@ function JobTable() {
     ...company.map((v) => ({ label: v, clear: () => setCompany((s) => s.filter((x) => x !== v)) })),
   ];
   const clearAll = () => {
+    setIds([]);
     setSearchTerm("");
     setPosted("");
     setExperience([]);
@@ -459,7 +465,7 @@ function JobTable() {
                 : t("home.eyebrowEmpty")}
           </span>
           <h1 className="jm-display mt-4 text-[38px] sm:text-5xl lg:text-[64px] text-navy leading-[1.04]" dir={dir}>
-            {t("home.headline1")} <span className="italic text-teal">{t("home.headline2")}</span>
+            {t("home.headline1")} <span className="italic text-teal">{t("home.headline2")}</span>{t("home.headline3") ? ` ${t("home.headline3")}` : ""}
           </h1>
           <p className="mt-5 text-base sm:text-lg text-ink-600 max-w-2xl mx-auto leading-relaxed" dir={dir}>
             {t("home.sub", { companies: stats ? stats.companies.toLocaleString() : t("home.companiesFallback") })}
@@ -514,44 +520,25 @@ function JobTable() {
               setSearchTerm("");
               setCompany([name]);
               setCity([]); setCountry([]); setSeniority([]); setJobType([]);
-              window.history.replaceState(null, "", `/?company=${encodeURIComponent(name)}`);
+              window.history.replaceState(null, "", `/jobs?company=${encodeURIComponent(name)}`);
               document.getElementById("positions")?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           />
         )}
       </section>
 
-      {!user && (
-        <section className="mt-8 grid gap-4 sm:grid-cols-3" dir={dir} aria-label={t("home.howAria")}>
-          {[
-            { n: "1", t: t("home.step1.t"), d: t("home.step1.d", { sources: stats ? stats.sources.toLocaleString() : t("home.companiesFallback") }) },
-            { n: "2", t: t("home.step2.t"), d: t("home.step2.d") },
-            { n: "3", t: t("home.step3.t"), d: t("home.step3.d") },
-          ].map((s) => (
-            <div key={s.n} className="jm-card p-5">
-              <div className="h-8 w-8 rounded-full bg-teal-50 text-teal font-semibold flex items-center justify-center">{s.n}</div>
-              <h2 className="mt-3 font-semibold text-navy">{s.t}</h2>
-              <p className="mt-1 text-sm text-ink-600 leading-relaxed">{s.d}</p>
-            </div>
-          ))}
-          <p className="sm:col-span-3 text-sm text-ink-600 text-center">
-            {t("home.privacy")}{" "}
-            <Link href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">{t("home.privacyLink")}</Link>
-          </p>
-          <nav className="sm:col-span-3 flex flex-wrap justify-center gap-2 text-sm" aria-label={t("home.hubsAria")}>
-            {[
-              ["/jobs/role/backend", "Backend"], ["/jobs/role/frontend", "Frontend"], ["/jobs/role/fullstack", "Full Stack"], ["/jobs/role/data", "Data / ML"], ["/jobs/role/devops", "DevOps"], ["/jobs/role/qa", "QA"], ["/jobs/role/mobile", "Mobile"],
-              ["/jobs/in/Tel%20Aviv", lang === "he" ? "תל אביב" : "Tel Aviv"], ["/jobs/in/Haifa", lang === "he" ? "חיפה" : "Haifa"], ["/jobs/in/Jerusalem", lang === "he" ? "ירושלים" : "Jerusalem"], ["/jobs/in/remote", t("home.quick.remote")],
-            ].map(([href, label]) => (
-              <Link key={href} href={href} className="jm-chip hover:bg-canvas">{label}</Link>
-            ))}
-          </nav>
-        </section>
-      )}
-
       {user && (
         <div className="mt-6">
           <PushCard variant="banner" />
+        </div>
+      )}
+
+      {ids.length > 0 && (
+        <div className="mt-6 jm-alert jm-alert-info flex flex-wrap items-center justify-between gap-3" dir={dir} role="status">
+          <span className="font-medium">{t("home.fromNotification", { n: ids.length })}</span>
+          <button type="button" className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => { setIds([]); window.history.replaceState(null, "", "/jobs"); }}>
+            {t("home.fromNotificationClear")}
+          </button>
         </div>
       )}
 
