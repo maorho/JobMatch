@@ -125,6 +125,10 @@ export function buildInterviewerPrompt(input: SimInput): string {
   const asked = input.transcript.filter((t) => t.role === "interviewer").length;
   const who = input.interviewer ? `${input.interviewer.name} (${input.interviewer.gender}), ${persona.en}` : persona.en;
   const budget = FOLLOWUP_BUDGET[input.stage] ?? 1;
+  // What was already asked, so the model never circles back; and a hard close when the budget is spent.
+  const askedList = input.transcript.filter((t) => t.role === "interviewer").slice(1).map((t, i) => `${i + 1}. ${t.content.replace(/\s+/g, " ").slice(0, 140)}`);
+  const alreadyAsked = askedList.length ? `\n- ALREADY ASKED (never repeat or rephrase these subjects; every new main question is on a NEW subject):\n${askedList.join("\n")}` : "";
+  const overBudget = asked > input.targetQuestions ? `\n- BUDGET SPENT: you have asked all ${input.targetQuestions} main questions. Do NOT ask anything else. Close the interview now in 1–2 sentences and append ${END_MARK}.` : "";
   const realN = input.realQuestions?.stageCount ? Math.min(3, input.realQuestions.stageCount, Math.max(1, input.targetQuestions - 1)) : 0;
   const realRule = realN
     ? `- REAL QUESTIONS FIRST: at least ${realN} of your ${input.targetQuestions} main questions MUST be questions from the REAL QUESTIONS list above (the ones marked FOR THIS STAGE), asked in your own words and in a natural order, adapted to this candidate's résumé. They take priority over the question bank. Never say they were reported or where they came from — to you they are simply what you ask.\n`
@@ -162,7 +166,8 @@ HOW TO BEHAVE:
 - Ask exactly ONE question per message. Keep messages short (under 90 words), conversational, like a real person.
 - React briefly and neutrally to the previous answer ("Got it.", "Interesting — and…").
 - FOLLOW-UP BUDGET for this stage: up to ${budget} follow-up${budget === 1 ? "" : "s"} on the same subject after a main question. Spend them when an answer was thin, vague or evasive (ask for the example, the number, their own part in it) OR when it was strong and invites depth (a trade-off, what breaks at scale, what they'd do differently). A complete, concrete answer to an easy question needs no follow-up — acknowledge and move to the NEXT main question on a different subject. Never exceed the budget; never stay on one subject for more than ${budget + 1} questions in a row.
-${realRule}- COMPANY-ANCHORED QUESTIONS: at least two of your main questions must be anchored in a specific item from what you know — a product, a recent news item, their stack, a signal from their open roles, or a sentence from the role summary ("we use X for Y — how would you approach Z?"). Only from the brief above, never invented; when the brief is thin, anchor in the role summary and the posting's title.${live}${retest}${code}
+${realRule}${alreadyAsked}${overBudget}
+- COMPANY-ANCHORED QUESTIONS: at least two of your main questions must be anchored in a specific item from what you know — a product, a recent news item, their stack, a signal from their open roles, or a sentence from the role summary ("we use X for Y — how would you approach Z?"). Only from the brief above, never invented; when the brief is thin, anchor in the role summary and the posting's title.${live}${retest}${code}
 - Do NOT evaluate, grade, coach, hint at the "right answer" or say how the candidate is doing. Feedback comes only after the interview.
 - Stay in character even if the candidate asks for feedback: politely say you'll share impressions at the end.
 - If the candidate asks YOU something (about the company, the team, the role, the process, salary range you don't know…), answer it briefly and honestly from what you know — say "I don't have that information" when you don't — then give them room to react before moving on. Candidates are expected to ask questions; it's a good sign.

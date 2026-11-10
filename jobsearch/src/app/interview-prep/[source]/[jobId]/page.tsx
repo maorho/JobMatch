@@ -67,7 +67,7 @@ export default function InterviewPrepPage() {
   useEffect(() => {
     fetch("/api/interview/phone/status").then(async (r) => r.ok && setPhoneCfg(await r.json())).catch(() => setPhoneCfg({ configured: false }));
   }, []);
-  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" }; longAnswerSec?: number } | null>(null);
+  const [voice, setVoice] = useState<{ sessionId: string; clientSecret: string; model: string; endpoint: "calls" | "legacy"; targetQuestions: number; interviewer?: { name: string; gender: "female" | "male" }; longAnswerSec?: number; timeLimitSec?: number } | null>(null);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -179,7 +179,7 @@ export default function InterviewPrepPage() {
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: questions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
       } else if (mode === "voice") {
         const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
-        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer, longAnswerSec: d.longAnswerSec });
+        setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer, longAnswerSec: d.longAnswerSec, timeLimitSec: d.timeLimitSec });
         setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null, realQuestions: d.realQuestions || null });
       } else {
         const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
@@ -452,7 +452,7 @@ export default function InterviewPrepPage() {
                     <button onClick={async () => { await fetch("/api/interview/phone", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) }); setCalling(null); setSession(null); }} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.cancelCall")}</button>
                   </div>
                 ) : voice ? (
-                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} longAnswerSec={voice.longAnswerSec} onEnded={onVoiceEnded} />
+                  <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} longAnswerSec={voice.longAnswerSec} timeLimitSec={voice.timeLimitSec} onEnded={onVoiceEnded} />
                 ) : session.feedback ? (
                   <FeedbackView fb={session.feedback} delivery={session.delivery || null} onNew={() => setSession(null)} stageTitle={stage.title} />
                 ) : session.mode === "voice" ? (

@@ -182,6 +182,7 @@ export const he = {
   "interview.realQ.other": "{n} שאלות אמיתיות מ-{company} (משלבים אחרים)",
   "interview.realQ.none": "עוד לא דווחו שאלות מ-{company}; המראיין מתבסס על תוכנית ההכנה",
   "interview.realQ.title": "שאלות אמיתיות מהחברה",
+  "interview.voice.timeLimit": "הזמן שנשאר לראיון; בסופו המראיין/ת מסכם/ת ומסיים/ת",
 } as const;
 
 export const en: Record<keyof typeof he, string> = {
@@ -355,4 +356,5 @@ export const en: Record<keyof typeof he, string> = {
   "interview.realQ.other": "{n} real questions from {company} (other stages)",
   "interview.realQ.none": "No reported questions from {company} yet; the interviewer works from the prep plan",
   "interview.realQ.title": "Real questions from the company",
+  "interview.voice.timeLimit": "Time left in the interview; at the end the interviewer wraps up and closes",
 };

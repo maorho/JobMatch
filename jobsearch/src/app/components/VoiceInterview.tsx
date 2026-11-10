@@ -25,6 +25,8 @@ type Props = {
   interviewer?: { name: string; gender: "female" | "male" };
   /** Seconds a single answer may run before the interviewer cuts in (from the server, per stage). */
   longAnswerSec?: number;
+  /** The whole call's budget in seconds; the browser closes the call shortly after it runs out. */
+  timeLimitSec?: number;
   onEnded: (turns: VoiceTurn[], reason: "interviewer" | "candidate" | "error") => void;
 };
 
@@ -33,7 +35,7 @@ const CHECK_IN_MS = 12_000;
 
 type Status = "connecting" | "live" | "ended" | "error";
 
-export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, longAnswerSec = 90, onEnded }: Props) {
+export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, longAnswerSec = 90, timeLimitSec = 15 * 60, onEnded }: Props) {
   const { t, dir } = useT();
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState("");
@@ -61,6 +63,32 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   // Clock on the current answer: past the stage's limit the interviewer is told to cut in (once per answer).
   const longAnswerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSteerRef = useRef<string>("");
+  // The clock on the whole call and the question budget: the model is reminded, then told to close, then cut off.
+  const closingRef = useRef(false);
+  const warnedRef = useRef(false);
+  const dcSend = (msg: object) => {
+    try {
+      dcRef.current?.send(JSON.stringify(msg));
+    } catch {}
+  };
+  const systemNote = (text: string) => dcSend({ type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text }] } });
+  const askToClose = (why: string) => {
+    if (closingRef.current || endedRef.current) return;
+    closingRef.current = true;
+    dcSend({ type: "response.create", response: { instructions: `${why} Close the interview NOW: one or two sentences (thank them, say what happens next), no new question, then call the end_interview tool.` } });
+  };
+  /** After every answer: how far along the interview is and what was already covered, so nothing is asked twice. */
+  const progressNote = () => {
+    const qs = turnsRef.current.filter((t) => t.role === "interviewer").slice(1); // the opening is not a question
+    const askedN = qs.length;
+    const covered = qs.map((q, i) => `${i + 1}. ${q.content.replace(/\s+/g, " ").slice(0, 120)}`).join("\n");
+    const left = Math.max(0, targetQuestions - askedN);
+    if (askedN >= targetQuestions) {
+      askToClose(`PROGRESS: you have asked all ${targetQuestions} main questions and the last answer is in.`);
+      return;
+    }
+    systemNote(`PROGRESS (private, never mention): main questions asked so far: ${askedN} of ${targetQuestions}; ${left} left.${covered ? ` Already covered — do not return to these subjects:\n${covered}` : ""}\nYour next question must be on a NEW subject${left === 1 ? ", and it is your last one: after its answer, close and call end_interview" : ""}.`);
+  };
   const armLongAnswer = () => {
     if (longAnswerRef.current) clearTimeout(longAnswerRef.current);
     longAnswerRef.current = setTimeout(() => {
@@ -154,6 +182,9 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       case "input_audio_buffer.speech_stopped":
         pendingProsodyRef.current = meterRef.current?.stop() ?? null;
         setSpeaking("");
+        // The server does not auto-respond (create_response:false): post the progress note, then ask for the interviewer's turn.
+        progressNote();
+        if (!closingRef.current && !endedRef.current) dcSend({ type: "response.create" });
         break;
       case "conversation.item.input_audio_transcription.completed": {
         const text = String(ev.transcript || "").trim();
@@ -219,7 +250,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     let cancelled = false;
     const connect = async () => {
       try {
-        const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+        // Gain control on: a quiet laptop mic was the main reason answers came back half-transcribed.
+        const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
         if (cancelled) return;
         micRef.current = mic;
         meterRef.current = new ProsodyMeter(mic);
@@ -276,6 +308,17 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [status]);
+  // The clock: a two-minute warning, "time is up" at the limit, and a hard hang-up a minute later if the model never closed.
+  useEffect(() => {
+    if (status !== "live" || endedRef.current) return;
+    if (!warnedRef.current && elapsed >= timeLimitSec - 120) {
+      warnedRef.current = true;
+      systemNote("TIME (private): about two minutes left. At most one more short question, then close and call end_interview.");
+    }
+    if (elapsed === timeLimitSec) askToClose("TIME IS UP.");
+    if (elapsed >= timeLimitSec + 60) hangUp("interviewer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elapsed, status, timeLimitSec]);
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
   }, [turns.length, partial]);
@@ -295,6 +338,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const asked = turns.filter((t) => t.role === "interviewer").length;
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+  const left = Math.max(0, timeLimitSec - elapsed);
+  const leftLabel = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
 
   return (
     <div className="flex flex-col" dir={dir}>
@@ -303,6 +348,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         <span className={`h-2.5 w-2.5 rounded-full ${status === "live" ? "bg-red-500 animate-pulse" : status === "connecting" ? "bg-sky" : "bg-ink-400"}`} />
         <span className="font-medium text-navy">{status === "connecting" ? t("interview.voice.connecting") : status === "live" ? t("interview.voice.live", { time: `${mm}:${ss}` }) : status === "ended" ? t("interview.voice.ended") : t("interview.voice.errorShort")}</span>
         <span className="jm-chip">{t("interview.questionOf", { a: Math.min(Math.max(asked - 1, 1), targetQuestions), b: targetQuestions })}</span>
+        {status === "live" && <span className={`jm-chip ${left <= 120 ? "bg-red-50 text-red-700 border-red-200" : ""}`} dir="ltr" title={t("interview.voice.timeLimit")}>⏱ {leftLabel}</span>}
         <span className="jm-muted">{interviewer ? `${interviewer.name} · ` : ""}{stageTitle} · {company}</span>
       </div>
 

@@ -18,6 +18,15 @@ export const SILENCE_MS = 2500;
 /** An answer that runs longer than this gets a polite cut-in (seconds); technical stages get more room. */
 export const LONG_ANSWER_SEC: Record<string, number> = { hr: 90, behavioral: 100, final: 90, technical: 150, system_design: 180, home_assignment: 150 };
 export const longAnswerLimit = (stage: string) => LONG_ANSWER_SEC[stage] ?? 90;
+/** The whole call: opening + N main questions with follow-ups + closing. The browser enforces it (see VoiceInterview). */
+export const timeLimitSec = (questions: number) => Math.min(25 * 60, 150 + Math.max(3, questions) * 150);
+/** Transcription of the candidate's audio (side channel for the debrief; the interviewer model hears the audio itself). */
+export const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-transcribe";
+/** Domain words the transcriber would otherwise mangle: the company, the role, the stack, the candidate's name. */
+export function transcriptionPrompt(opts: { company?: string; jobTitle?: string; tech?: string[]; candidateName?: string }): string {
+  const words = [opts.company, opts.jobTitle, opts.candidateName, ...(opts.tech || []).slice(0, 25)].filter(Boolean);
+  return `Job interview in Hebrew or English; technical terms stay in English. Vocabulary: ${[...new Set(words)].join(", ")}, React, Node.js, TypeScript, Python, Kubernetes, Docker, AWS, SQL, REST, API, CI/CD, microservices, Git.`.slice(0, 900);
+}
 
 /** A believable interviewer per call: the voice decides the name's gender. */
 export const VOICES: { voice: string; gender: "female" | "male"; names: string[] }[] = [
@@ -42,6 +51,7 @@ THIS IS A LIVE VOICE CALL, not text:
 - When they ask you something, answer it (briefly, honestly) and then wait for their reaction instead of jumping to your next question.
 - If you can't hear or understand something, say so briefly and ask them to repeat.
 - Keep each of your turns under 25 seconds of speech.
+- COUNT YOUR QUESTIONS. You have ${input.targetQuestions} main questions in this call and a time limit of about ${Math.round(timeLimitSec(input.targetQuestions) / 60)} minutes. After every answer the system posts a PROGRESS note with how many you have asked and the subjects already covered: read it, NEVER ask about a subject that is already covered (no rephrasing of an earlier question, no "let's go back to"), and when the note says the budget is spent, or that time is up, close the interview in one or two sentences and call ${END_TOOL} — do not start a new subject, do not ask "anything else?".
 - TIME: a single answer should stay under about ${longAnswerLimit(input.stage)} seconds. The system tells you when the candidate has run long; when it does, cut in politely at the next breath ("תודה — אני רוצה להספיק עוד כמה דברים", "let me stop you there, I want to cover a few more things"), summarise what you got in half a sentence, and move on. Real interviewers manage the clock; so do you.
 - Listen to HOW they speak as well as what they say (confidence, energy, clarity, pace, hesitation) — you will report it at the end, never during the call.
 - When the interview is over: say your closing (1–2 sentences), then call the ${END_TOOL} tool with your honest vocal impression. Do not call it before the closing is spoken.`;
@@ -81,14 +91,14 @@ export type ClientSecret = { value: string; expiresAt: number; model: string; vo
  * (/v1/realtime/client_secrets) and falls back to the preview one
  * (/v1/realtime/sessions) so either API generation works.
  */
-export async function createRealtimeClientSecret(opts: { instructions: string; language: "he" | "en"; model?: string; voice?: string; fetchImpl?: typeof fetch }): Promise<ClientSecret> {
+export async function createRealtimeClientSecret(opts: { instructions: string; language: "he" | "en"; model?: string; voice?: string; transcriptionPrompt?: string; fetchImpl?: typeof fetch }): Promise<ClientSecret> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
   const f = opts.fetchImpl || fetch;
   const model = opts.model || REALTIME_MODEL;
   const voice = opts.voice || pickVoice().voice;
-  // No fixed language: the candidate picks Hebrew or English on the call.
-  const transcription = { model: "gpt-4o-mini-transcribe" };
+  // No fixed language: the candidate picks Hebrew or English on the call. The prompt primes the vocabulary.
+  const transcription = { model: TRANSCRIBE_MODEL, ...(opts.transcriptionPrompt ? { prompt: opts.transcriptionPrompt } : {}) };
 
   const ga = await f("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -102,9 +112,10 @@ export async function createRealtimeClientSecret(opts: { instructions: string; l
         tools: [END_TOOL_DEF],
         tool_choice: "auto",
         audio: {
-          // Server VAD with a fixed silence window: the interviewer reacts after
-          // SILENCE_MS of quiet (follow-up or next question), never sooner.
-          input: { transcription, turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: SILENCE_MS, create_response: true, interrupt_response: true } },
+          // Server VAD with a fixed silence window: the interviewer reacts after SILENCE_MS of quiet, never sooner.
+          // The browser creates the response itself (create_response:false) right after it posts the progress note,
+          // so the model always knows how many questions it has asked and what it already covered.
+          input: { transcription, noise_reduction: { type: "near_field" }, turn_detection: { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: SILENCE_MS, create_response: false, interrupt_response: true } },
           output: { voice },
         },
       },

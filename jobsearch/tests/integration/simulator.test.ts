@@ -107,6 +107,10 @@ describe("interviewer prompt", () => {
     expect(hr).not.toContain(CODE_MARK);
     const done = buildInterviewerPrompt({ ...base, stage: "technical", codeTask: { allowed: true, done: true, title: "Two sum", score: 80 } });
     expect(done).toMatch(/CODING EXERCISE: done \("Two sum", automatic grade 80\/100\)/);
+    const mid = buildInterviewerPrompt({ ...base, stage: "hr", targetQuestions: 2, transcript: [{ role: "interviewer", content: "opening" }, { role: "candidate", content: "hi" }, { role: "interviewer", content: "Tell me about a conflict you handled" }, { role: "candidate", content: "…" }, { role: "interviewer", content: "Why us?" }, { role: "candidate", content: "…" }] });
+    expect(mid).toMatch(/ALREADY ASKED[\s\S]*1\. Tell me about a conflict you handled[\s\S]*2\. Why us\?/);
+    expect(mid).toMatch(/BUDGET SPENT: you have asked all 2 main questions/);
+    expect(buildInterviewerPrompt({ ...base, stage: "hr", transcript: [{ role: "interviewer", content: "opening" }] })).not.toMatch(/ALREADY ASKED|BUDGET SPENT/);
     expect(adaptiveSteer([7, 7]).steer).toBe("step_up");
     expect(adaptiveSteer([4, 2]).steer).toBe("step_down");
     expect(adaptiveSteer([4, 8]).steer).toBeNull();

@@ -29,7 +29,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { signJwt } from "@/app/lib/jwt";
-import { buildVoiceInstructions, computeDelivery, describeDelivery, countFillers, summarizeTone, END_TOOL, END_TOOL_DEF, createRealtimeClientSecret, pickVoice, SILENCE_MS } from "@/app/lib/interview/voice";
+import { buildVoiceInstructions, computeDelivery, describeDelivery, countFillers, summarizeTone, END_TOOL, END_TOOL_DEF, createRealtimeClientSecret, pickVoice, SILENCE_MS, timeLimitSec, transcriptionPrompt } from "@/app/lib/interview/voice";
 import { pairQuestions, detectLanguage, reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 import { buildFeedbackPrompt } from "@/app/lib/interview/simulator";
 import { POST as voicePOST, PATCH as voicePATCH, GET as voiceGET } from "@/app/api/interview/voice/route";
@@ -66,6 +66,11 @@ describe("voice instructions + tool", () => {
     expect(pickVoice(0.9)).toMatchObject({ voice: "cedar", gender: "male" });
     expect(pickVoice(0.1).name).not.toBe(pickVoice(0.7).name);
     expect(sys).toMatch(/Listen to HOW they speak/);
+    expect(sys).toMatch(/COUNT YOUR QUESTIONS\. You have 5 main questions/);
+    expect(sys).toMatch(/NEVER ask about a subject that is already covered/);
+    expect(timeLimitSec(5)).toBe(150 + 5 * 150);
+    expect(timeLimitSec(12)).toBe(25 * 60);
+    expect(transcriptionPrompt({ company: "Acme", jobTitle: "Backend Dev", tech: ["Go", "Kafka"], candidateName: "Dana" })).toMatch(/Acme, Backend Dev, Dana, Go, Kafka/);
     expect(sys).toContain(`call the ${END_TOOL} tool`);
     expect(sys).not.toContain("<<END>>");
     expect(END_TOOL_DEF.parameters.required).toContain("vocal_impression");
@@ -78,7 +83,9 @@ describe("voice instructions + tool", () => {
     const call = realtimeCalls.find((c) => c.url.endsWith("/client_secrets"));
     expect(call.body.session.tools[0].name).toBe(END_TOOL);
     expect(call.body.session.audio.input.transcription.language).toBeUndefined(); // the candidate picks the language on the call
-    expect(call.body.session.audio.input.turn_detection).toMatchObject({ type: "server_vad", silence_duration_ms: SILENCE_MS });
+    expect(call.body.session.audio.input.transcription.model).toBe("gpt-4o-transcribe");
+    expect(call.body.session.audio.input.noise_reduction).toEqual({ type: "near_field" });
+    expect(call.body.session.audio.input.turn_detection).toMatchObject({ type: "server_vad", silence_duration_ms: SILENCE_MS, create_response: false });
     expect(call.body.session.instructions).toBe("hi");
   });
 });

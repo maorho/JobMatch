@@ -226,6 +226,12 @@ export async function PATCH(req: NextRequest) {
       if (handed) session.codeTask = { attemptId: handed.attemptId, taskId: handed.taskId, title: handed.title, timeLimitMin: handed.timeLimitMin, status: "open", score: null, verdict: "" };
       else message += session.language === "en" ? "\n\n(The exercise isn't available right now — let's continue with questions.)" : "\n\n(התרגיל לא זמין כרגע — נמשיך בשאלות.)";
     }
+    // Safety net: whatever the model does, the interview ends a couple of questions past its budget.
+    const askedNow = session.transcript.filter((t: any) => t.role === "interviewer").length; // includes the opening
+    if (!turn.done && askedNow >= session.targetQuestions + 2) {
+      message = `${message}\n\n${session.language === "en" ? "That's all the time we have — thank you, we'll be in touch." : "זה כל מה שהספקנו — תודה רבה, נהיה בקשר."}`;
+      turn.done = true;
+    }
     session.transcript.push({ role: "interviewer", content: message });
     if (turn.done) session.wrappedUp = true;
     await session.save();

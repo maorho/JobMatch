@@ -12,7 +12,7 @@ import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
 import { buildCompanyBrief, pickStyle, adaptiveSteer } from "@/app/lib/interview/simulator";
-import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, longAnswerLimit, REALTIME_MODEL } from "@/app/lib/interview/voice";
+import { buildVoiceInstructions, createRealtimeClientSecret, computeDelivery, pickVoice, longAnswerLimit, timeLimitSec, transcriptionPrompt, REALTIME_MODEL } from "@/app/lib/interview/voice";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 
 /** Run work after the response is sent (Next `after`); inline when outside a request scope (tests). */
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     const memory = await loadCoachMemory(userId);
     const style = pickStyle(stage);
     const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, realQuestions: real });
-    const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice });
+    const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice, transcriptionPrompt: transcriptionPrompt({ company: prep.company, jobTitle: prep.jobTitle, tech: [...(prep.plan?.company?.techStack || []), ...(ctx?.techSignals || []).map((t: any) => t.term)], candidateName: user?.fullname }) });
 
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief,
@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
       targetQuestions,
       stage,
       longAnswerSec: longAnswerLimit(stage),
+      timeLimitSec: timeLimitSec(targetQuestions),
       realQuestions: { count: real.count, stageCount: real.stageCount, harvest: real.harvest },
     });
   } catch (err: any) {
