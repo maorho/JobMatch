@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { ListAdapter, NormalizedPosting, fetchText, htmlToText, parseLocation } from "../types";
+import { fetchHtmlViaRenderer } from "@/app/lib/apply/server";
 
 /**
  * Generic server-rendered HTML job board (staffing agencies, government and
@@ -79,8 +80,13 @@ const HEADERS = { "User-Agent": UA, Accept: "text/html", "Accept-Language": "he,
 
 async function getHtml(url: string): Promise<string> {
   const { ok, status, text } = await fetchText(url, { headers: HEADERS, cache: "no-store", redirect: "follow" });
-  if (!ok) throw new Error(`HTML board ${url}: HTTP ${status}`);
-  return text;
+  if (ok) return text;
+  // Bot rules that block serverless egress (403/429) usually let a real browser through: the renderer fetches it for us.
+  if (status === 403 || status === 429) {
+    const viaBrowser = await fetchHtmlViaRenderer(url);
+    if (viaBrowser && viaBrowser.status >= 200 && viaBrowser.status < 400 && viaBrowser.html) return viaBrowser.html;
+  }
+  throw new Error(`HTML board ${url}: HTTP ${status}`);
 }
 
 const clean = (s: string) => (s || "").replace(/\s+/g, " ").trim();

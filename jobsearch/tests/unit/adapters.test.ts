@@ -158,6 +158,18 @@ describe("html adapter", () => {
     expect(out[0].description).toBe("Full description here"); // detail overrides listing
   });
 
+  it("falls back to the renderer when the board answers 403 to our egress", async () => {
+    process.env.PUPPETEER_SERVER_URL = "https://renderer.example";
+    const { calls } = stubFetch({ "/list": { status: 403, body: "blocked" }, "renderer.example/api/fetch-html": { body: { status: 200, finalUrl: "https://agency.example/list", html: LISTING } } });
+    const out = await html("https://agency.example/list", JSON.stringify({ item: "div.inner.font_s", title: "h3.title_job a", link: "h3.title_job a", desc: ".desc", company: "Agency", country: "Israel" }));
+    expect(out).toHaveLength(2);
+    expect(calls.some((u) => u.includes("/api/fetch-html?url=https%3A%2F%2Fagency.example%2Flist"))).toBe(true);
+    delete process.env.PUPPETEER_SERVER_URL;
+    // Without a renderer the 403 is still an error.
+    stubFetch({ "/list": { status: 403, body: "blocked" } });
+    await expect(html("https://agency.example/list", JSON.stringify({ item: "div.inner.font_s", title: "h3.title_job a", link: "h3.title_job a", company: "Agency" }))).rejects.toThrow(/HTTP 403/);
+  });
+
   it("fails loudly on a bad or missing config", async () => {
     stubFetch({});
     await expect(html("https://x.example", undefined)).rejects.toThrow(/config/);

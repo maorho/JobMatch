@@ -22,6 +22,28 @@ export function applyServerBase(): string | null {
 /** The shared secret the server checks (`x-scraper-token` / `?token=`). */
 export const applyServerToken = () => process.env.SCRAPER_TOKEN || process.env.CRON_SECRET || "";
 
+/**
+ * A board page as a real browser sees it, through the renderer (GET /api/fetch-html).
+ * For sites that answer our serverless egress with 403. Null when the renderer
+ * is not configured, busy, or failed — the caller keeps its own error.
+ */
+export async function fetchHtmlViaRenderer(url: string, timeoutMs = 45_000): Promise<{ status: number; html: string } | null> {
+  const base = applyServerBase();
+  if (!base) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${base}/api/fetch-html?url=${encodeURIComponent(url)}`, { headers: { "x-scraper-token": applyServerToken() }, cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) return null;
+    const d: any = await res.json();
+    return typeof d?.html === "string" ? { status: Number(d.status) || 200, html: d.html } : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type ApplyServerHealth = { ok: boolean; reason?: string };
 
 export type ApplyServerProbe = { ok: boolean; configured: boolean; reachable?: boolean; authorized?: boolean | null; agent?: boolean; ms?: number; reason?: string };

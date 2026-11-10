@@ -252,6 +252,47 @@ app.get("/api/open-job", async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// The page's HTML as a browser sees it, for job boards that answer Vercel's
+// egress with 403 (Cloudflare-style bot rules) but serve a real browser. The
+// HTML adapter falls back to this on 403/429 (lib/scout/adapters/html.ts).
+app.get("/api/fetch-html", async (req: Request, res: Response): Promise<void> => {
+  if (!tokenOk((req.query.token as string) || req.get("x-scraper-token") || "")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const pageUrl = req.query.url as string;
+  if (!pageUrl) {
+    res.status(400).json({ error: "Missing url" });
+    return;
+  }
+  if (!(await isSafeUrl(pageUrl))) {
+    res.status(400).json({ error: "URL not allowed" });
+    return;
+  }
+  if (inFlight >= MAX_CONCURRENCY) {
+    res.status(503).json({ error: "Busy, try again" });
+    return;
+  }
+  inFlight++;
+  let page: Page | null = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+    await page.setExtraHTTPHeaders({ "Accept-Language": "he,en;q=0.8" });
+    const response = await page.goto(pageUrl, { waitUntil: "networkidle2", timeout: 30000 }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 800)); // late client-side rendering
+    const html = await page.content();
+    res.json({ status: response?.status() ?? 0, finalUrl: page.url(), html: html.slice(0, 3_000_000) });
+  } catch (err: any) {
+    console.error("❌ fetch-html error:", err?.message || err);
+    res.status(500).json({ error: "Failed to fetch the page" });
+  } finally {
+    inFlight--;
+    await page?.close().catch(() => {});
+  }
+});
+
 // Detect the ATS behind a (possibly JS-rendered) careers page by rendering it
 // and capturing the network requests + markup that reference an ATS.
 const ATS_HOST_RE =
