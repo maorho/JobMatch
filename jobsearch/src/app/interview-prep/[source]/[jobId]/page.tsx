@@ -251,7 +251,8 @@ export default function InterviewPrepPage() {
       try {
         const r = await fetch(`/api/practice/attempts/${openCode}`, { cache: "no-store" });
         const d = r.ok ? await r.json() : null;
-        if (d?.attempt?.status && d.attempt.status !== "in_progress") {
+        // Hand-in and grading happen in one request on /practice; wait for the grade so the interviewer sees a score, not "pending".
+        if (d?.attempt?.status === "graded" || d?.attempt?.status === "failed") {
           stopped = true;
           codeContinue();
           return;

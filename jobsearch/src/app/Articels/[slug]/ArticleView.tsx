@@ -15,7 +15,7 @@ export type ArticleViewData = ArticleText & {
   en?: ArticleText;
 };
 
-const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g;
+const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/(?!\/)[^\s)]*)\)/g;
 
 /** Paragraph text with Markdown links: [text](https://…) or [text](/path). Nothing else is interpreted. */
 export function RichText({ text }: { text: string }) {

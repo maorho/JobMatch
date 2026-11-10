@@ -33,7 +33,7 @@ export type RealQuestions = {
 
 const SAME_STAGE_MAX = 12;
 const OTHER_STAGE_MAX = 6;
-export const HARVEST_BUDGET_MS = 25_000;
+export const HARVEST_BUDGET_MS = 20_000; // the session start also pays for a model turn and must finish inside the route's 60 s
 
 const line = (q: BankQuestion) => {
   const prov = q.count > 0 ? (q.count > 1 ? ` (reported by ${q.count} of our candidates)` : " (reported by one of our candidates)") : ` (seen on ${q.sources[0]?.name || "the web"})`;
