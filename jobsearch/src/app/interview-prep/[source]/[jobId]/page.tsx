@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
+import { useT } from "../../../lib/i18n/LanguageProvider";
 import { EmptyState, Spinner } from "../../../components/ui";
 import VoiceInterview, { type VoiceTurn } from "../../../components/VoiceInterview";
 import ProgressCard from "../../../components/ProgressCard";
@@ -42,6 +43,7 @@ const scoreColor = (s: number, max = 100) => ((s / max) >= 0.7 ? "bg-teal" : (s 
 
 export default function InterviewPrepPage() {
   const { source, jobId } = useParams() as { source: string; jobId: string };
+  const { t, lang, dir } = useT();
   const { user, loading: userLoading } = useCurrentUser();
   const [prep, setPrep] = useState<Prep | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -71,7 +73,7 @@ export default function InterviewPrepPage() {
     try {
       const res = await fetch("/api/interview/prep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId, source, force, language: "he" }) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.message || data?.error || (res.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "ההכנה נכשלה"));
+      if (!res.ok) throw new Error(data?.message || data?.error || (res.status === 429 ? t("interview.quota") : t("interview.prepFailed")));
       setPrep(data);
       setStageKey(data.plan.stages[0]?.key || "");
       setState("ready");
@@ -157,7 +159,7 @@ export default function InterviewPrepPage() {
   const call = async (url: string, method: string, body: object) => {
     const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? "הגעת למכסה היומית. נסו שוב מחר." : "משהו השתבש"));
+    if (!r.ok) throw new Error(d?.message || d?.error || (r.status === 429 ? t("interview.quota") : t("common.somethingWrong")));
     return d;
   };
 
@@ -191,7 +193,7 @@ export default function InterviewPrepPage() {
     setVoice(null);
     setSession((s) => s && { ...s, transcript: turns.map((t) => ({ role: t.role, content: t.content })), asked: turns.filter((t) => t.role === "interviewer").length, wrappedUp: true });
     if (answered === 0) {
-      setError(reason === "error" ? "השיחה לא התחברה." : "השיחה הסתיימה לפני שענית על שאלה — אין על מה לתת משוב.");
+      setError(reason === "error" ? t("interview.callNotConnected") : t("interview.callEndedEarly"));
       setSession(null);
       return;
     }
@@ -242,22 +244,22 @@ export default function InterviewPrepPage() {
     }
   };
 
-  if (userLoading) return <div className="jm-page" dir="rtl"><Spinner label="טוען…" /></div>;
+  if (userLoading) return <div className="jm-page" dir={dir}><Spinner label={t("common.loading")} /></div>;
   if (!user) {
     return (
-      <div className="jm-page" dir="rtl">
-        <EmptyState icon="🔒" title="צריך להתחבר" text="ההכנה לראיון נבנית מקורות החיים שלך." action={<Link href={`/Login?next=${encodeURIComponent(`/interview-prep/${source}/${jobId}`)}`} className="jm-btn jm-btn-primary">התחברות</Link>} />
+      <div className="jm-page" dir={dir}>
+        <EmptyState icon="🔒" title={t("interview.needSignIn")} text={t("interview.needSignInText")} action={<Link href={`/Login?next=${encodeURIComponent(`/interview-prep/${source}/${jobId}`)}`} className="jm-btn jm-btn-primary">{t("common.signIn")}</Link>} />
       </div>
     );
   }
 
   return (
-    <div className="jm-page" dir="rtl">
-      {state === "loading" && <Spinner label="הסוכן אוסף מידע על החברה ובונה את התוכנית…" />}
+    <div className="jm-page" dir={dir}>
+      {state === "loading" && <Spinner label={t("interview.building")} />}
       {state === "error" && (
         <div className="jm-alert jm-alert-err flex flex-wrap items-center justify-between gap-2">
           <span>{error}</span>
-          <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">נסה שוב</button>
+          <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.retry")}</button>
         </div>
       )}
 
@@ -266,13 +268,13 @@ export default function InterviewPrepPage() {
           <section className="jm-card p-5 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-wider text-teal mb-1">הכנה לראיון</div>
+                <div className="text-xs font-semibold uppercase tracking-wider text-teal mb-1">{t("job.prep")}</div>
                 <h1 className="jm-title">{prep.job.title}</h1>
                 <p className="jm-subtitle">{prep.job.company}{prep.plan.company.whatTheyDo ? ` · ${prep.plan.company.whatTheyDo}` : ""}</p>
               </div>
               <div className="flex gap-2">
-                <Link href={`/job/${source}/${jobId}`} className="jm-btn jm-btn-ghost jm-btn-sm">← למשרה</Link>
-                <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">צור תוכנית מחדש</button>
+                <Link href={`/job/${source}/${jobId}`} className="jm-btn jm-btn-ghost jm-btn-sm">{t("interview.backToJob")}</Link>
+                <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.regenerate")}</button>
               </div>
             </div>
             {prep.plan.company.summary && <p className="mt-4 text-ink-600 leading-relaxed" dir="auto">{prep.plan.company.summary}</p>}
@@ -290,8 +292,8 @@ export default function InterviewPrepPage() {
               ))}
             </div>
             <div className="flex gap-1 shrink-0">
-              <button onClick={() => setTab("plan")} aria-pressed={tab === "plan"} className={`jm-btn jm-btn-sm ${tab === "plan" ? "jm-btn-accent" : "jm-btn-secondary"}`}>תוכנית</button>
-              <button onClick={() => setTab("interview")} aria-pressed={tab === "interview"} className={`jm-btn jm-btn-sm ${tab === "interview" ? "jm-btn-accent" : "jm-btn-secondary"}`}>🎙️ ראיון מדומה</button>
+              <button onClick={() => setTab("plan")} aria-pressed={tab === "plan"} className={`jm-btn jm-btn-sm ${tab === "plan" ? "jm-btn-accent" : "jm-btn-secondary"}`}>{t("interview.tabPlan")}</button>
+              <button onClick={() => setTab("interview")} aria-pressed={tab === "interview"} className={`jm-btn jm-btn-sm ${tab === "interview" ? "jm-btn-accent" : "jm-btn-secondary"}`}>{t("interview.tabMock")}</button>
             </div>
           </div>
 
@@ -306,11 +308,11 @@ export default function InterviewPrepPage() {
                   {stage.likelyQuestions.map((q, i) => (
                     <li key={i} className="rounded-control border border-line p-4">
                       <div className="font-semibold text-navy" dir="auto">{i + 1}. {q.question}</div>
-                      {q.whyAsked && <p className="text-xs text-ink-400 mt-1" dir="auto">למה שואלים: {q.whyAsked}</p>}
+                      {q.whyAsked && <p className="text-xs text-ink-400 mt-1" dir="auto">{t("interview.whyAsked")}{q.whyAsked}</p>}
                       {q.howToAnswer && <p className="text-sm text-ink-600 mt-2 leading-relaxed" dir="auto">{q.howToAnswer}</p>}
                       {q.sampleAnswer && (
                         <details className="mt-2">
-                          <summary className="text-sm text-teal cursor-pointer">תשובה לדוגמה</summary>
+                          <summary className="text-sm text-teal cursor-pointer">{t("interview.sampleAnswer")}</summary>
                           <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{q.sampleAnswer}</p>
                         </details>
                       )}
@@ -319,7 +321,7 @@ export default function InterviewPrepPage() {
                 </ol>
                 {stage.tips.length > 0 && (
                   <div>
-                    <h3 className="font-semibold text-navy mb-2">טיפים לשלב</h3>
+                    <h3 className="font-semibold text-navy mb-2">{t("interview.stageTips")}</h3>
                     <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
                   </div>
                 )}
@@ -327,7 +329,7 @@ export default function InterviewPrepPage() {
               <aside className="space-y-4">
                 {prep.plan.gaps.length > 0 && (
                   <section className="jm-card p-5">
-                    <h3 className="jm-h2 mb-2">פערים לסגור</h3>
+                    <h3 className="jm-h2 mb-2">{t("interview.gaps")}</h3>
                     <ul className="space-y-2">
                       {prep.plan.gaps.map((g, i) => (
                         <li key={i} className="text-sm" dir="auto">
@@ -341,13 +343,13 @@ export default function InterviewPrepPage() {
                 )}
                 {prep.plan.questionsToAsk.length > 0 && (
                   <section className="jm-card p-5">
-                    <h3 className="jm-h2 mb-2">שאלות שכדאי לשאול</h3>
+                    <h3 className="jm-h2 mb-2">{t("interview.questionsToAsk")}</h3>
                     <ul className={bulletList + " text-sm"}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
                   </section>
                 )}
                 {prep.plan.checklist.length > 0 && (
                   <section className="jm-card p-5">
-                    <h3 className="jm-h2 mb-2">צ׳קליסט</h3>
+                    <h3 className="jm-h2 mb-2">{t("interview.checklist")}</h3>
                     <ul className="space-y-1.5 text-sm">{prep.plan.checklist.map((c, i) => <li key={i} className="flex items-start gap-2" dir="auto"><input type="checkbox" className="mt-1 accent-teal" />{c}</li>)}</ul>
                   </section>
                 )}
@@ -358,65 +360,65 @@ export default function InterviewPrepPage() {
               <section className="jm-card overflow-hidden flex flex-col">
                 {!session ? (
                   <div className="p-6 space-y-4">
-                    <h2 className="jm-h2">ראיון {stage.title} ב-{prep.job.company}</h2>
+                    <h2 className="jm-h2">{t("interview.mockTitle", { stage: stage.title, company: prep.job.company })}</h2>
                     <p className="text-sm text-ink-600 leading-relaxed">
-                      המראיין/ת מכיר/ה את החברה, את התפקיד ואת קורות החיים שלך, ומנהל/ת שיחה כמו בראיון אמיתי: שאלה אחת בכל פעם, שאלות המשך, ובלי רמזים.
-                      <span className="font-medium text-navy"> המשוב המלא — ציון, חוזקות, מה לשפר ותשובות טובות יותר — מגיע רק בסיום.</span>
+                      {t("interview.mockIntro")}
+                      <span className="font-medium text-navy">{t("interview.mockIntroEmph")}</span>
                     </p>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {phoneCfg?.configured && (
                         <button type="button" onClick={() => setMode("phone")} aria-pressed={mode === "phone"} className={`rounded-control border p-3 text-start transition-colors ${mode === "phone" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
-                          <div className="font-semibold">📞 המראיין/ת מתקשר/ת אליך</div>
-                          <div className={`text-xs mt-1 ${mode === "phone" ? "text-white/80" : "text-ink-600"}`}>ראיון טלפוני אמיתי: הטלפון שלך מצלצל, אותו/ה מראיין/ת, אותו משוב — כולל ניתוח קול.</div>
+                          <div className="font-semibold">{t("interview.modePhone")}</div>
+                          <div className={`text-xs mt-1 ${mode === "phone" ? "text-white/80" : "text-ink-600"}`}>{t("interview.modePhoneDesc")}</div>
                         </button>
                       )}
                       <button type="button" onClick={() => setMode("voice")} aria-pressed={mode === "voice"} className={`rounded-control border p-3 text-start transition-colors ${mode === "voice" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
-                        <div className="font-semibold">🎙️ שיחה קולית (מומלץ)</div>
-                        <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>מראיין/ת (גבר או אישה) שמציג/ה את עצמו/ה והחברה, שואל/ת באיזו שפה לנהל את הראיון, ומגיב/ה לשתיקות. המשוב כולל ניתוח קול וטון ומוכן מיד בסיום.</div>
+                        <div className="font-semibold">{t("interview.modeVoice")}</div>
+                        <div className={`text-xs mt-1 ${mode === "voice" ? "text-white/80" : "text-ink-600"}`}>{t("interview.modeVoiceDesc")}</div>
                       </button>
                       <button type="button" onClick={() => setMode("chat")} aria-pressed={mode === "chat"} className={`rounded-control border p-3 text-start transition-colors ${mode === "chat" ? "border-navy bg-navy text-white" : "border-line hover:border-navy/40"}`}>
-                        <div className="font-semibold">⌨️ בכתב</div>
-                        <div className={`text-xs mt-1 ${mode === "chat" ? "text-white/80" : "text-ink-600"}`}>אותו מראיין/ת, בצ&apos;אט. מתאים כשאין מיקרופון או כשרוצים לחשוב על כל תשובה.</div>
+                        <div className="font-semibold">{t("interview.modeChat")}</div>
+                        <div className={`text-xs mt-1 ${mode === "chat" ? "text-white/80" : "text-ink-600"}`}>{t("interview.modeChatDesc")}</div>
                       </button>
                     </div>
                     <div className="flex flex-wrap items-end gap-3">
                       {mode === "phone" && (
                         <label className="flex-1 min-w-[200px]">
-                          <span className="jm-label">הטלפון שלך</span>
-                          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="054-1234567 (או ריק = מהפרופיל)" className="jm-input" dir="ltr" />
+                          <span className="jm-label">{t("interview.yourPhone")}</span>
+                          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("interview.phonePlaceholder")} className="jm-input" dir="ltr" />
                         </label>
                       )}
                       <label>
-                        <span className="jm-label">מספר שאלות</span>
+                        <span className="jm-label">{t("interview.numQuestions")}</span>
                         <select value={questions} onChange={(e) => setQuestions(Number(e.target.value))} className="jm-input jm-select w-32">
                           {[4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </label>
-                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? "המראיין/ת מתכונן/ת…" : mode === "phone" ? "📞 תתקשרו אליי" : mode === "voice" ? "🎙️ התחל שיחה" : "⌨️ התחל ראיון"}</button>
+                      <button onClick={start} disabled={busy === "start"} className="jm-btn jm-btn-primary">{busy === "start" ? t("interview.preparing") : mode === "phone" ? t("interview.startPhone") : mode === "voice" ? t("interview.startVoice") : t("interview.startChat")}</button>
                     </div>
                     {error && <div className="jm-alert jm-alert-err">{error}</div>}
                   </div>
                 ) : calling ? (
                   <div className="p-8 text-center space-y-3">
                     <div className="text-5xl animate-pulse">📞</div>
-                    <h3 className="jm-h2">{calling.interviewer?.name || "המראיין/ת"} מתקשר/ת ל-<span dir="ltr">{calling.to}</span></h3>
-                    <p className="text-sm text-ink-600">ענה/י לטלפון. השיחה מתומללת ברקע; המשוב יופיע כאן כשהראיון ייגמר.</p>
-                    {session && session.transcript.length > 0 && <p className="jm-muted">{session.transcript.length} תורות עד כה…</p>}
-                    <button onClick={async () => { await fetch("/api/interview/phone", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) }); setCalling(null); setSession(null); }} className="jm-btn jm-btn-secondary jm-btn-sm">בטל שיחה</button>
+                    <h3 className="jm-h2">{t("interview.calling", { name: calling.interviewer?.name || t("interview.interviewerFallback") })} <span dir="ltr">{calling.to}</span></h3>
+                    <p className="text-sm text-ink-600">{t("interview.answerPhone")}</p>
+                    {session && session.transcript.length > 0 && <p className="jm-muted">{t("interview.turnsSoFar", { n: session.transcript.length })}</p>}
+                    <button onClick={async () => { await fetch("/api/interview/phone", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: calling.sessionId }) }); setCalling(null); setSession(null); }} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.cancelCall")}</button>
                   </div>
                 ) : voice ? (
                   <VoiceInterview sessionId={voice.sessionId} clientSecret={voice.clientSecret} model={voice.model} endpoint={voice.endpoint} targetQuestions={voice.targetQuestions} stageTitle={stage.title} company={prep.job.company} interviewer={voice.interviewer} onEnded={onVoiceEnded} />
                 ) : session.feedback ? (
                   <FeedbackView fb={session.feedback} delivery={session.delivery || null} onNew={() => setSession(null)} stageTitle={stage.title} />
                 ) : session.mode === "voice" ? (
-                  <div className="p-6"><Spinner label="המראיין/ת כותב/ת את המשוב על הראיון…" />{error && <div className="jm-alert jm-alert-err">{error}</div>}</div>
+                  <div className="p-6"><Spinner label={t("interview.writingFeedback")} />{error && <div className="jm-alert jm-alert-err">{error}</div>}</div>
                 ) : (
                   <>
                     <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-medium text-navy">{STAGE_ICON[session.stage]} ראיון {stage.title}</span>
-                      <span className="jm-chip">שאלה {Math.min(session.asked, session.targetQuestions)} מתוך {session.targetQuestions}</span>
+                      <span className="font-medium text-navy">{STAGE_ICON[session.stage]} {t("interview.chatTitle", { stage: stage.title })}</span>
+                      <span className="jm-chip">{t("interview.questionOf", { a: Math.min(session.asked, session.targetQuestions), b: session.targetQuestions })}</span>
                       <button onClick={finish} disabled={busy !== "" || session.transcript.filter((t) => t.role === "candidate").length === 0} className="jm-btn jm-btn-secondary jm-btn-sm ms-auto">
-                        {busy === "finish" ? "כותב משוב…" : session.wrappedUp ? "קבל משוב" : "סיים ראיון וקבל משוב"}
+                        {busy === "finish" ? t("interview.writingShort") : session.wrappedUp ? t("interview.getFeedback") : t("interview.finishAndFeedback")}
                       </button>
                     </div>
                     <div className="jm-scroll flex-1 overflow-y-auto p-4 space-y-3 min-h-[260px] max-h-[60vh]">
@@ -427,16 +429,16 @@ export default function InterviewPrepPage() {
                           </div>
                         </div>
                       ))}
-                      {busy === "turn" && <div className="jm-muted flex items-center gap-2"><span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" /> המראיין/ת חושב/ת…</div>}
+                      {busy === "turn" && <div className="jm-muted flex items-center gap-2"><span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" /> {t("interview.thinking")}</div>}
                       {session.wrappedUp && !session.feedback && (
-                        <div className="jm-alert jm-alert-info">הראיון הסתיים. לחץ/י על “קבל משוב” כדי לראות את הניתוח המלא.</div>
+                        <div className="jm-alert jm-alert-info">{t("interview.wrappedUp")}</div>
                       )}
                       <div ref={bottomRef} />
                     </div>
                     {!session.wrappedUp && (
                       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex flex-col sm:flex-row gap-2">
-                        <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} rows={2} placeholder="ענה/י כמו בראיון אמיתי… (Ctrl+Enter לשליחה)" className="jm-input flex-1" dir="auto" disabled={busy !== ""} />
-                        <button type="submit" disabled={busy !== "" || !answer.trim()} className="jm-btn jm-btn-primary">שלח</button>
+                        <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} rows={2} placeholder={t("interview.answerPlaceholder")} className="jm-input flex-1" dir="auto" disabled={busy !== ""} />
+                        <button type="submit" disabled={busy !== "" || !answer.trim()} className="jm-btn jm-btn-primary">{t("interview.send")}</button>
                       </form>
                     )}
                     {error && <div className="m-3 jm-alert jm-alert-err">{error}</div>}
@@ -448,15 +450,15 @@ export default function InterviewPrepPage() {
                <ProgressCard refreshKey={history.length} />
                <ReportedQuestionsCard company={prep.job.company} stage={stage?.key} />
                <div className="jm-card p-4 space-y-2">
-                <h3 className="jm-h2 text-base">ראיונות קודמים</h3>
-                {history.length === 0 && <p className="jm-muted">עדיין לא תרגלת. הציונים יישמרו כאן.</p>}
+                <h3 className="jm-h2 text-base">{t("interview.history")}</h3>
+                {history.length === 0 && <p className="jm-muted">{t("interview.historyEmpty")}</p>}
                 {history.map((h) => (
                   <button key={h.sessionId} onClick={() => openSession(h.sessionId)} className="w-full text-start rounded-xl border border-line px-3 py-2 hover:bg-canvas">
                     <div className="flex items-center justify-between gap-2 text-sm">
                       <span className="font-medium text-navy">{STAGE_ICON[h.stage]} {prep.plan.stages.find((s) => s.key === h.stage)?.title || h.stage}</span>
-                      {h.overallScore !== null ? <span className={`jm-chip ${h.overallScore >= 70 ? "jm-chip-teal" : "jm-chip-sky"}`}>{h.overallScore}</span> : <span className="jm-chip">{h.status === "active" ? "פתוח" : "ללא משוב"}</span>}
+                      {h.overallScore !== null ? <span className={`jm-chip ${h.overallScore >= 70 ? "jm-chip-teal" : "jm-chip-sky"}`}>{h.overallScore}</span> : <span className="jm-chip">{h.status === "active" ? t("interview.statusOpen") : t("interview.noFeedback")}</span>}
                     </div>
-                    <div className="jm-muted text-xs" dir="ltr">{new Date(h.startedAt).toLocaleString("he-IL")} · {h.asked}/{h.targetQuestions}</div>
+                    <div className="jm-muted text-xs" dir="ltr">{new Date(h.startedAt).toLocaleString(lang === "he" ? "he-IL" : "en-GB")} · {h.asked}/{h.targetQuestions}</div>
                   </button>
                 ))}
                </div>
@@ -470,28 +472,31 @@ export default function InterviewPrepPage() {
 }
 
 function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; delivery?: Delivery | null; onNew: () => void; stageTitle: string }) {
+  const { t } = useT();
   const tone = delivery?.tone;
   const imp = delivery?.impression;
   const stars = (n: number) => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
+  const toneLabel = (v: string) => (v === "monotone" || v === "flat" || v === "natural" || v === "expressive" ? t(`interview.tone.${v}`) : v);
+  const volumeLabel = (v: string) => (v === "quiet" || v === "normal" || v === "loud" ? t(`interview.vol.${v}`) : v);
   return (
     <div className="p-5 sm:p-6 space-y-6">
       <div className="flex flex-wrap items-center gap-4">
         <div className={`h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold text-white ${scoreColor(fb.overallScore)}`}>{fb.overallScore}</div>
         <div className="min-w-0 flex-1">
-          <h2 className="jm-h2">משוב על ראיון ה{stageTitle}</h2>
+          <h2 className="jm-h2">{t("interview.feedbackTitle", { stage: stageTitle })}</h2>
           {fb.verdict && <div className="text-sm font-medium text-navy mt-0.5" dir="auto">{fb.verdict}</div>}
           <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{fb.summary}</p>
         </div>
-        <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">ראיון חדש</button>
+        <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.newInterview")}</button>
       </div>
 
       {fb.progress?.note && (
         <div className="rounded-control border border-teal/30 bg-teal-50 p-4 space-y-2">
-          <h3 className="font-semibold text-teal-600">📈 לעומת הראיונות הקודמים</h3>
+          <h3 className="font-semibold text-teal-600">{t("interview.progress")}</h3>
           <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{fb.progress.note}</p>
           <div className="flex flex-wrap gap-1.5">
-            {fb.progress.improved.map((t, i) => <span key={`i${i}`} className="jm-chip jm-chip-teal">↑ {t}</span>)}
-            {fb.progress.stillOpen.map((t, i) => <span key={`o${i}`} className="jm-chip jm-chip-sky">עדיין: {t}</span>)}
+            {fb.progress.improved.map((x, i) => <span key={`i${i}`} className="jm-chip jm-chip-teal">↑ {x}</span>)}
+            {fb.progress.stillOpen.map((x, i) => <span key={`o${i}`} className="jm-chip jm-chip-sky">{t("interview.stillOpen", { t: x })}</span>)}
           </div>
         </div>
       )}
@@ -499,28 +504,28 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
       {(fb.delivery || (tone && tone.measuredAnswers > 0) || imp) && (
         <div className="rounded-control border border-line p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-navy">🎙️ קול וטון</h3>
+            <h3 className="font-semibold text-navy">{t("interview.voiceTone")}</h3>
             {fb.delivery && <span className={`jm-chip ${fb.delivery.score >= 7 ? "jm-chip-teal" : fb.delivery.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{fb.delivery.score}/10</span>}
           </div>
           {fb.delivery?.notes && <p className="text-sm text-ink-600 leading-relaxed whitespace-pre-line" dir="auto">{fb.delivery.notes}</p>}
           {delivery && (
             <div className="flex flex-wrap gap-1.5 text-xs">
-              {delivery.wordsPerMinute !== null && <span className="jm-chip">קצב {delivery.wordsPerMinute} מילים/דק׳</span>}
-              <span className="jm-chip">ממוצע תשובה {delivery.avgAnswerSeconds}s</span>
-              <span className="jm-chip">{delivery.fillerWords} מילות מילוי{delivery.fillersPerMinute !== null ? ` (${delivery.fillersPerMinute}/דק׳)` : ""}</span>
-              {tone?.expressiveness && <span className={`jm-chip ${tone.expressiveness === "monotone" || tone.expressiveness === "flat" ? "jm-chip-sky" : "jm-chip-teal"}`}>אינטונציה: {{ monotone: "מונוטונית", flat: "שטוחה", natural: "טבעית", expressive: "אקספרסיבית" }[tone.expressiveness] ?? tone.expressiveness}</span>}
-              {tone?.volume && <span className="jm-chip">עוצמה: {{ quiet: "שקטה", normal: "רגילה", loud: "חזקה" }[tone.volume] ?? tone.volume}</span>}
-              {tone && tone.pauseRatio !== null && <span className="jm-chip">הפסקות {Math.round(tone.pauseRatio * 100)}%</span>}
-              {!!tone?.trailingOffAnswers && <span className="jm-chip jm-chip-sky">{tone.trailingOffAnswers} תשובות &quot;נמוגות&quot; בסוף</span>}
+              {delivery.wordsPerMinute !== null && <span className="jm-chip">{t("interview.wpm", { n: delivery.wordsPerMinute })}</span>}
+              <span className="jm-chip">{t("interview.avgAnswer", { s: delivery.avgAnswerSeconds })}</span>
+              <span className="jm-chip">{t("interview.fillers", { n: delivery.fillerWords })}{delivery.fillersPerMinute !== null ? t("interview.fillersPerMin", { n: delivery.fillersPerMinute }) : ""}</span>
+              {tone?.expressiveness && <span className={`jm-chip ${tone.expressiveness === "monotone" || tone.expressiveness === "flat" ? "jm-chip-sky" : "jm-chip-teal"}`}>{t("interview.intonation", { v: toneLabel(tone.expressiveness) })}</span>}
+              {tone?.volume && <span className="jm-chip">{t("interview.volume", { v: volumeLabel(tone.volume) })}</span>}
+              {tone && tone.pauseRatio !== null && <span className="jm-chip">{t("interview.pauses", { pct: Math.round(tone.pauseRatio * 100) })}</span>}
+              {!!tone?.trailingOffAnswers && <span className="jm-chip jm-chip-sky">{t("interview.trailingOff", { n: tone.trailingOffAnswers })}</span>}
             </div>
           )}
           {imp && (
             <div className="grid sm:grid-cols-2 gap-2 text-sm">
-              <div><span className="jm-muted">ביטחון </span><span className="text-teal">{stars(imp.confidence)}</span></div>
-              <div><span className="jm-muted">אנרגיה </span><span className="text-teal">{stars(imp.energy)}</span></div>
-              <div><span className="jm-muted">בהירות </span><span className="text-teal">{stars(imp.clarity)}</span></div>
-              <div><span className="jm-muted">חום </span><span className="text-teal">{stars(imp.warmth)}</span></div>
-              <div className="sm:col-span-2 text-ink-600" dir="auto"><span className="jm-muted">מה המראיין/ת שמע/ה: </span>{imp.notes}{imp.pace && imp.pace !== "good" ? ` · קצב: ${imp.pace}` : ""}</div>
+              <div><span className="jm-muted">{t("interview.confidence")}</span><span className="text-teal">{stars(imp.confidence)}</span></div>
+              <div><span className="jm-muted">{t("interview.energy")}</span><span className="text-teal">{stars(imp.energy)}</span></div>
+              <div><span className="jm-muted">{t("interview.clarity")}</span><span className="text-teal">{stars(imp.clarity)}</span></div>
+              <div><span className="jm-muted">{t("interview.warmth")}</span><span className="text-teal">{stars(imp.warmth)}</span></div>
+              <div className="sm:col-span-2 text-ink-600" dir="auto"><span className="jm-muted">{t("interview.heard")}</span>{imp.notes}{imp.pace && imp.pace !== "good" ? t("interview.pace", { pace: imp.pace }) : ""}</div>
             </div>
           )}
         </div>
@@ -540,18 +545,18 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-control bg-teal-50 border border-teal/20 p-4">
-          <h3 className="font-semibold text-teal-600 mb-2">מה עבד</h3>
+          <h3 className="font-semibold text-teal-600 mb-2">{t("interview.whatWorked")}</h3>
           <ul className={bulletList + " text-sm"}>{fb.strengths.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
         </div>
         <div className="rounded-control bg-sky-50 border border-sky/20 p-4">
-          <h3 className="font-semibold text-sky-600 mb-2">מה לשפר</h3>
+          <h3 className="font-semibold text-sky-600 mb-2">{t("interview.toImprove")}</h3>
           <ul className={bulletList + " text-sm"}>{fb.improvements.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
         </div>
       </div>
 
       {fb.answerReviews.length > 0 && (
         <div>
-          <h3 className="jm-h2 mb-3">שאלה-שאלה</h3>
+          <h3 className="jm-h2 mb-3">{t("interview.perQuestion")}</h3>
           <ol className="space-y-3">
             {fb.answerReviews.map((r, i) => (
               <li key={i} className="rounded-control border border-line p-4">
@@ -559,11 +564,11 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
                   <div className="font-semibold text-navy" dir="auto">{i + 1}. {r.question}</div>
                   <span className={`jm-chip shrink-0 ${r.score >= 7 ? "jm-chip-teal" : r.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{r.score}/10</span>
                 </div>
-                {r.answerSummary && <p className="text-xs text-ink-400 mt-1" dir="auto">ענית: {r.answerSummary}</p>}
+                {r.answerSummary && <p className="text-xs text-ink-400 mt-1" dir="auto">{t("interview.youAnswered")}{r.answerSummary}</p>}
                 {r.whatWorked && <p className="text-sm text-ink-600 mt-2" dir="auto">{r.whatWorked}</p>}
                 {r.betterAnswer && (
                   <details className="mt-2">
-                    <summary className="text-sm text-teal cursor-pointer">תשובה חזקה יותר (בקול שלך)</summary>
+                    <summary className="text-sm text-teal cursor-pointer">{t("interview.betterAnswer")}</summary>
                     <p className="text-sm text-ink-600 mt-1 leading-relaxed whitespace-pre-line" dir="auto">{r.betterAnswer}</p>
                   </details>
                 )}
@@ -575,7 +580,7 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
 
       {fb.nextSteps.length > 0 && (
         <div>
-          <h3 className="jm-h2 mb-2">מה לעשות לפני הראיון האמיתי</h3>
+          <h3 className="jm-h2 mb-2">{t("interview.nextSteps")}</h3>
           <ul className={bulletList + " text-sm"}>{fb.nextSteps.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
         </div>
       )}

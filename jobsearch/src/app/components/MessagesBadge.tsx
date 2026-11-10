@@ -2,6 +2,7 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { MessageCircle } from "lucide-react";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
@@ -13,9 +14,10 @@ const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (
  */
 export default function MessagesBadge({ className = "jm-btn jm-btn-secondary jm-btn-icon relative" }: { className?: string }) {
   const { data } = useSWR("/api/messages?limit=100", fetcher, { refreshInterval: 60_000, revalidateOnFocus: true, dedupingInterval: 30_000 });
+  const { t } = useT();
   const n: number = data?.unreadTotal ?? 0;
   return (
-    <Link href="/messages" aria-label={n > 0 ? `${n} הודעות שלא נקראו` : "הודעות"} className={className}>
+    <Link href="/messages" aria-label={n > 0 ? t("widgets.msg.unread", { n }) : t("widgets.messages")} className={className}>
       <MessageCircle className="h-5 w-5" />
       {n > 0 && (
         <span className="absolute -top-1.5 -end-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center shadow">

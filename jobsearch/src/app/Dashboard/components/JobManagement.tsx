@@ -5,17 +5,8 @@ import { isSelfAddedJob } from "../../../../utils/isSelfAddedJob";
 import { DeleteIcon } from "@/app/components/icons";
 import { EmptyState } from "@/app/components/ui";
 import { ConfirmInline, InlineNotice } from "@/app/components/Dialog";
-
-interface Job {
-  source: string;
-  jobId: any;
-  job: string;
-  company: string;
-  location: string;
-  type: string;
-  link?: string;
-  status?: string;
-}
+import { useT } from "@/app/lib/i18n/LanguageProvider";
+import { STATUS_LABEL_KEY, TYPE_LABEL_KEY } from "@/app/lib/i18n/dict/dashboard";
 
 interface JobManagementProps {
   jobs: any[];
@@ -36,9 +27,11 @@ const chipByStatus: Record<string, string> = {
   Rejected: "bg-red-50 text-red-700 border-red-200",
 };
 
-const StatusChip = ({ status }: { status?: string }) => (
-  <span className={`jm-chip ${chipByStatus[status || ""] || ""}`}>{status || "-"}</span>
-);
+const StatusChip = ({ status }: { status?: string }) => {
+  const { t } = useT();
+  const label = status ? (status in STATUS_LABEL_KEY ? t(STATUS_LABEL_KEY[status as keyof typeof STATUS_LABEL_KEY]) : status) : "-";
+  return <span className={`jm-chip ${chipByStatus[status || ""] || ""}`}>{label}</span>;
+};
 
 const ExternalLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
   <a
@@ -52,6 +45,7 @@ const ExternalLink = ({ href, children }: { href: string; children: React.ReactN
 );
 
 const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
+  const { t } = useT();
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 5;
   const totalPages = Math.ceil(jobs.length / itemsPerPage);
@@ -66,6 +60,9 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
+  // Stored work-mode values are English enums; show them in the interface language.
+  const typeLabel = (s: string) => (s in TYPE_LABEL_KEY ? t(TYPE_LABEL_KEY[s as keyof typeof TYPE_LABEL_KEY]) : s);
+
   const handleDeleteSelfJob = async () => {
     if (!pendingDelete) return;
     setDeleting(true);
@@ -75,13 +72,13 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
         headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {
-        setNotice({ kind: "ok", text: "Job deleted" });
+        setNotice({ kind: "ok", text: t("dashboard.table.deleted") });
         onChanged?.(); // refresh the list now instead of waiting for the poll
       } else {
-        setNotice({ kind: "err", text: "Something went wrong" });
+        setNotice({ kind: "err", text: t("common.somethingWrong") });
       }
     } catch {
-      setNotice({ kind: "err", text: "Something went wrong" });
+      setNotice({ kind: "err", text: t("common.somethingWrong") });
     } finally {
       setDeleting(false);
       setPendingDelete(null);
@@ -96,8 +93,8 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
         setPendingDelete({ id: jobID, title });
       }}
       className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9 shrink-0"
-      aria-label="Delete job"
-      title="Delete job"
+      aria-label={t("dashboard.table.deleteJob")}
+      title={t("dashboard.table.deleteJob")}
     >
       <DeleteIcon />
     </button>
@@ -105,9 +102,9 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
 
   const feedback = pendingDelete ? (
     <ConfirmInline
-      text={`Delete "${pendingDelete.title}" from your dashboard?`}
-      confirmLabel="Delete"
-      cancelLabel="Cancel"
+      text={t("dashboard.table.confirmDelete", { title: pendingDelete.title })}
+      confirmLabel={t("dashboard.table.delete")}
+      cancelLabel={t("dashboard.table.cancel")}
       danger
       busy={deleting}
       onConfirm={handleDeleteSelfJob}
@@ -125,9 +122,7 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
     <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
       {!isMobile ? (
         <p className="jm-muted">
-          Showing {startIndex + 1}–
-          {Math.min(startIndex + itemsPerPage, jobs.length)} of{" "}
-          {jobs.length} applications
+          {t("dashboard.table.showing", { from: startIndex + 1, to: Math.min(startIndex + itemsPerPage, jobs.length), total: jobs.length })}
         </p>
       ) : (
         <span />
@@ -141,7 +136,7 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
     return (
       <div className="space-y-4">
         {feedback}
-        <EmptyState icon="📋" title="No jobs to show" />
+        <EmptyState icon="📋" title={t("dashboard.table.empty")} />
       </div>
     );
   }
@@ -154,17 +149,18 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
           <table className="jm-table">
             <thead>
             <tr>
-              <th>Job</th>
-              <th>Company</th>
-              <th>Location</th>
-              <th>Type</th>
-              <th>Link</th>
-              <th>Status</th>
+              <th>{t("dashboard.table.job")}</th>
+              <th>{t("dashboard.table.company")}</th>
+              <th>{t("dashboard.table.location")}</th>
+              <th>{t("dashboard.table.type")}</th>
+              <th>{t("dashboard.table.link")}</th>
+              <th>{t("dashboard.table.status")}</th>
             </tr>
           </thead>
           <tbody className="text-ink">
             {displayedjobs.map((job, idx) => {
               const selfAdded = isSelfAddedJob(job);
+              const type = selfAdded ? job.jobType : job.source === "internal" ? job.jobId.type : "";
 
               return (
                 <tr key={rowKey(job, idx)}>
@@ -189,14 +185,14 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
                   </td>
 
                   <td className="capitalize text-ink-600">
-                    {selfAdded ? job.jobType : job.source === "internal" ? job.jobId.type : "-"}
+                    {type ? typeLabel(type) : "-"}
                   </td>
 
                   <td>
                     {selfAdded ? (
-                      <ExternalLink href={job.link}>View</ExternalLink>
+                      <ExternalLink href={job.link}>{t("dashboard.table.view")}</ExternalLink>
                     ) : job.source === "external" ? (
-                      <ExternalLink href={job.jobId.finalUrl}>View</ExternalLink>
+                      <ExternalLink href={job.jobId.finalUrl}>{t("dashboard.table.view")}</ExternalLink>
                     ) : (
                       "-"
                     )}
@@ -215,6 +211,7 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
            <div className="flex flex-col gap-4">
               {displayedjobs.map((job, idx) => {
                 const selfAdded = isSelfAddedJob(job);
+                const type = selfAdded ? job.jobType : job.source === "internal" ? job.jobId.type : "";
                 return(
                 <div
                   key={rowKey(job, idx)}
@@ -228,26 +225,26 @@ const JobManagement: React.FC<JobManagementProps> = ({ jobs, onChanged }) => {
 
 
                   <p className="text-sm text-ink-600">
-                    <strong className="text-ink">Company:</strong>{" "}
+                    <strong className="text-ink">{t("dashboard.table.company")}:</strong>{" "}
                     {selfAdded?job.company:job.source === "internal"
                       ? job.jobId.company.companyName
                       : job.jobId.company}
                   </p>
 
                   <p className="text-sm text-ink-600">
-                    <strong className="text-ink">Location:</strong> {selfAdded?job.location:job.jobId.country}
+                    <strong className="text-ink">{t("dashboard.table.location")}:</strong> {selfAdded?job.location:job.jobId.country}
                   </p>
 
                   <p className="text-sm text-ink-600 capitalize">
-                    <strong className="text-ink normal-case">Type:</strong>{" "}
-                    {selfAdded?job.jobType:job.source === "internal" ? job.jobId.type : "-"}
+                    <strong className="text-ink normal-case">{t("dashboard.table.type")}:</strong>{" "}
+                    {type ? typeLabel(type) : "-"}
                   </p>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                     <StatusChip status={job.status} />
 
                     {job.source === "external" && (
-                      <ExternalLink href={selfAdded?job.link:job.jobId.finalUrl}>View Job</ExternalLink>
+                      <ExternalLink href={selfAdded?job.link:job.jobId.finalUrl}>{t("dashboard.table.viewJob")}</ExternalLink>
                     )}
                   </div>
                 </div>

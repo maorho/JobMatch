@@ -508,6 +508,7 @@ function JobTable() {
         {/* Ticker: the first postings on the page (your top matches when signed in), sliding slowly; pauses on hover */}
         {jobs.length >= 4 && (
           <LogoMarquee
+            label={t("home.hiringNow")}
             onPick={(name) => {
               // Every open posting of that company: clear the other filters, keep the page, scroll to the list.
               setSearchTerm("");

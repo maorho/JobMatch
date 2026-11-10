@@ -1,6 +1,12 @@
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
+import { useT } from "@/app/lib/i18n/LanguageProvider";
+import type { Key } from "@/app/lib/i18n/dict";
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+
+// A form message is either one of our dictionary keys (translated at render, so it follows a
+// language switch) or raw text that came back from the server.
+type Msg = { key: Key } | { text: string } | null;
 
 interface AddNewPositionRecruiterProps {
   jobId?: string;
@@ -15,6 +21,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
   setShowModal,
   edit,
 }) => {
+  const { t } = useT();
   const { user, loading } = useCurrentUser();
   const [job, setJob] = useState("");
   const [company, setCompany] = useState("");
@@ -24,8 +31,9 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
   const [description, setDescription] = useState("");
   const [qualifications, setQualifications] = useState("");
   const [publisher, setPublisher] = useState("");
-  const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [error, setError] = useState<Msg>(null);
+  const [successMessage, setSuccessMessage] = useState<Msg>(null);
+  const show = (m: Msg) => (m ? ("key" in m ? t(m.key) : m.text) : "");
 
   // Seed company/publisher from the signed-in user once per user, during
   // render (React's adjust-state-on-prop-change pattern) rather than in an
@@ -53,10 +61,10 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
           setDescription(data.description);
           setQualifications(data.qualifications);
         } else {
-          setError(data.message || "Failed to load job data");
+          setError(data.message ? { text: data.message } : { key: "recruiter.form.loadFail" });
         }
       } catch {
-        setError("Error fetching job details");
+        setError({ key: "recruiter.form.fetchErr" });
       }
     }
     fetchJobData();
@@ -64,16 +72,16 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccessMessage("");
+    setError(null);
+    setSuccessMessage(null);
 
-    if (job === "") return setError("Job title is required");
-    if (job_type === "") return setError("Job type is required");
-    if (country === "") return setError("Country is required");
-    if (city === "") return setError("City is required");
-    if (description === "") return setError("Job description is required");
+    if (job === "") return setError({ key: "recruiter.form.reqTitle" });
+    if (job_type === "") return setError({ key: "recruiter.form.reqType" });
+    if (country === "") return setError({ key: "recruiter.form.reqCountry" });
+    if (city === "") return setError({ key: "recruiter.form.reqCity" });
+    if (description === "") return setError({ key: "recruiter.form.reqDescription" });
     if (qualifications === "")
-      return setError("Job qualifications are required");
+      return setError({ key: "recruiter.form.reqQualifications" });
 
     try {
       const body = jobId
@@ -114,9 +122,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
       const data = await res.json();
 
       if (res.ok) {
-        setSuccessMessage(
-          "Position " + (jobId ? "Updated" : "Added") + " Successfully ✅"
-        );
+        setSuccessMessage({ key: jobId ? "recruiter.form.updated" : "recruiter.form.added" });
         if (!jobId) {
           setJob("");
           setJobType("");
@@ -127,10 +133,10 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
         }
         if (onSuccess) onSuccess();
       } else {
-        setError(data.message || "Something went wrong");
+        setError(data.message ? { text: data.message } : { key: "recruiter.form.error" });
       }
     } catch {
-      setError("Something went wrong");
+      setError({ key: "recruiter.form.error" });
     }
   };
 
@@ -140,7 +146,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <h2 className="jm-h2">
-          Create Job Listing
+          {t(jobId ? "recruiter.form.editTitle" : "recruiter.form.title")}
         </h2>
 
         {edit ?? (
@@ -148,7 +154,7 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
             type="button"
             className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9 shrink-0"
             onClick={() => setShowModal(false)}
-            aria-label="Close"
+            aria-label={t("recruiter.form.close")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -158,20 +164,20 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="anp-job" className="jm-label">
-              Job Title
+              {t("recruiter.form.jobTitle")}
             </label>
             <input
               id="anp-job"
               type="text"
               className="jm-input"
-              placeholder="Enter title"
+              placeholder={t("recruiter.form.jobTitlePh")}
               value={job}
               onChange={(e) => setJob(e.target.value)}
             />
           </div>
           <div>
             <label htmlFor="anp-type" className="jm-label">
-              Job Type
+              {t("recruiter.form.jobType")}
             </label>
             <select
               id="anp-type"
@@ -179,58 +185,58 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
               value={job_type}
               onChange={(e) => setJobType(e.target.value)}
             >
-              <option value="">Select Job Type</option>
-              <option value="On Site">On Site</option>
-              <option value="Hybrid">Hybrid</option>
-              <option value="Remote">Remote</option>
+              <option value="">{t("recruiter.form.selectType")}</option>
+              <option value="On Site">{t("mode.On Site")}</option>
+              <option value="Hybrid">{t("mode.Hybrid")}</option>
+              <option value="Remote">{t("mode.Remote")}</option>
             </select>
           </div>
           <div>
             <label htmlFor="anp-country" className="jm-label">
-              Country
+              {t("recruiter.form.country")}
             </label>
             <input
               id="anp-country"
               type="text"
               className="jm-input"
-              placeholder="Enter Country"
+              placeholder={t("recruiter.form.countryPh")}
               value={country}
               onChange={(e) => setCountry(e.target.value)}
             />
           </div>
           <div>
             <label htmlFor="anp-city" className="jm-label">
-              City
+              {t("recruiter.form.city")}
             </label>
             <input
               id="anp-city"
               type="text"
               className="jm-input"
-              placeholder="Enter City"
+              placeholder={t("recruiter.form.cityPh")}
               value={city}
               onChange={(e) => setCity(e.target.value)}
             />
           </div>
           <div className="sm:col-span-2">
             <label htmlFor="anp-description" className="jm-label">
-              Job Description
+              {t("recruiter.form.description")}
             </label>
             <textarea
               id="anp-description"
               className="jm-input min-h-28 lg:min-h-32 resize-y"
-              placeholder="Describe Your Post..."
+              placeholder={t("recruiter.form.descriptionPh")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="sm:col-span-2">
             <label htmlFor="anp-qualifications" className="jm-label">
-              Required Qualifications
+              {t("recruiter.form.qualifications")}
             </label>
             <textarea
               id="anp-qualifications"
               className="jm-input min-h-28 lg:min-h-32 resize-y"
-              placeholder="Describe Your Post..."
+              placeholder={t("recruiter.form.qualificationsPh")}
               value={qualifications}
               onChange={(e) => setQualifications(e.target.value)}
             />
@@ -240,12 +246,12 @@ const AddNewPositionRecruiter: React.FC<AddNewPositionRecruiterProps> = ({
           type="submit"
           className="jm-btn jm-btn-primary w-full"
         >
-          {jobId ? "Save Changes" : "Save & Add to Dashboard"}
+          {t(jobId ? "recruiter.form.save" : "recruiter.form.saveAdd")}
         </button>
-        {error && <p className="jm-alert jm-alert-err">{error}</p>}
+        {error && <p className="jm-alert jm-alert-err">{show(error)}</p>}
         {successMessage && (
           <p className="jm-alert jm-alert-ok animate-fade-in">
-            {successMessage}
+            {show(successMessage)}
           </p>
         )}
       </form>

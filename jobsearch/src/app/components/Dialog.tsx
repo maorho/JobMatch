@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -171,15 +172,16 @@ export function Modal({
 }
 
 /**
- * Inline replacement for `window.confirm`: a `jm-alert` with אישור / ביטול.
+ * Inline replacement for `window.confirm`: a `jm-alert` with Confirm / Cancel
+ * (labels follow the interface language unless the caller passes its own).
  * Render it next to the action that asked for confirmation.
  */
 export function ConfirmInline({
   text,
   onConfirm,
   onCancel,
-  confirmLabel = "אישור",
-  cancelLabel = "ביטול",
+  confirmLabel,
+  cancelLabel,
   busy = false,
   danger = false,
   className = "",
@@ -193,6 +195,7 @@ export function ConfirmInline({
   danger?: boolean;
   className?: string;
 }) {
+  const { t } = useT();
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
@@ -210,10 +213,10 @@ export function ConfirmInline({
       </span>
       <span className="flex gap-2 shrink-0">
         <button type="button" onClick={onConfirm} disabled={busy} className={`jm-btn jm-btn-sm ${danger ? "jm-btn-danger" : "jm-btn-primary"}`}>
-          {busy ? "…" : confirmLabel}
+          {busy ? "…" : confirmLabel ?? t("widgets.dlg.confirm")}
         </button>
         <button type="button" onClick={onCancel} disabled={busy} className="jm-btn jm-btn-secondary jm-btn-sm">
-          {cancelLabel}
+          {cancelLabel ?? t("widgets.dlg.cancel")}
         </button>
       </span>
     </div>
@@ -232,13 +235,14 @@ export function InlineNotice({
   onDismiss?: () => void;
   className?: string;
 }) {
+  const { t } = useT();
   // Literal class names so Tailwind's scanner sees every variant.
   const tone = { ok: "jm-alert-ok", err: "jm-alert-err", info: "jm-alert-info" }[kind];
   return (
     <div role={kind === "err" ? "alert" : "status"} className={`jm-alert ${tone} flex items-center justify-between gap-2 ${className}`}>
       <span dir="auto">{children}</span>
       {onDismiss && (
-        <button type="button" onClick={onDismiss} className="jm-btn jm-btn-ghost jm-btn-sm px-2" aria-label="סגירה">
+        <button type="button" onClick={onDismiss} className="jm-btn jm-btn-ghost jm-btn-sm px-2" aria-label={t("widgets.dlg.close")}>
           ✕
         </button>
       )}

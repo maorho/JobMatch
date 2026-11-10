@@ -1,8 +1,10 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { getSignedResumeUrl } from "../lib/aws/getSignedResumeUrl";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 const ResumeLink: React.FC<{ resumeKey: string }> = ({ resumeKey }) => {
+  const { t } = useT();
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -11,7 +13,7 @@ const ResumeLink: React.FC<{ resumeKey: string }> = ({ resumeKey }) => {
     }
   }, [resumeKey]);
 
-  if (!resumeKey) return <span className="jm-muted">No resume</span>;
+  if (!resumeKey) return <span className="jm-muted">{t("widgets.resume.none")}</span>;
 
   return url ? (
     <a
@@ -20,10 +22,10 @@ const ResumeLink: React.FC<{ resumeKey: string }> = ({ resumeKey }) => {
       target="_blank"
       rel="noopener noreferrer"
     >
-      View Resume
+      {t("widgets.resume.view")}
     </a>
   ) : (
-    <span className="jm-muted">Loading...</span>
+    <span className="jm-muted">{t("common.loading")}</span>
   );
 };
 

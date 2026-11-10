@@ -18,6 +18,7 @@ import { Modal } from "../components/Dialog";
 import { useIsMobile } from "../lib/hooks/useIsMobile";
 import { isSelfAddedJob } from "../../../utils/isSelfAddedJob";
 import { useT } from "../lib/i18n/LanguageProvider";
+import { STATUS_LABEL_KEY, TYPE_LABEL_KEY } from "../lib/i18n/dict/dashboard";
 
 const LOGIN_HREF = "/Login?next=%2FDashboard";
 
@@ -45,7 +46,7 @@ const fetcher = async ([url, body]: [string, any]) => {
 
 const DashboardPage: React.FC = () => {
   const { user, loading } = useCurrentUser();
-  const { t } = useT();
+  const { t, dir } = useT();
   const [showModal, setShowModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -93,12 +94,12 @@ const DashboardPage: React.FC = () => {
     });
   }, [searchTerm, statusFilter, typeFilter, jobsSubmitted]);
 
-  if (loading || isLoading) return <Spinner label="Loading..." />;
+  if (loading || isLoading) return <Spinner label={t("common.loading")} />;
 
 
   if (!user) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🔒"
           title={t("common.youAreNotLoggedIn")}
@@ -114,7 +115,7 @@ const DashboardPage: React.FC = () => {
 
   if (user.recruiter) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🧭"
           title={t("common.youAreRecruiter")}
@@ -132,14 +133,18 @@ const DashboardPage: React.FC = () => {
   const allJobs: any[] = jobsSubmitted ?? [];
   const statusOf = (job: any) => String(job?.status ?? "").toLowerCase();
   const stats = [
-    { label: "Applications", value: allJobs.length },
-    { label: "In interviews", value: allJobs.filter((j) => statusOf(j).includes("interview")).length },
-    { label: "Offers", value: allJobs.filter((j) => statusOf(j).includes("offer") || statusOf(j) === "accepted").length },
-    { label: "Rejected", value: allJobs.filter((j) => statusOf(j) === "rejected").length },
+    { label: t("dashboard.stat.applications"), value: allJobs.length },
+    { label: t("dashboard.stat.interviews"), value: allJobs.filter((j) => statusOf(j).includes("interview")).length },
+    { label: t("dashboard.stat.offers"), value: allJobs.filter((j) => statusOf(j).includes("offer") || statusOf(j) === "accepted").length },
+    { label: t("dashboard.stat.rejected"), value: allJobs.filter((j) => statusOf(j) === "rejected").length },
   ];
+  // Stored status / work-mode values are English enums; show them in the interface language.
+  const statusLabel = (s: string) => (s in STATUS_LABEL_KEY ? t(STATUS_LABEL_KEY[s as keyof typeof STATUS_LABEL_KEY]) : s);
+  const typeLabel = (s: string) => (s in TYPE_LABEL_KEY ? t(TYPE_LABEL_KEY[s as keyof typeof TYPE_LABEL_KEY]) : s);
+  const appliedCount = jobsSubmitted ? jobsSubmitted.length : 0;
 
   return (
-    <div className="jm-page space-y-6">
+    <div className="jm-page space-y-6" dir={dir}>
       <section
         id="candidate hero section"
         className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
@@ -147,7 +152,7 @@ const DashboardPage: React.FC = () => {
         <CandidateHeroImage />
         <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
           <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
-            Welcome, {user.fullname}! 👋
+            {t("dashboard.welcome", { name: user.fullname })}
           </h1>
           <p className="text-sm sm:text-base text-white/80">{t("dashboard.subtitle")}</p>
           <div>
@@ -155,7 +160,7 @@ const DashboardPage: React.FC = () => {
               onClick={() => setShowModal(true)}
               className="jm-btn jm-btn-accent"
             >
-              Add New Job +
+              {t("dashboard.addJob")}
             </button>
           </div>
         </div>
@@ -176,20 +181,16 @@ const DashboardPage: React.FC = () => {
 
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         {isMobile ? (
-          <h2 className="jm-h2">
-            {jobsSubmitted ? jobsSubmitted.length : 0} Active Job Post
-          </h2>
+          <h2 className="jm-h2">{t("dashboard.activeCount", { n: appliedCount })}</h2>
         ) : (
-          <h2 className="jm-h2">
-            You Have Applied to {jobsSubmitted ? jobsSubmitted.length : 0} Jobs
-          </h2>
+          <h2 className="jm-h2">{t("dashboard.appliedTo", { n: appliedCount })}</h2>
         )}
         <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
           <div className="relative flex-1 sm:min-w-[240px]">
             <Search className="absolute start-4 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Search for a job..."
+              placeholder={t("dashboard.searchPlaceholder")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="jm-input ps-11"
@@ -198,11 +199,11 @@ const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-2 sm:flex gap-3">
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
               <option value="">{t("dashboard.filterStatus")}</option>
-              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => job.status).filter(Boolean))].map((s) => <option key={s} value={s}>{s}</option>)}
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => job.status).filter(Boolean))].map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
             </select>
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="jm-input jm-select sm:w-auto">
               <option value="">{t("dashboard.filterType")}</option>
-              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => (isSelfAddedJob(job) ? job.jobType : job.jobId?.type)).filter(Boolean))].map((t) => <option key={t} value={t}>{t}</option>)}
+              {[...new Set<string>((jobsSubmitted ?? []).map((job: any) => (isSelfAddedJob(job) ? job.jobType : job.jobId?.type)).filter(Boolean))].map((ty) => <option key={ty} value={ty}>{typeLabel(ty)}</option>)}
             </select>
           </div>
         </div>
@@ -212,20 +213,20 @@ const DashboardPage: React.FC = () => {
       <SavedJobsCard />
       <OutcomesCard />
       <EmailTrackingCard />
-      <section id="auto-apply" className="jm-card p-5 sm:p-6" dir="rtl">
-        <h2 className="jm-h2 mb-3">⚡ הגשה אוטומטית</h2>
+      <section id="auto-apply" className="jm-card p-5 sm:p-6" dir={dir}>
+        <h2 className="jm-h2 mb-3">{t("dashboard.autoApply")}</h2>
         <AutoApplyCard showList />
       </section>
       {jobsSubmitted && <JobManagement jobs={filteredJobs} onChanged={() => refetchApplications()} />}
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} label="Add new job">
-        <div className="jm-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+      <Modal open={showModal} onClose={() => setShowModal(false)} label={t("dashboard.addJobTitle")}>
+        <div className="jm-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" dir={dir}>
           <OutsideJobAdding onAdded={() => refetchApplications()} />
           <button
             onClick={() => setShowModal(false)}
             className="jm-btn jm-btn-ghost w-full mt-3"
           >
-            Close
+            {t("dashboard.close")}
           </button>
         </div>
       </Modal>

@@ -3,6 +3,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { PageHeader } from "../components/ui";
+import { useT } from "../lib/i18n/LanguageProvider";
+import type { Key } from "../lib/i18n/dict";
 
 type Role = "user" | "assistant" | "system";
 
@@ -13,6 +15,8 @@ type Message = {
   role: Role;
   content: string;
   attachments?: Attachment[];
+  /** A UI-authored message (the greeting): rendered through the dictionary so it follows the interface language. */
+  key?: Key;
 };
 
 const ACCEPT = ".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown";
@@ -42,19 +46,14 @@ const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(
 const isAcceptedFile = (f: File) => /\.(pdf|docx|txt|md)$/i.test(f.name);
 
 /** What the résumé builder sees: the typed text plus each attached file, since it reads the conversation as plain text. */
-const flatten = (m: Message): Message => ({
+const flatten = (m: Message, fileLabel: (name: string) => string): Message => ({
   role: m.role,
-  content: m.attachments?.length ? `${m.content}\n\n${m.attachments.map((a) => `[קובץ מצורף: ${a.name}]\n${a.text}`).join("\n\n")}` : m.content,
+  content: m.attachments?.length ? `${m.content}\n\n${m.attachments.map((a) => `${fileLabel(a.name)}\n${a.text}`).join("\n\n")}` : m.content,
 });
 
 export default function ResumeAIPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "היי, אני ResumeAI 🤖\nאני אעזור לך לבנות או לשפר קורות חיים – גם אם אין לך קובץ מוכן.\nתוכל לספר לי קצת על עצמך, או לצרף לשיחה קובץ: קורות חיים קיימים, תיאור משרה, או כל מסמך רלוונטי (PDF, Word או טקסט).",
-    },
-  ]);
+  const { t, dir } = useT();
+  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: "", key: "resume.greeting" }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -95,6 +94,10 @@ export default function ResumeAIPage() {
 
   const appendMessage = (msg: Message) =>
     setMessages((prev) => [...prev, msg]);
+  /** The text of a message in the current language (dictionary-backed messages are resolved here). */
+  const textOf = (m: Message) => (m.key ? t(m.key) : m.content);
+  /** What goes over the wire: plain role/content pairs, dictionary messages resolved. */
+  const materialize = (m: Message): Message => (m.key ? { role: m.role, content: t(m.key), attachments: m.attachments } : m);
 
   /** Add files to the next message, with the same limits the server applies. */
   const addFiles = useCallback((files: FileList | File[] | null | undefined) => {
@@ -104,16 +107,16 @@ export default function ResumeAIPage() {
     setPending((prev) => {
       const next = [...prev];
       for (const f of list) {
-        if (!isAcceptedFile(f)) { problems.push(`${f.name}: רק PDF, Word (docx) או טקסט`); continue; }
-        if (f.size > MAX_BYTES) { problems.push(`${f.name}: גדול מ-8MB`); continue; }
+        if (!isAcceptedFile(f)) { problems.push(t("resume.fileTypeError", { name: f.name })); continue; }
+        if (f.size > MAX_BYTES) { problems.push(t("resume.fileTooLarge", { name: f.name })); continue; }
         if (next.some((p) => p.name === f.name && p.size === f.size)) continue;
-        if (next.length >= MAX_FILES) { problems.push(`עד ${MAX_FILES} קבצים להודעה`); break; }
+        if (next.length >= MAX_FILES) { problems.push(t("resume.tooManyFiles", { n: MAX_FILES })); break; }
         next.push(f);
       }
       return next;
     });
     setPendingError(problems.length ? problems.join(" · ") : null);
-  }, []);
+  }, [t]);
   const removePending = (i: number) => setPending((prev) => prev.filter((_, k) => k !== i));
 
   /** Upload the pending files and get their text back; the message carries it from here on. */
@@ -125,8 +128,13 @@ export default function ResumeAIPage() {
     const data = await res.json().catch(() => ({}));
     const errs: { name: string; error: string }[] = Array.isArray(data?.errors) ? data.errors : [];
     if (errs.length) {
-      const why: Record<string, string> = { too_large: "גדול מדי", unsupported: "סוג קובץ לא נתמך", empty: "לא נמצא בו טקסט (סרוק כתמונה?)", unreadable: "לא הצלחתי לקרוא אותו" };
-      appendMessage({ role: "assistant", content: `⚠️ לא הצלחתי לצרף: ${errs.map((e) => `${e.name} (${why[e.error] || e.error})`).join(", ")}` });
+      const why: Record<string, string> = {
+        too_large: t("resume.whyTooLarge"),
+        unsupported: t("resume.whyUnsupported"),
+        empty: t("resume.whyEmpty"),
+        unreadable: t("resume.whyUnreadable"),
+      };
+      appendMessage({ role: "assistant", content: t("resume.attachFailed", { list: errs.map((e) => `${e.name} (${why[e.error] || e.error})`).join(", ") }) });
     }
     if (!res.ok && !Array.isArray(data?.files)) return null;
     return (data.files || []) as Attachment[];
@@ -144,7 +152,7 @@ export default function ResumeAIPage() {
     try {
       const attachments = await extractPending();
       if (attachments === null) {
-        appendMessage({ role: "assistant", content: "⚠️ לא הצלחתי לקרוא את הקבצים. נסה קובץ אחר או שלח בלי קבצים." });
+        appendMessage({ role: "assistant", content: t("resume.filesUnreadable") });
         return;
       }
       if (!attachments.length && !input.trim()) return; // only unreadable files were attached
@@ -155,7 +163,8 @@ export default function ResumeAIPage() {
       if (cv) setRawResumeText(cv.text);
 
       const userMessage: Message = { role: "user", content: input.trim(), attachments: attachments.length ? attachments : undefined };
-      const newMessages = [...messages, userMessage];
+      // The greeting is dictionary-backed; it is resolved to plain text (in the current language) once the conversation starts.
+      const newMessages = [...messages.map(materialize), userMessage];
       setMessages(newMessages);
       setInput("");
 
@@ -170,7 +179,7 @@ export default function ResumeAIPage() {
       if (data.error) {
         appendMessage({
           role: "assistant",
-          content: res.status === 429 ? "⚠️ הגעת למכסה היומית של השיחה. נמשיך מחר." : "⚠️ אירעה שגיאה. נסה שוב בעוד רגע.",
+          content: res.status === 429 ? t("resume.quotaReached") : t("resume.genericError"),
         });
         return;
       }
@@ -190,7 +199,7 @@ export default function ResumeAIPage() {
       console.error("❌ resume conversation error:", err);
       appendMessage({
         role: "assistant",
-        content: "⚠️ שגיאה בתקשורת עם השרת. נסה שוב.",
+        content: t("resume.networkError"),
       });
     } finally {
       setLoading(false);
@@ -202,7 +211,7 @@ export default function ResumeAIPage() {
       setLoading(true);
       appendMessage({
         role: "assistant",
-        content: "מעולה! אני בונה עכשיו עבורך קורות חיים משופרים באנגלית…",
+        content: t("resume.building"),
       });
 
       // 1️⃣ יצירת structuredResume + score + issues
@@ -211,7 +220,7 @@ export default function ResumeAIPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
-          messages: conversation.map(flatten),
+          messages: conversation.map((m) => flatten(materialize(m), (name) => t("resume.attachedFile", { name }))),
           rawResumeText,
         }),
       });
@@ -220,7 +229,7 @@ export default function ResumeAIPage() {
       if (buildData.error) {
         appendMessage({
           role: "assistant",
-          content: "⚠️ לא הצלחתי לבנות קורות חיים. נסה שוב מאוחר יותר.",
+          content: t("resume.buildFailed"),
         });
         return;
       }
@@ -239,7 +248,7 @@ export default function ResumeAIPage() {
       if (!pdfRes.ok) {
         appendMessage({
           role: "assistant",
-          content: "⚠️ הייתה בעיה ביצירת קובץ ה-PDF.",
+          content: t("resume.pdfFailed"),
         });
         return;
       }
@@ -254,14 +263,13 @@ export default function ResumeAIPage() {
 
       appendMessage({
         role: "assistant",
-        content:
-          "📄 סיימתי לבנות את קורות החיים המשופרים שלך! אפשר להוריד אותם בלחיצה על הכפתור למטה.",
+        content: t("resume.buildDone"),
       });
     } catch (err) {
       console.error("❌ build & download error:", err);
       appendMessage({
         role: "assistant",
-        content: "⚠️ אירעה שגיאה בתהליך הבנייה. נסה שוב.",
+        content: t("resume.buildError"),
       });
     } finally {
       setLoading(false);
@@ -291,7 +299,7 @@ export default function ResumeAIPage() {
     if (data.error) {
       appendMessage({
         role: "assistant",
-        content: "⚠️ שגיאה בקריאת קובץ ה-PDF. נסה קובץ אחר.",
+        content: t("resume.uploadReadFailed"),
       });
       return;
     }
@@ -301,7 +309,7 @@ export default function ResumeAIPage() {
 
     appendMessage({
       role: "assistant",
-      content: "📄 קיבלתי את קובץ הקורות חיים. משפר אותם עבורך עכשיו…",
+      content: t("resume.uploadReceived"),
     });
 
     // 2️⃣ בניית קורות חיים משופרים אוטומטית (buildResume)
@@ -319,8 +327,7 @@ export default function ResumeAIPage() {
     if (buildData.error) {
       appendMessage({
         role: "assistant",
-        content:
-          "⚠️ לא הצלחתי לשפר את קובץ הקו״ח. נסה שוב בעוד רגע.",
+        content: t("resume.improveFailed"),
       });
       return;
     }
@@ -341,7 +348,7 @@ export default function ResumeAIPage() {
     if (!pdfRes.ok) {
       appendMessage({
         role: "assistant",
-        content: "⚠️ הייתה בעיה ביצירת קובץ ה-PDF.",
+        content: t("resume.pdfFailed"),
       });
       return;
     }
@@ -355,14 +362,13 @@ export default function ResumeAIPage() {
 
     appendMessage({
       role: "assistant",
-      content:
-        "✨ סיימתי לשפר את קורות החיים שהעלית! אפשר להוריד אותם עכשיו בלחיצה על הכפתור למטה.",
+      content: t("resume.uploadDone"),
     });
   } catch (err) {
     console.error("❌ upload+improve error:", err);
     appendMessage({
       role: "assistant",
-      content: "⚠️ שגיאה בעיבוד הקובץ. נסה שוב.",
+      content: t("resume.uploadError"),
     });
   } finally {
     setLoading(false);
@@ -374,11 +380,11 @@ export default function ResumeAIPage() {
   const hasResult = score !== null || !!downloadUrl || matchReady;
 
   return (
-    <div className="jm-page" dir="rtl">
+    <div className="jm-page" dir={dir}>
       <PageHeader
         eyebrow="ResumeAI"
-        title="ResumeAI – בניית ושיפור קורות חיים"
-        subtitle="אתה יכול לנהל שיחה חופשית, להעלות קובץ קורות חיים קיים, או לבנות קורות חיים מאפס."
+        title={t("resume.pageTitle")}
+        subtitle={t("resume.pageSubtitle")}
       />
 
       <div className="grid gap-6 lg:grid-cols-2 items-start">
@@ -400,7 +406,7 @@ export default function ResumeAIPage() {
             <span className="h-14 w-14 rounded-2xl bg-teal-50 text-teal flex items-center justify-center">
               <PdfGlyph />
             </span>
-            <span className="text-base sm:text-lg font-semibold text-navy">📄 העלה קו״ח</span>
+            <span className="text-base sm:text-lg font-semibold text-navy">{t("resume.uploadCta")}</span>
           </button>
 
           {hasResult && (
@@ -408,7 +414,7 @@ export default function ResumeAIPage() {
               {score !== null && (
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="font-semibold text-navy">⭐ Resume Score: {score}/100</div>
+                    <div className="font-semibold text-navy">{t("resume.score", { score })}</div>
                   </div>
                   <div
                     className="mt-2 h-2 w-full rounded-full bg-line overflow-hidden"
@@ -437,15 +443,15 @@ export default function ResumeAIPage() {
                   download="Improved_Resume_ATS.pdf"
                   className="jm-btn jm-btn-primary w-full"
                 >
-                  📄 הורד קורות חיים משופרים (ATS Ready)
+                  {t("resume.download")}
                 </a>
               )}
 
               {matchReady && (
                 <div className="jm-alert jm-alert-ok space-y-3">
-                  <p>🎯 קורות החיים שלך נשמרו — הפיד שלך עכשיו מותאם אישית אליהם.</p>
+                  <p>{t("resume.savedForMatching")}</p>
                   <Link href="/" className="jm-btn jm-btn-accent jm-btn-sm w-full">
-                    ראה משרות שמתאימות לקורות החיים שלך
+                    {t("resume.seeMatchingJobs")}
                   </Link>
                 </div>
               )}
@@ -462,7 +468,7 @@ export default function ResumeAIPage() {
         >
           {dragOver && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-card bg-white/70 text-navy font-semibold">
-              שחרר כדי לצרף לשיחה
+              {t("resume.dropToAttach")}
             </div>
           )}
           <div ref={scrollRef} className="jm-scroll max-h-[60vh] min-h-[320px] overflow-y-auto space-y-3 pe-1">
@@ -479,15 +485,15 @@ export default function ResumeAIPage() {
                   {msg.attachments?.length ? (
                     <div className={`flex flex-wrap gap-1.5 ${msg.content ? "mb-2" : ""}`}>
                       {msg.attachments.map((a) => (
-                        <span key={a.name} className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2.5 py-0.5 text-xs" title={`${a.chars.toLocaleString()} תווים${a.truncated ? " (קוצר)" : ""}`}>
+                        <span key={a.name} className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2.5 py-0.5 text-xs" title={`${t("resume.attachmentChars", { n: a.chars.toLocaleString() })}${a.truncated ? t("resume.attachmentTruncated") : ""}`}>
                           <FileGlyph />
                           <span dir="ltr" className="max-w-[180px] truncate">{a.name}</span>
-                          {a.looksLikeResume && <span className="opacity-80">· קו״ח</span>}
+                          {a.looksLikeResume && <span className="opacity-80">{t("resume.attachmentIsResume")}</span>}
                         </span>
                       ))}
                     </div>
                   ) : null}
-                  {msg.content}
+                  {textOf(msg)}
                 </div>
               </div>
             ))}
@@ -495,7 +501,7 @@ export default function ResumeAIPage() {
             {loading && (
               <div className="flex items-center gap-2 text-sm text-ink-400" role="status">
                 <span className="h-4 w-4 rounded-full border-2 border-teal border-t-transparent animate-spin" />
-                {pending.length ? "קורא את הקבצים…" : "המערכת חושבת…"}
+                {pending.length ? t("resume.readingFiles") : t("resume.thinking")}
               </div>
             )}
           </div>
@@ -510,7 +516,7 @@ export default function ResumeAIPage() {
                       <FileGlyph />
                       <span dir="ltr" className="max-w-[200px] truncate">{f.name}</span>
                       <span className="text-ink-400">{fmtSize(f.size)}</span>
-                      <button type="button" onClick={() => removePending(i)} className="ms-1 text-ink-400 hover:text-navy" aria-label={`הסר ${f.name}`}>×</button>
+                      <button type="button" onClick={() => removePending(i)} className="ms-1 text-ink-400 hover:text-navy" aria-label={t("resume.removeFile", { name: f.name })}>×</button>
                     </span>
                   ))}
                 </div>
@@ -534,8 +540,8 @@ export default function ResumeAIPage() {
                 onClick={() => chatFileRef.current?.click()}
                 disabled={loading}
                 className="jm-btn jm-btn-ghost px-3 shrink-0"
-                title="צרף קובץ (PDF, Word, טקסט)"
-                aria-label="צרף קובץ"
+                title={t("resume.attachTitle")}
+                aria-label={t("resume.attachAria")}
               >
                 <PaperclipGlyph />
               </button>
@@ -544,7 +550,7 @@ export default function ResumeAIPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onPaste={(e) => { if (e.clipboardData.files?.length) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
-                placeholder={pending.length ? "הוסף הודעה לקבצים (לא חובה)…" : "כתוב כאן שאלה או תיאור (למשל: 'אני מחפש משרת ג'וניור בפיתוח')..."}
+                placeholder={pending.length ? t("resume.placeholderWithFiles") : t("resume.placeholder")}
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
               />
             </div>
@@ -553,7 +559,7 @@ export default function ResumeAIPage() {
               disabled={loading || (!input.trim() && !pending.length)}
               className="jm-btn jm-btn-primary"
             >
-              שלח
+              {t("resume.send")}
             </button>
           </div>
         </section>

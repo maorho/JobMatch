@@ -4,11 +4,22 @@
  * is one click away; the choice is remembered per browser (localStorage +
  * cookie "jm_lang") and sets <html lang> before first paint.
  */
+import * as dashboard from "./dict/dashboard";
+import * as settings from "./dict/settings";
+import * as widgets from "./dict/widgets";
+import * as interview from "./dict/interview";
+import * as practice from "./dict/practice";
+import * as resume from "./dict/resume";
+import * as pages from "./dict/pages";
+import * as legal from "./dict/legal";
+import * as admin from "./dict/admin";
+import * as recruiter from "./dict/recruiter";
+
 export type Lang = "he" | "en";
 export const LANGS: Lang[] = ["he", "en"];
 export const DEFAULT_LANG: Lang = "he";
 
-const he = {
+const baseHe = {
   // chrome
   "nav.jobs": "משרות",
   "nav.companies": "חברות",
@@ -91,6 +102,8 @@ const he = {
   "home.pushBannerText": "רוצה לדעת כשמשרה חדשה מתאימה לך? נשלח התראה למכשיר הזה, בלי מייל ובלי אפליקציה.",
   "home.pushEnable": "הפעל התראות",
   "home.notNow": "לא עכשיו",
+  "home.hiringNow": "מגייסים עכשיו, ישירות מדפי הקריירה שלהם",
+  "home.location": "מיקום",
   // filters
   "filters.posted": "פורסם",
   "filters.anyTime": "בכל זמן",
@@ -248,9 +261,7 @@ const he = {
   "hubs.years": "{n}+ שנות ניסיון",
 } as const;
 
-export type Key = keyof typeof he;
-
-const en: Record<Key, string> = {
+const baseEn: Record<keyof typeof baseHe, string> = {
   "nav.jobs": "Jobs",
   "nav.companies": "Companies",
   "nav.interviewQs": "Interview Qs",
@@ -330,6 +341,8 @@ const en: Record<Key, string> = {
   "home.pushBannerText": "Want to know when a new job fits you? We'll notify this device. No email, no app.",
   "home.pushEnable": "Turn on notifications",
   "home.notNow": "Not now",
+  "home.hiringNow": "Hiring now, straight from their careers pages",
+  "home.location": "Location",
   "filters.posted": "Posted",
   "filters.anyTime": "Any time",
   "filters.experience": "Experience",
@@ -477,6 +490,18 @@ const en: Record<Key, string> = {
   "hubs.inCity": "Jobs in {city}",
   "hubs.roleJobs": "{role} jobs",
   "hubs.years": "{n}+ years' experience",
+};
+
+// Per-area modules (one file per area under ./dict/, each exporting `he` and `en`
+// with the same keys); merged here so one call site, t(), serves the whole app.
+const he = {
+  ...baseHe, ...dashboard.he, ...settings.he, ...widgets.he, ...interview.he, ...practice.he,
+  ...resume.he, ...pages.he, ...legal.he, ...admin.he, ...recruiter.he,
+};
+export type Key = keyof typeof he;
+const en: Record<Key, string> = {
+  ...baseEn, ...dashboard.en, ...settings.en, ...widgets.en, ...interview.en, ...practice.en,
+  ...resume.en, ...pages.en, ...legal.en, ...admin.en, ...recruiter.en,
 };
 
 export const DICT: Record<Lang, Record<Key, string>> = { he, en };

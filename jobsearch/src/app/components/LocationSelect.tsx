@@ -46,7 +46,7 @@ export default function LocationSelect({ jobs, cities, selectedCities, setSelect
     };
   }, [isOpen]);
 
-  const label = selectedCities.length === 0 ? "Location" : selectedCities.length === 1 ? selectedCities[0] : `${selectedCities[0]} +${selectedCities.length - 1}`;
+  const label = selectedCities.length === 0 ? t("home.location") : selectedCities.length === 1 ? selectedCities[0] : `${selectedCities[0]} +${selectedCities.length - 1}`;
 
   return (
     <div className="relative lg:w-56" ref={ref}>

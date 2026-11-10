@@ -11,12 +11,13 @@ export const LANG_COOKIE = "jm_lang";
 /** What the inline <head> script decided before paint (it stamps <html lang>), else the stored choice, else Hebrew. */
 function initialLang(): Lang {
   if (typeof document === "undefined") return DEFAULT_LANG;
-  const fromHtml = document.documentElement.getAttribute("lang");
-  if (fromHtml && (LANGS as string[]).includes(fromHtml)) return fromHtml as Lang;
   try {
     const stored = localStorage.getItem(LANG_STORAGE_KEY);
     if (stored && (LANGS as string[]).includes(stored)) return stored as Lang;
   } catch {}
+  // data-lang is set only by the head script (from the cookie); the plain lang attribute is the server default.
+  const fromScript = document.documentElement.getAttribute("data-lang");
+  if (fromScript && (LANGS as string[]).includes(fromScript)) return fromScript as Lang;
   return DEFAULT_LANG;
 }
 

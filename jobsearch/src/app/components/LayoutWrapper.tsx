@@ -7,7 +7,13 @@ import RevealObserver from "./RevealObserver";
 import BackgroundAurora from "./BackgroundAurora";
 import AccessibilityMenu from "./AccessibilityMenu";
 import PwaRegister from "./PwaRegister";
-import { LanguageProvider } from "../lib/i18n/LanguageProvider";
+import { LanguageProvider, useT } from "../lib/i18n/LanguageProvider";
+
+/** Inside the provider, so the skip link follows the interface language. */
+function SkipLink() {
+  const { t } = useT();
+  return <a href="#main-content" className="jm-skip-link">{t("pages.layout.skip")}</a>;
+}
 
 export default function LayoutWrapper({
   children,
@@ -19,7 +25,7 @@ export default function LayoutWrapper({
 
   return (
     <LanguageProvider>
-      <a href="#main-content" className="jm-skip-link">דלג לתוכן</a>
+      <SkipLink />
       <BackgroundAurora />
       <RevealObserver />
       {!hideFooterAndHeader && <Header />}

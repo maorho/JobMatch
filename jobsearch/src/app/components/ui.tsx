@@ -78,15 +78,16 @@ export function SignInGate({ text, next }: { text: ReactNode; next?: string }) {
 
 /** Prev / numbered / next pager. Windows the numbers so long lists stay compact. */
 export function Pagination({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
+  const { t } = useT();
   const last = Math.max(total, 1);
   const pages: number[] = [];
   for (let p = 1; p <= last; p++) {
     if (last <= 7 || p === 1 || p === last || Math.abs(p - page) <= 1) pages.push(p);
   }
   return (
-    <nav className="flex items-center gap-1 flex-wrap" aria-label="Pagination">
+    <nav className="flex items-center gap-1 flex-wrap" aria-label={t("widgets.ui.pagination")}>
       <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} className="jm-btn jm-btn-secondary jm-btn-sm">
-        Previous
+        {t("widgets.ui.prev")}
       </button>
       {pages.map((p, i) => (
         <span key={p} className="contents">
@@ -102,7 +103,7 @@ export function Pagination({ page, total, onChange }: { page: number; total: num
         </span>
       ))}
       <button type="button" disabled={page >= last} onClick={() => onChange(page + 1)} className="jm-btn jm-btn-secondary jm-btn-sm">
-        Next
+        {t("widgets.ui.next")}
       </button>
     </nav>
   );

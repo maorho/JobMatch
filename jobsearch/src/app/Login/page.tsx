@@ -3,14 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-// Messages for the social-login callback's ?error= codes.
-const OAUTH_ERRORS: Record<string, string> = {
-  oauth_denied: "ההתחברות בוטלה.",
-  oauth_state: "ההתחברות פגה או לא תקינה — נסה שוב.",
-  oauth_email_unverified: "הספק לא אימת את כתובת המייל — התחבר עם ספק אחר או עם סיסמה.",
-  oauth_not_configured: "התחברות חברתית עדיין לא מוגדרת בסביבה הזו.",
-  oauth_failed: "ההתחברות נכשלה — נסה שוב.",
-};
+// The social-login callback's ?error= codes that have a message of their own.
+const OAUTH_ERRORS = ["oauth_denied", "oauth_state", "oauth_email_unverified", "oauth_not_configured", "oauth_failed"] as const;
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { LogoMark } from "@/app/components/Logo";
@@ -25,6 +19,7 @@ function LoginForm() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [oauthError, setOauthError] = useState<(typeof OAUTH_ERRORS)[number] | "">("");
   const [loading, setLoading] = useState(false);
   // Where to go after login (`?next=`); only same-origin relative paths are honoured.
   const [next, setNext] = useState("");
@@ -34,7 +29,7 @@ function LoginForm() {
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const code = sp.get("error");
-    if (code) setError(OAUTH_ERRORS[code] || OAUTH_ERRORS.oauth_failed);
+    if (code) setOauthError((OAUTH_ERRORS as readonly string[]).includes(code) ? (code as (typeof OAUTH_ERRORS)[number]) : "oauth_failed");
     setNext(safeNextPath(sp.get("next"), ""));
   }, []);
 
@@ -42,6 +37,7 @@ function LoginForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setOauthError("");
     setLoading(true);
 
     try {
@@ -62,10 +58,10 @@ function LoginForm() {
         const dashboard = data.recruiter ? "/RecruiterDashboard" : data.admin ? "/AdminDashboard" : "/Dashboard";
         router.push(next && next !== "/" ? next : dashboard);
       } else {
-        setError(data.message || "Login failed");
+        setError(data.message || t("pages.auth.loginFailed"));
       }
     } catch {
-      setError("Something went wrong");
+      setError(t("common.somethingWrong"));
     } finally {
       setLoading(false);
     }
@@ -131,16 +127,16 @@ function LoginForm() {
               />
             </div>
 
-            {error && <p className="jm-alert jm-alert-err">{error}</p>}
+            {(error || oauthError) && <p className="jm-alert jm-alert-err">{error || t(`pages.oauth.${oauthError as (typeof OAUTH_ERRORS)[number]}`)}</p>}
 
             <button type="submit" disabled={loading} className="jm-btn jm-btn-primary w-full">
               {loading ? t("auth.signingIn") : t("auth.signIn")}
             </button>
 
             <p className="text-center text-sm text-ink-600">
-              Not signed in?{" "}
+              {t("auth.noAccount")}{" "}
               <Link href="/SignUp" className="font-semibold text-sky hover:text-sky-600">
-                Sign Up
+                {t("auth.createOne")}
               </Link>
             </p>
           </form>

@@ -5,6 +5,7 @@ import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ResumeLink from "./ResumeLink";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 interface ApplybuttonProps {
   job: any;
@@ -12,6 +13,7 @@ interface ApplybuttonProps {
 }
 
 const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
+  const { t, dir } = useT();
   const { user } = useCurrentUser();
   const router = useRouter();
   const [fullname, setFullName] = useState("");
@@ -51,12 +53,12 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
 
       if (res.ok) {
         // Inline confirmation (no alert()); the user picks where to go next.
-        setSent(data.message || "Application sent!");
+        setSent(data.message || t("widgets.apply.sent"));
       } else {
-        setError(data.message || "Application failed");
+        setError(data.message || t("widgets.apply.failed"));
       }
     } catch {
-      setError("Something went wrong");
+      setError(t("common.somethingWrong"));
     } finally {
       setSubmitting(false);
     }
@@ -66,14 +68,14 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
 
   if (sent) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4" dir={dir}>
         <p className="jm-alert jm-alert-ok" role="status">✓ {sent}</p>
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
           <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-secondary">
-            Close
+            {t("widgets.apply.close")}
           </button>
           <Link href="/Dashboard" onClick={() => { setShowModal(false); router.push("/Dashboard"); }} className="jm-btn jm-btn-primary">
-            Go to my Dashboard
+            {t("widgets.apply.goDashboard")}
           </Link>
         </div>
       </div>
@@ -81,21 +83,21 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4" dir={dir}>
       <div>
-        <label className="jm-label">Full Name:</label>
+        <label className="jm-label">{t("widgets.apply.fullName")}</label>
         <input type="text" value={fullname} className={readOnlyInput} disabled />
       </div>
       <div>
-        <label className="jm-label">Phone:</label>
-        <input type="tel" value={phone} className={readOnlyInput} disabled />
+        <label className="jm-label">{t("widgets.apply.phone")}</label>
+        <input type="tel" value={phone} className={readOnlyInput} disabled dir="ltr" />
       </div>
       <div>
-        <label className="jm-label">Email:</label>
-        <input type="email" value={email} className={readOnlyInput} disabled />
+        <label className="jm-label">{t("widgets.apply.email")}</label>
+        <input type="email" value={email} className={readOnlyInput} disabled dir="ltr" />
       </div>
       <div>
-        <label className="jm-label">Resume:</label>
+        <label className="jm-label">{t("widgets.apply.resume")}</label>
         <div className="rounded-control border border-line bg-canvas px-4 py-3">
           <ResumeLink resumeKey={resumefile} />
         </div>
@@ -107,10 +109,10 @@ const Applybutton: React.FC<ApplybuttonProps> = ({ job, setShowModal }) => {
       )}
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
         <button type="button" onClick={() => setShowModal(false)} className="jm-btn jm-btn-secondary">
-          Cancel
+          {t("widgets.apply.cancel")}
         </button>
         <button type="submit" disabled={submitting} className="jm-btn jm-btn-primary">
-          {submitting ? "Sending..." : "Apply"}
+          {submitting ? t("widgets.apply.sending") : t("widgets.apply.apply")}
         </button>
       </div>
     </form>

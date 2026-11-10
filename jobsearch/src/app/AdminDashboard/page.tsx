@@ -12,6 +12,7 @@ import { motion } from "framer-motion";
 import JobrecruiterCard from "../RecruiterDashboard/components/JobrecruiterCard";
 import { AdminHero } from "../components/HeroImages";
 import { EmptyState, Spinner } from "../components/ui";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 interface Tab {
   label: string;
@@ -50,9 +51,10 @@ const declineRecruiter = async (recruiterId: string) => {
   if (!res.ok) throw new Error("Failed to decline recruiter");
   await res.json();
 }
-const Jobs = ({ jobs }: { jobs: Job[] }) =>
-  jobs.length === 0 ? (
-    <EmptyState icon="🗂️" title="No jobs yet" />
+const Jobs = ({ jobs }: { jobs: Job[] }) => {
+  const { t } = useT();
+  return jobs.length === 0 ? (
+    <EmptyState icon="🗂️" title={t("admin.noJobs")} />
   ) : (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
       {jobs.map((job, i) => (
@@ -60,6 +62,7 @@ const Jobs = ({ jobs }: { jobs: Job[] }) =>
       ))}
     </div>
   );
+};
 
 
 interface RecruitersProps {
@@ -67,6 +70,7 @@ interface RecruitersProps {
   refreshRecruiters: () => void;
 }
 const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }) => {
+  const { t } = useT();
   const handleApprove = async (recruiterId: string) => {
     try {
       await approveRecruiter(recruiterId);
@@ -84,7 +88,7 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
     refreshRecruiters()
   }
   if (recruiters.length === 0) {
-    return <EmptyState icon="👥" title="No recruiters yet" />;
+    return <EmptyState icon="👥" title={t("admin.noRecruiters")} />;
   }
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -98,16 +102,16 @@ const Recruiters: React.FC<RecruitersProps> = ({ recruiters, refreshRecruiters }
               <div className="flex items-start justify-between gap-3">
                 <h3 className="text-base sm:text-lg font-semibold text-navy truncate">{recruiter.fullname}</h3>
                 <span className={`jm-chip shrink-0 ${recruiter.approved ? "jm-chip-teal" : ""}`}>
-                  Approved: {recruiter.approved ? "Yes" : "No"}
+                  {t("admin.approvedLabel", { v: t(recruiter.approved ? "admin.yes" : "admin.no") })}
                 </span>
               </div>
               <div className="text-sm text-ink-600 space-y-1">
-                <p className="truncate">Email:{recruiter.email}</p>
-                <p className="truncate">Company: {recruiter.company}</p>
+                <p className="truncate">{t("admin.emailLabel")}<span dir="ltr">{recruiter.email}</span></p>
+                <p className="truncate">{t("admin.companyLabel")}{recruiter.company}</p>
               </div>
               <div className="flex flex-wrap gap-2 pt-3 mt-auto border-t border-line">
-                <button className="jm-btn jm-btn-primary jm-btn-sm" onClick={() => handleApprove(recruiter._id.toString())}>Approve</button>
-                <button className="jm-btn jm-btn-danger jm-btn-sm" onClick={() => handleDecline(recruiter._id.toString())}>Reject</button>
+                <button className="jm-btn jm-btn-primary jm-btn-sm" onClick={() => handleApprove(recruiter._id.toString())}>{t("admin.approve")}</button>
+                <button className="jm-btn jm-btn-danger jm-btn-sm" onClick={() => handleDecline(recruiter._id.toString())}>{t("admin.reject")}</button>
               </div>
             </motion.div>
         ))}
@@ -120,6 +124,7 @@ const LOGIN_HREF = "/Login?next=%2FAdminDashboard";
 function AdminDashboard() {
   const { user, loading: authLoading, validating: authValidating } = useCurrentUser();
   const router = useRouter();
+  const { t, dir } = useT();
   const [recruitersList, setRecruitersList] = useState<IUser[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
@@ -184,19 +189,19 @@ function AdminDashboard() {
   }, [isAdmin, fetchAllRecruiters, fetchAllCompaniesJobs]);
 
   if (authLoading) {
-    return <Spinner label="Loading dashboard..." />;
+    return <Spinner label={t("admin.loadingDashboard")} />;
   }
 
   if (!user) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🔒"
-          title="You are not logged in."
-          text="Redirecting to sign in…"
+          title={t("common.youAreNotLoggedIn")}
+          text={t("admin.redirecting")}
           action={
             <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
-              Go to Login
+              {t("common.goToLogin")}
             </Link>
           }
         />
@@ -206,14 +211,14 @@ function AdminDashboard() {
 
   if (!user.admin) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🔒"
-          title="This area is for admins only."
-          text={`You are signed in as ${user.fullname || user.email}, which is not an admin account.`}
+          title={t("admin.adminAreaOnly")}
+          text={t("admin.signedInAsNotAdmin", { name: user.fullname || user.email })}
           action={
             <Link href={user.recruiter ? "/RecruiterDashboard" : "/Dashboard"} className="jm-btn jm-btn-primary">
-              Go to your dashboard
+              {t("admin.goToYourDashboard")}
             </Link>
           }
         />
@@ -222,52 +227,52 @@ function AdminDashboard() {
   }
 
   if (dataLoading) {
-    return <Spinner label="Loading dashboard..." />;
+    return <Spinner label={t("admin.loadingDashboard")} />;
   }
 
   const tabs: Tab[] = [
     {
-      label: "Jobs",
+      label: t("admin.tabJobs"),
       content: <Jobs jobs={jobs} />,
     },
     {
-      label: "Recruiters",
+      label: t("admin.tabRecruiters"),
       content: <Recruiters recruiters={recruitersList} refreshRecruiters={fetchAllRecruiters}/>,
     },
   ];
 
   const pendingRecruiters = recruitersList.filter((r) => !r.approved).length;
   const stats = [
-    { label: "Jobs", value: jobs.length },
-    { label: "Recruiters", value: recruitersList.length },
-    { label: "Approved recruiters", value: recruitersList.length - pendingRecruiters },
-    { label: "Pending approval", value: pendingRecruiters },
+    { label: t("admin.tabJobs"), value: jobs.length },
+    { label: t("admin.tabRecruiters"), value: recruitersList.length },
+    { label: t("admin.statApproved"), value: recruitersList.length - pendingRecruiters },
+    { label: t("admin.statPending"), value: pendingRecruiters },
   ];
 
   return (
-    <div className="jm-page space-y-6">
+    <div className="jm-page space-y-6" dir={dir}>
       <section
         id="recruiter hero section"
         className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
       >
         <AdminHero />
         <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
-          <div className="text-xs font-semibold uppercase tracking-wider text-white/70">Admin</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-white/70">{t("admin.eyebrow")}</div>
           <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
-            Welcome, {user.fullname}! 👋
+            {t("admin.welcome", { name: user.fullname })}
           </h1>
           <p className="text-sm sm:text-base text-white/80">
-            Review your company&apos;s positions and approve recruiters.
+            {t("admin.heroSub")}
           </p>
           <div className="flex flex-wrap gap-2">
             <Link href="/AdminDashboard/agents" className="jm-btn jm-btn-accent w-fit">
-              🤖 Agent team
+              {t("admin.agentTeam")}
             </Link>
             <Link href="/AdminDashboard/articles" className="jm-btn jm-btn-secondary w-fit">
-              ✍️ Articles
+              {t("admin.articlesLink")}
             </Link>
             <Link href="/AdminDashboard/partners" className="jm-btn jm-btn-secondary w-fit">
-              🤝 Partners
+              {t("admin.partnersLink")}
             </Link>
           </div>
         </div>

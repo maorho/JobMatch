@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 /**
  * "Tailor my résumé to this job" — calls the tailoring agent for the signed-in
@@ -19,6 +20,7 @@ type Result = {
 };
 
 export default function TailorResumePanel({ jobId, source }: { jobId: string; source: "external" | "internal" }) {
+  const { t, dir } = useT();
   const [state, setState] = useState<"idle" | "loading" | "done" | "noResume" | "error">("idle");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
@@ -40,7 +42,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
         setState("noResume");
         return;
       }
-      if (!res.ok) throw new Error(data?.error || "Tailoring failed");
+      if (!res.ok) throw new Error(data?.error || t("widgets.tailor.failed"));
       setResult(data);
       setState("done");
     } catch (e) {
@@ -58,7 +60,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ structuredResume: result.tailoredResume }),
       });
-      if (!res.ok) throw new Error("PDF export failed");
+      if (!res.ok) throw new Error(t("widgets.tailor.pdfFailed"));
       const blob = await res.blob();
       setPdfUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -75,12 +77,12 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
   const gaps = result ? [...result.missingSkills, ...result.keywordGaps] : [];
 
   return (
-    <section className="jm-card p-5" dir="rtl">
+    <section className="jm-card p-5" dir={dir}>
       <div className="flex flex-col gap-3">
         <div>
-          <h3 className="jm-h2">התאמת קורות החיים למשרה</h3>
+          <h3 className="jm-h2">{t("widgets.tailor.title")}</h3>
           <p className="text-sm text-ink-600 mt-1">
-            הסוכן מתאים את קורות החיים שלך לדרישות המשרה — מדגיש את מה שרלוונטי, ומציג פערים. בלי להמציא ניסיון.
+            {t("widgets.tailor.intro")}
           </p>
         </div>
         {state !== "done" && (
@@ -92,18 +94,18 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
             {state === "loading" && (
               <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" aria-hidden />
             )}
-            {state === "loading" ? "מתאים את קורות החיים…" : "התאם את קו״ח שלי למשרה"}
+            {state === "loading" ? t("widgets.tailor.running") : t("widgets.tailor.run")}
           </button>
         )}
       </div>
 
       {state === "noResume" && (
         <div className="jm-alert jm-alert-info mt-4">
-          עדיין אין לך קורות חיים במערכת.{" "}
+          {t("widgets.tailor.noResume1")}{" "}
           <Link href="/ResumeAI" className="font-medium underline">
-            בנה או העלה קורות חיים ב-ResumeAI
+            {t("widgets.tailor.noResumeLink")}
           </Link>{" "}
-          ואז חזור לכאן.
+          {t("widgets.tailor.noResume2")}
         </div>
       )}
       {state === "error" && (
@@ -118,7 +120,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
             <div className="flex items-end justify-between gap-3">
               <div className={`text-4xl font-semibold leading-none ${scoreColor(result.fitScore)}`}>{result.fitScore}%</div>
               <div className="text-sm text-ink-600 text-start">
-                התאמה בין הפרופיל שלך לדרישות של <span className="font-semibold text-navy">{result.job.title}</span> ב-{result.job.company}
+                {t("widgets.tailor.fitPrefix")} <span className="font-semibold text-navy">{result.job.title}</span> {t("widgets.tailor.fitSuffix", { company: result.job.company })}
               </div>
             </div>
             <div
@@ -134,7 +136,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
 
           <div className="space-y-4">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">יש לך ✓</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.have")}</div>
               <div className="flex flex-wrap gap-2">
                 {result.matchedSkills.length ? result.matchedSkills.map((s) => (
                   <span key={s} dir="auto" className="jm-chip jm-chip-teal">{s}</span>
@@ -142,18 +144,18 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
               </div>
             </div>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">חסר / לחזק</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.missing")}</div>
               <div className="flex flex-wrap gap-2">
                 {gaps.length ? gaps.map((s) => (
                   <span key={s} dir="auto" className="jm-chip">{s}</span>
-                )) : <span className="jm-muted">אין פערים משמעותיים</span>}
+                )) : <span className="jm-muted">{t("widgets.tailor.noGaps")}</span>}
               </div>
             </div>
           </div>
 
           {result.suggestions.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">המלצות להגשה הזו</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.suggestions")}</div>
               <ul className="list-disc ps-5 space-y-1 text-sm text-ink-600 marker:text-teal">
                 {result.suggestions.map((s, i) => <li key={i} dir="auto">{s}</li>)}
               </ul>
@@ -162,7 +164,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
 
           {result.changes.length > 0 && (
             <details className="text-sm rounded-control border border-line bg-canvas px-4 py-3">
-              <summary className="cursor-pointer font-medium text-navy">מה שונה בקורות החיים המותאמים</summary>
+              <summary className="cursor-pointer font-medium text-navy">{t("widgets.tailor.changes")}</summary>
               <ul className="list-disc ps-5 mt-2 space-y-1 text-ink-600 marker:text-teal">
                 {result.changes.map((c, i) => <li key={i} dir="auto">{c}</li>)}
               </ul>
@@ -172,14 +174,14 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
           <div className="flex flex-col gap-2 pt-1">
             {!pdfUrl ? (
               <button onClick={exportPdf} disabled={exporting} className="jm-btn jm-btn-primary w-full">
-                {exporting ? "מייצר PDF…" : "📄 צור קו״ח מותאם (PDF)"}
+                {exporting ? t("widgets.tailor.exporting") : t("widgets.tailor.export")}
               </button>
             ) : (
               <a href={pdfUrl} download={`Resume_${result.job.company.replace(/\s+/g, "_")}.pdf`} className="jm-btn jm-btn-primary w-full">
-                ⬇️ הורד את קו״ח המותאם
+                {t("widgets.tailor.download")}
               </a>
             )}
-            <button onClick={run} className="jm-btn jm-btn-ghost jm-btn-sm">התאם מחדש</button>
+            <button onClick={run} className="jm-btn jm-btn-ghost jm-btn-sm">{t("widgets.tailor.again")}</button>
           </div>
         </div>
       )}

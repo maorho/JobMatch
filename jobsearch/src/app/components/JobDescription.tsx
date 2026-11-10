@@ -99,7 +99,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       }
       setDidYouApply(true);
     } else {
-      setNotice("הקישור למשרה עדיין לא זמין — נסה/י שוב בעוד רגע.");
+      setNotice(t("widgets.job.linkNotReady"));
     }
   };
 
@@ -179,7 +179,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         )}
 
         {closed && (
-          <div className="mt-5 jm-alert bg-canvas text-ink-600 border-line" role="status" dir="rtl">
+          <div className="mt-5 jm-alert bg-canvas text-ink-600 border-line" role="status">
             <span className="font-semibold text-navy">{t("job.closed")}</span> {t("job.closedText")}
             <Link href={companyName ? `/?company=${encodeURIComponent(companyName)}` : "/"} className="underline underline-offset-2 ms-1">
               {companyName || t("job.feed")}
@@ -204,7 +204,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
                 href={`/interview-prep/${internal ? "internal" : "external"}/${String(job._id ?? job.id)}`}
                 className="jm-btn jm-btn-secondary"
               >
-                🎯 הכנה לראיון למשרה הזו
+                {t("widgets.job.prepLink")}
               </Link>
             )}
             {canMessageRecruiter && (
@@ -212,7 +212,7 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
                 href={`/messages?to=${String(job.publisher)}&job=${String(job._id ?? job.id)}`}
                 className="jm-btn jm-btn-ghost"
               >
-                💬 שלח הודעה למגייס
+                {t("widgets.job.messageRecruiter")}
               </Link>
             )}
           </div>
@@ -221,9 +221,9 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
         {/* הודעת התחברות */}
         {!user && (
           <div className="mt-5 jm-alert jm-alert-err flex flex-wrap items-center justify-between gap-2">
-            <span className="font-semibold">You are not logged in</span>
+            <span className="font-semibold">{t("widgets.job.notLoggedIn")}</span>
             <Link href={loginHref(pathname)} className="font-medium underline">
-              Go to Login
+              {t("widgets.job.goToLogin")}
             </Link>
           </div>
         )}
@@ -238,25 +238,23 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
 
         {applied && (
           <div className="mt-5 jm-alert jm-alert-info" dir="auto">
-            ✓ נרשם שהגשת מועמדות למשרה. היא תעקוב איתך תחת Applications ולא תופיע יותר בפיד.
+            {t("widgets.job.appliedNote")}
           </div>
         )}
 
         {/* אישור הגשה למשרה חיצונית */}
         {didYouApply && !applied && (
           <div className="mt-5 jm-alert jm-alert-info">
-            <h2 className="font-semibold mb-3">Did you apply?</h2>
+            <h2 className="font-semibold mb-3">{t("widgets.job.didYouApply")}</h2>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 className="jm-btn jm-btn-primary jm-btn-sm"
                 disabled={submitting}
                 onClick={submitExternalApplication}
               >
-                {submitting ? "Sending..." : "Yes"}
+                {submitting ? t("widgets.job.sending") : t("widgets.job.yes")}
               </button>
-              <button className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => setDidYouApply(false)}>
-                No
-              </button>
+              <button className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => setDidYouApply(false)}>{t("widgets.job.no")}</button>
             </div>
             {error && <p className="text-red-700 mt-2">{error}</p>}
           </div>
@@ -349,22 +347,20 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
       {user && !closed && (
         <div className="sticky bottom-0 z-40 lg:hidden mt-6 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-surface/95 backdrop-blur border-t border-line">
           {applied ? (
-            <div className="text-sm font-semibold text-center" dir="auto">✓ נרשם שהגשת מועמדות</div>
+            <div className="text-sm font-semibold text-center" dir="auto">{t("widgets.job.appliedShort")}</div>
           ) : didYouApply ? (
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-sm">Did you apply?</span>
+              <span className="font-semibold text-sm">{t("widgets.job.didYouApply")}</span>
               <div className="flex gap-2">
                 <button className="jm-btn jm-btn-primary jm-btn-sm" disabled={submitting} onClick={submitExternalApplication}>
-                  {submitting ? "Sending..." : "Yes"}
+                  {submitting ? t("widgets.job.sending") : t("widgets.job.yes")}
                 </button>
-                <button className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => setDidYouApply(false)}>
-                  No
-                </button>
+                <button className="jm-btn jm-btn-secondary jm-btn-sm" onClick={() => setDidYouApply(false)}>{t("widgets.job.no")}</button>
               </div>
             </div>
           ) : (
             <button onClick={handleApplyClick} className="jm-btn jm-btn-accent w-full" disabled={submitting}>
-              Apply
+              {t("widgets.job.apply")}
             </button>
           )}
         </div>

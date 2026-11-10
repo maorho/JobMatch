@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useModalBehavior } from "./Dialog";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 /**
  * The accessibility widget Israeli sites carry (ת"י 5568 / WCAG 2.1 AA):
@@ -46,6 +47,7 @@ const A11yGlyph = () => (
 );
 
 export default function AccessibilityMenu() {
+  const { t, dir } = useT();
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -95,7 +97,7 @@ export default function AccessibilityMenu() {
   );
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60] print:hidden" dir="rtl">
+    <div className="fixed bottom-4 right-4 z-[60] print:hidden" dir={dir}>
       {open && (
         <div
           ref={panelRef}
@@ -105,13 +107,13 @@ export default function AccessibilityMenu() {
           className="absolute bottom-16 right-0 w-[min(20rem,calc(100vw-2rem))] rounded-card bg-surface border border-line shadow-card-hover p-4 space-y-3"
         >
           <div className="flex items-center justify-between">
-            <h2 id="a11y-title" className="font-semibold text-navy">תפריט נגישות</h2>
-            <button type="button" onClick={() => { setOpen(false); buttonRef.current?.focus(); }} className="jm-btn jm-btn-ghost jm-btn-icon h-8 w-8" aria-label="סגור">×</button>
+            <h2 id="a11y-title" className="font-semibold text-navy">{t("widgets.a11y.title")}</h2>
+            <button type="button" onClick={() => { setOpen(false); buttonRef.current?.focus(); }} className="jm-btn jm-btn-ghost jm-btn-icon h-8 w-8" aria-label={t("widgets.a11y.close")}>×</button>
           </div>
 
           <div>
-            <div className="text-xs font-semibold text-ink-600 mb-1.5">גודל טקסט</div>
-            <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="גודל טקסט">
+            <div className="text-xs font-semibold text-ink-600 mb-1.5">{t("widgets.a11y.textSize")}</div>
+            <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={t("widgets.a11y.textSize")}>
               {([0, 1, 2, 3] as const).map((n) => (
                 <button
                   key={n}
@@ -120,24 +122,24 @@ export default function AccessibilityMenu() {
                   onClick={() => update({ font: n })}
                   className={`rounded-control border py-1.5 text-sm transition-colors ${prefs.font === n ? "border-teal bg-teal-50 text-navy font-semibold" : "border-line text-ink hover:bg-canvas"}`}
                 >
-                  {n === 0 ? "רגיל" : `${100 + n * 15}%`}
+                  {n === 0 ? t("widgets.a11y.normal") : `${100 + n * 15}%`}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="grid gap-1.5">
-            {toggle("contrast", "ניגודיות גבוהה")}
-            {toggle("grayscale", "גווני אפור")}
-            {toggle("links", "הדגשת קישורים")}
-            {toggle("readable", "גופן קריא וריווח מוגדל")}
-            {toggle("cursor", "סמן גדול")}
-            {toggle("motion", "עצירת אנימציות")}
+            {toggle("contrast", t("widgets.a11y.contrast"))}
+            {toggle("grayscale", t("widgets.a11y.grayscale"))}
+            {toggle("links", t("widgets.a11y.links"))}
+            {toggle("readable", t("widgets.a11y.readable"))}
+            {toggle("cursor", t("widgets.a11y.cursor"))}
+            {toggle("motion", t("widgets.a11y.motion"))}
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
-            <button type="button" onClick={reset} disabled={!active} className="jm-btn jm-btn-secondary jm-btn-sm">איפוס</button>
-            <Link href="/Accessibility" className="text-xs text-sky-600 underline underline-offset-2" onClick={() => setOpen(false)}>הצהרת נגישות</Link>
+            <button type="button" onClick={reset} disabled={!active} className="jm-btn jm-btn-secondary jm-btn-sm">{t("widgets.a11y.reset")}</button>
+            <Link href="/Accessibility" className="text-xs text-sky-600 underline underline-offset-2" onClick={() => setOpen(false)}>{t("footer.accessibility")}</Link>
           </div>
         </div>
       )}
@@ -147,8 +149,8 @@ export default function AccessibilityMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label="תפריט נגישות"
-        title="נגישות"
+        aria-label={t("widgets.a11y.title")}
+        title={t("widgets.a11y.short")}
         className={`h-12 w-12 rounded-full shadow-card-hover flex items-center justify-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal ${active ? "bg-teal text-white" : "bg-navy text-white hover:bg-navy-700"}`}
       >
         <A11yGlyph />

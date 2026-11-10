@@ -40,14 +40,14 @@ function SignUp() {
     e.preventDefault();
     setError("");
 
-    if (!agree) return setError("You must agree to the terms");
-    if (email !== confirmEmail) return setError("Emails do not match");
-    if (password !== confirmPassword) return setError("Passwords do not match");
+    if (!agree) return setError(t("pages.auth.mustAgree"));
+    if (email !== confirmEmail) return setError(t("pages.auth.emailsMismatch"));
+    if (password !== confirmPassword) return setError(t("pages.auth.passwordsMismatch"));
     if (password.length < 6)
-      return setError("Password must be at least 6 characters");
+      return setError(t("pages.auth.passwordShort"));
     if (recruiter && company.trim() === "")
-      return setError("Please enter your company name");
-    if (!resumeFile && !admin) return setError("Please upload your resume");
+      return setError(t("pages.auth.companyRequired"));
+    if (!resumeFile && !admin) return setError(t("pages.auth.resumeRequired"));
 
     setLoading(true);
 
@@ -81,10 +81,10 @@ function SignUp() {
             : "/onboarding"
         );
       } else {
-        setError(data.message || "Signup failed");
+        setError(data.message || t("pages.auth.signupFailed"));
       }
     } catch {
-      setError("Something went wrong");
+      setError(t("common.somethingWrong"));
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,7 @@ function SignUp() {
       <div className="relative h-36 sm:h-44 lg:hidden overflow-hidden">
         <Image
           src="/signup_image.png"
-          alt="Singup background"
+          alt={t("pages.auth.imageAlt")}
           fill
           sizes="100vw"
           className="object-cover"
@@ -104,13 +104,13 @@ function SignUp() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/60 to-navy/20" />
         <p className="absolute bottom-4 inset-x-4 sm:inset-x-6 text-white text-sm sm:text-base font-medium">
-          Let the right jobs find you.
+          {t("auth.tagline")}
         </p>
       </div>
 
       {/* Form column */}
       <div className="flex flex-col px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-10">
-        <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label="JobMatch home">
+        <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label={t("nav.home")}>
           <LogoMark size={40} className="text-teal" title="JobMatch" />
           <span className="font-semibold text-navy text-lg">JobMatch</span>
         </Link>
@@ -118,13 +118,13 @@ function SignUp() {
         <div className="w-full max-w-md lg:max-w-lg mx-auto my-auto py-8 sm:py-10 space-y-6">
           <div>
             <h1 className="jm-title">{t("auth.createAccount")}</h1>
-            {ref && <p className="jm-chip jm-chip-teal mt-2">🤝 {partnerName ? `Joining as part of ${partnerName}` : `Invite code ${ref}`}</p>}
+            {ref && <p className="jm-chip jm-chip-teal mt-2">🤝 {partnerName ? t("pages.auth.joiningAs", { name: partnerName }) : t("pages.auth.inviteCode", { code: ref })}</p>}
             <p className="jm-subtitle">
               {t("auth.signUpSub")}
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4" encType="multipart/form-data">
+          <form onSubmit={handleSubmit} className="space-y-4" encType="multipart/form-data" dir={dir}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="signup-username" className="jm-label">{t("auth.username")}</label>
@@ -203,7 +203,7 @@ function SignUp() {
                   <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
                   </svg>
-                  <span className="truncate">{resumeFile ? resumeFile.name : "Upload Files"}</span>
+                  <span className="truncate">{resumeFile ? resumeFile.name : t("pages.auth.uploadFiles")}</span>
                 </label>
               </div>
               <div>
@@ -238,7 +238,7 @@ function SignUp() {
                   onChange={() => setRecruiter(!recruiter)}
                   className="h-4 w-4 rounded border-line accent-teal"
                 />
-                I&apos;m a recruiter
+                {t("pages.auth.imRecruiter")}
               </label>
               {recruiter && (
                 <input
@@ -257,9 +257,9 @@ function SignUp() {
                   className="h-4 w-4 rounded border-line accent-teal"
                 />
                 <span>
-                  I agree to{" "}
+                  {t("pages.auth.agreeTo")}{" "}
                   <Link href="/TermsOfConditions" className="font-medium text-sky hover:text-sky-600 hover:underline">
-                    Terms Of Conditions
+                    {t("pages.auth.terms")}
                   </Link>
                 </span>
               </label>
@@ -268,13 +268,13 @@ function SignUp() {
             {error && <p className="jm-alert jm-alert-err">{error}</p>}
 
             <button type="submit" disabled={loading} className="jm-btn jm-btn-primary w-full">
-              {loading ? "Submitting..." : "Create Account"}
+              {loading ? t("auth.creating") : t("auth.createAccount")}
             </button>
 
             <p className="text-center text-sm text-ink-600">
-              Already Have an Account?{" "}
+              {t("auth.haveAccount")}{" "}
               <Link href="/Login" className="font-semibold text-sky hover:text-sky-600">
-                Sign In
+                {t("auth.signIn")}
               </Link>
             </p>
           </form>
@@ -287,7 +287,7 @@ function SignUp() {
       <div className="relative hidden lg:block min-h-screen overflow-hidden">
         <Image
           src="/signup_image.png"
-          alt="Singup background"
+          alt={t("pages.auth.imageAlt")}
           fill
           sizes="50vw"
           className="object-cover"
@@ -297,7 +297,7 @@ function SignUp() {
         <div className="absolute bottom-0 inset-x-0 p-10 xl:p-14 text-white">
           <p className="text-xs font-semibold uppercase tracking-wider text-sky mb-2">JobMatch</p>
           <p className="text-2xl xl:text-3xl font-semibold leading-tight max-w-md">
-            Let the right jobs find you.
+            {t("auth.tagline")}
           </p>
         </div>
       </div>

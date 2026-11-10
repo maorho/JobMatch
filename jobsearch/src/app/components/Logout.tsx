@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import { LogOut } from "lucide-react";
 import { markSignedOut } from "../lib/hooks/useCurrentUser";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 export default function LogoutButton({
   closeNav,
@@ -12,15 +13,16 @@ export default function LogoutButton({
   closeNav?: () => void;
   className?: string;
 }) {
+  const { t } = useT();
   const router = useRouter();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
 
-    // מחיקת קוקי
+    // Clear the cookie.
     document.cookie = "token=; Max-Age=0; path=/";
 
-    // לעדכן SWR שהמשתמש התנתק (ולא להציג "ההתחברות פגה" על יציאה יזומה)
+    // Tell SWR the user signed out (so a deliberate logout never shows "session expired").
     markSignedOut();
     await mutate("/api/auth/me", null, false);
 
@@ -32,7 +34,7 @@ export default function LogoutButton({
   return (
     <button className={className} onClick={handleLogout}>
       <LogOut className="h-4 w-4" />
-      Logout
+      {t("widgets.logout")}
     </button>
   );
 }

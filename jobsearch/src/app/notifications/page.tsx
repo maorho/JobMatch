@@ -24,7 +24,7 @@ const ICON: Record<string, string> = {
 
 export default function NotificationsPage() {
   const { user, loading } = useCurrentUser();
-  const { t } = useT();
+  const { t, dir } = useT();
   const { data, mutate } = useSWR(user ? "/api/notifications?limit=100" : null, fetcher, { refreshInterval: 30_000 });
   const items: Item[] = data?.items ?? [];
   const unread: number = data?.unreadCount ?? 0;
@@ -63,10 +63,10 @@ export default function NotificationsPage() {
   if (!user) return <SignInGate text={t("common.youAreNotLoggedIn")} next="/notifications" />;
 
   return (
-    <div className="jm-page" dir="rtl">
+    <div className="jm-page" dir={dir}>
       <PageHeader
         title={t("notif.title")}
-        subtitle="סטטוס מועמדויות, הודעות חדשות ומשרות שמתאימות לך"
+        subtitle={t("pages.notif.subtitle")}
         actions={unread > 0 ? (
           <button onClick={() => markRead()} className="jm-btn jm-btn-secondary jm-btn-sm">
             {t("notif.markAll", { n: unread })}
@@ -75,7 +75,7 @@ export default function NotificationsPage() {
       />
 
       {items.length === 0 ? (
-        <EmptyState icon="🔔" title={t("notif.empty")} text="כשמשהו יקרה — סטטוס מועמדות, הודעה חדשה או משרות שמתאימות לך — זה יופיע כאן." />
+        <EmptyState icon="🔔" title={t("notif.empty")} text={t("pages.notif.emptyText")} />
       ) : (
         <ul className="space-y-3 max-w-3xl">
           {items.map((n) => {

@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import HubPage from "@/app/components/hubs/HubPage";
+import { absolute } from "@/app/lib/seo/site";
+import type { HubData } from "@/app/lib/seo/hubsShared";
+
+const itemList = (title: string, data: HubData) => ({
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  name: title,
+  numberOfItems: data.jobs.length,
+  itemListElement: data.jobs.slice(0, 30).map((j, i) => ({ "@type": "ListItem", position: i + 1, url: absolute(`/job/external/${j._id}`), name: `${j.job} – ${j.company}` })),
+});
 import { cityHub, topCities } from "@/app/lib/seo/hubs";
 
 export const revalidate = 900;
@@ -33,14 +43,16 @@ export default async function CityHub({ params }: { params: Promise<{ city: stri
   const [data, cities] = await Promise.all([cityHub(name), topCities(12)]);
   if (data.total === 0 && name.toLowerCase() !== "remote" && !cities.some((c) => c.city.toLowerCase() === name.toLowerCase())) notFound();
   const remote = name.toLowerCase() === "remote";
+  const title = `משרות הייטק ${displayName(city)}`;
   return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList(title, data)) }} />
     <HubPage
-      title={`משרות הייטק ${displayName(city)}`}
-      intro={remote ? "משרות שאפשר לעשות מרחוק, מחברות ישראליות וגלובליות שמגייסות בישראל." : `משרות הייטק פתוחות ב${name}, מהטריות ביותר. כל משרה מגיעה ישירות מדף הקריירה של החברה.`}
       data={data}
       path={remote ? "/?jobType=Remote" : `/?city=${encodeURIComponent(name)}`}
       cities={cities}
       current={{ city: remote ? "remote" : name }}
     />
+    </>
   );
 }

@@ -20,7 +20,7 @@ interface SideNavbarProps {
 const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
   const pathname = usePathname();
   const { user, sessionExpired } = useCurrentUser();
-  const { t } = useT();
+  const { t, dir } = useT();
   const lastPathRef = useRef(pathname);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -96,8 +96,8 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
           ) : (
             <div className="space-y-2">
               {sessionExpired && (
-                <p className="jm-alert jm-alert-info" dir="rtl" role="status">
-                  ההתחברות פגה, התחבר/י שוב
+                <p className="jm-alert jm-alert-info" dir={dir} role="status">
+                  {t("nav.sessionExpired")}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -124,16 +124,16 @@ const SideNavbar: React.FC<SideNavbarProps> = ({ closeNav, isOpen }) => {
           {user && (
             <nav className="space-y-1 pt-4 border-t border-line">
               <Link href={dashboardHref(user)} className={item(isActive(dashboardHref(user)))}>
-                <LayoutDashboard className="h-5 w-5 text-ink-400" /> Dashboard
+                <LayoutDashboard className="h-5 w-5 text-ink-400" /> {t("nav.dashboard")}
               </Link>
               <Link href="/messages" className={item(isActive("/messages"))}>
-                <MessageCircle className="h-5 w-5 text-ink-400" /> Messages
+                <MessageCircle className="h-5 w-5 text-ink-400" /> {t("widgets.messages")}
               </Link>
               <Link href="/notifications" className={item(isActive("/notifications"))}>
-                <Bell className="h-5 w-5 text-ink-400" /> Notifications
+                <Bell className="h-5 w-5 text-ink-400" /> {t("notif.title")}
               </Link>
               <Link href="/Settings" className={item(isActive("/Settings"))}>
-                <Settings className="h-5 w-5 text-ink-400" /> Settings
+                <Settings className="h-5 w-5 text-ink-400" /> {t("nav.settings")}
               </Link>
             </nav>
           )}

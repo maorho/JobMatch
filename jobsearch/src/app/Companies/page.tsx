@@ -4,6 +4,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import CompanyLogo from "../components/CompanyLogo";
 import { PageHeader, Spinner, EmptyState } from "../components/ui";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 type CompanyRow = {
   name: string;
@@ -23,6 +24,7 @@ type CompanyRow = {
 const fetcher = (url: string) => fetch(url).then((r) => (r.ok ? r.json() : null));
 
 export default function CompaniesPage() {
+  const { t, dir } = useT();
   const { data, isLoading } = useSWR("/api/companies", fetcher);
   const [q, setQ] = useState("");
   const [juniorOnly, setJuniorOnly] = useState(false);
@@ -36,30 +38,30 @@ export default function CompaniesPage() {
   const totalJobs = rows.reduce((s, c) => s + c.jobs, 0);
 
   return (
-    <div className="jm-page" dir="rtl">
+    <div className="jm-page" dir={dir}>
       <PageHeader
-        title="חברות שמגייסות עכשיו"
-        subtitle={isLoading ? "טוען…" : `${rows.length} חברות · ${totalJobs.toLocaleString()} משרות פתוחות בישראל וב-remote, ישירות מדפי הקריירה שלהן`}
+        title={t("pages.companies.title")}
+        subtitle={isLoading ? t("common.loading") : t("pages.companies.subtitle", { companies: rows.length, jobs: totalJobs.toLocaleString() })}
         actions={
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full sm:w-auto">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="חיפוש חברה או תחום…"
+              placeholder={t("pages.companies.search")}
               className="jm-input sm:w-64"
             />
             <label className="flex items-center gap-2 text-sm text-ink-600 whitespace-nowrap cursor-pointer">
               <input type="checkbox" checked={juniorOnly} onChange={(e) => setJuniorOnly(e.target.checked)} className="accent-teal h-4 w-4" />
-              רק עם משרות ג&apos;וניור
+              {t("pages.companies.juniorOnly")}
             </label>
           </div>
         }
       />
 
-      {isLoading && <Spinner label="טוען…" />}
+      {isLoading && <Spinner label={t("common.loading")} />}
 
       {!isLoading && shown.length === 0 && (
-        <EmptyState icon="🏢" title="לא נמצאו חברות." />
+        <EmptyState icon="🏢" title={t("pages.companies.none")} />
       )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -69,27 +71,27 @@ export default function CompaniesPage() {
               <CompanyLogo name={c.name} domain={c.domain} logoUrl={c.logoUrl} className="w-12 h-12 shrink-0 border border-line p-1" />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <h2 className="font-semibold text-navy truncate" dir="auto">{c.name}</h2>
-                <p className="jm-muted truncate">{[c.industry, ...(c.cities.length ? [c.cities.join(" · ")] : [])].filter(Boolean).join(" · ") || " "}</p>
+                <p className="jm-muted truncate">{[c.industry, ...(c.cities.length ? [c.cities.join(" · ")] : [])].filter(Boolean).join(" · ") || " "}</p>
               </div>
             </div>
             {c.summary ? (
               <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir="auto" title={c.summary}>{c.summary}</p>
             ) : (
-              <p className="text-sm text-ink-400 leading-relaxed">סיכום על החברה יתווסף בקרוב.</p>
+              <p className="text-sm text-ink-400 leading-relaxed">{t("pages.companies.summarySoon")}</p>
             )}
             <div className="flex flex-wrap gap-2">
-              <span className="jm-chip">{c.jobs} משרות</span>
+              <span className="jm-chip">{t("pages.companies.jobs", { n: c.jobs })}</span>
               {c.size && <span className="jm-chip">{c.size}</span>}
-              {c.junior > 0 && <span className="jm-chip jm-chip-teal">{c.junior} ג&apos;וניור</span>}
-              {c.remote > 0 && <span className="jm-chip jm-chip-sky">{c.remote} remote</span>}
+              {c.junior > 0 && <span className="jm-chip jm-chip-teal">{t("pages.companies.junior", { n: c.junior })}</span>}
+              {c.remote > 0 && <span className="jm-chip jm-chip-sky">{t("pages.companies.remote", { n: c.remote })}</span>}
             </div>
             <div className="mt-auto flex items-center justify-between gap-3 pt-1">
               <Link href={`/?company=${encodeURIComponent(c.name)}`} className="jm-btn jm-btn-secondary jm-btn-sm">
-                צפה במשרות
+                {t("pages.companies.viewJobs")}
               </Link>
               {c.careersUrl && (
                 <a href={c.careersUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-ink-600 hover:text-teal transition-colors">
-                  דף קריירה ↗
+                  {t("pages.companies.careers")}
                 </a>
               )}
             </div>

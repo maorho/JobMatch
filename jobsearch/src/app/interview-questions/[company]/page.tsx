@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import React from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { after } from "next/server";
@@ -8,8 +6,7 @@ import { questionBank, type BankQuestion } from "@/app/lib/outcomes/questions";
 import { ensureWebQuestions, webQuestionsStatus, webQuestionsAvailable, claimWebQuestionsHarvest, companyNameForKey } from "@/app/lib/interview/webQuestions";
 import { getUserIdFromToken } from "@/app/lib/getUserIdFromRequest";
 import { breadcrumbJsonLd, faqJsonLd } from "@/app/lib/seo/jsonld";
-import CompanyLogo from "@/app/components/CompanyLogo";
-import SuggestedAnswer from "@/app/components/SuggestedAnswer";
+import CompanyBankView, { HarvestingView, type BankQuestionJson } from "./CompanyBankView";
 
 export const dynamic = "force-dynamic"; // the signed-in view differs from the public one
 
@@ -17,6 +14,7 @@ type Params = Promise<{ company: string }>;
 
 /** How many questions per stage anyone can read; the rest is for signed-in users (SEO + brand, full value inside). */
 export const PUBLIC_PER_STAGE = 3;
+/** Hebrew stage names for the JSON-LD / metadata (which, like `metadata`, cannot follow the client language). */
 const STAGE_TITLE: Record<string, string> = { hr: "שיחת HR", technical: "ראיון טכני", final: "ראיון סופי", other: "שאלות נוספות" };
 const STAGE_ORDER = ["hr", "technical", "final", "other"];
 
@@ -74,8 +72,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 /** Group by stage; for anonymous readers keep PUBLIC_PER_STAGE per stage and report how many are hidden. */
-export function splitForReader(questions: BankQuestion[], signedIn: boolean): { stage: string; shown: BankQuestion[]; hidden: number }[] {
-  const by = new Map<string, BankQuestion[]>();
+export function splitForReader<Q extends { stage: string }>(questions: Q[], signedIn: boolean): { stage: string; shown: Q[]; hidden: number }[] {
+  const by = new Map<string, Q[]>();
   for (const q of questions) by.set(q.stage, [...(by.get(q.stage) || []), q]);
   return STAGE_ORDER.filter((s) => by.has(s)).map((stage) => {
     const all = by.get(stage)!;
@@ -84,33 +82,8 @@ export function splitForReader(questions: BankQuestion[], signedIn: boolean): { 
   });
 }
 
-function Provenance({ q }: { q: BankQuestion }) {
-  const src = q.sources.find((s) => s.url) || q.sources[0];
-  // Each segment is bidi-isolated (English role titles, Hebrew provenance, a URL host) and the
-  // separators live between them, so the line reads in one direction instead of interleaving.
-  const parts: React.ReactNode[] = [];
-  if (q.topic) parts.push(<span key="topic" dir="auto">{q.topic}</span>);
-  if (q.count > 0) parts.push(<span key="count" className="inline-flex items-center gap-1 text-teal" dir="rtl">● {q.count > 1 ? `דווח על ידי ${q.count} מועמדי JobMatch` : "דווח על ידי מועמד/ת JobMatch"}</span>);
-  if (q.web > 0)
-    parts.push(
-      <span key="web" className="inline-flex items-center gap-1" dir="rtl">
-        <span className="text-sky">◆</span> מהרשת
-        {src?.name && (src.url ? <a href={src.url} target="_blank" rel="noopener noreferrer nofollow" className="hover:underline" dir="ltr">({src.name})</a> : <bdi>({src.name})</bdi>)}
-        {q.web > 1 && <bdi>+{q.web - 1}</bdi>}
-      </span>
-    );
-  if (q.roleTitles.length > 0) parts.push(<span key="roles" dir="auto">{q.roleTitles.slice(0, 2).join(", ")}</span>);
-  return (
-    <div className="jm-muted flex flex-wrap items-center gap-x-1.5" dir="rtl">
-      {parts.map((p, i) => (
-        <React.Fragment key={i}>
-          {i > 0 && <span aria-hidden="true">·</span>}
-          {p}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-}
+/** The client view gets plain JSON: drop the Date. */
+const toJson = ({ lastAskedAt: _d, ...q }: BankQuestion): BankQuestionJson => q;
 
 export default async function CompanyQuestionsPage({ params }: { params: Params }) {
   const { company } = await params;
@@ -119,25 +92,10 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
   const { bank, harvesting } = await loadBank(key, userId);
   if (bank.total === 0 && harvesting) {
     // First visit for a catalog company: the harvest runs after this response.
-    return (
-      <div className="jm-page" dir="rtl">
-        <Link href="/interview-questions" className="jm-btn jm-btn-ghost jm-btn-sm -ms-3.5">← כל החברות</Link>
-        <header className="mt-4 mb-6 flex items-start gap-4">
-          <CompanyLogo name={harvesting} className="w-14 h-14 flex-shrink-0 rounded-xl" />
-          <div className="min-w-0">
-            <h1 className="jm-title">שאלות ראיון ב-{harvesting}</h1>
-            <p className="jm-subtitle">אוספים שאלות מדיווחים פומביים ברשת… רענן/י את העמוד בעוד דקה.</p>
-          </div>
-        </header>
-        <section className="jm-card p-5 sm:p-6 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-ink-600 leading-relaxed">סוכן המחקר סורק עכשיו Glassdoor, Reddit, Blind ובלוגים, ומוסיף רק שאלות שדווחו שם במפורש. זה לוקח בערך דקה.</p>
-          <Link href={`/interview-questions/${company}`} className="jm-btn jm-btn-primary jm-btn-sm">רענון</Link>
-        </section>
-      </div>
-    );
+    return <HarvestingView company={harvesting} slug={company} />;
   }
   if (bank.total === 0) notFound();
-  const groups = splitForReader(bank.questions, !!userId);
+  const groups = splitForReader(bank.questions.map(toJson), !!userId);
   const hidden = groups.reduce((s, g) => s + g.hidden, 0);
   const publicQs = groups.flatMap((g) => g.shown).slice(0, 12);
   const topics = [...new Set(bank.questions.map((q) => q.topic).filter(Boolean))].slice(0, 12);
@@ -145,69 +103,11 @@ export default async function CompanyQuestionsPage({ params }: { params: Params 
     breadcrumbJsonLd([{ name: "שאלות ראיון", path: "/interview-questions" }, { name: bank.company, path: `/interview-questions/${company}` }]),
     faqJsonLd(publicQs.map((q) => ({ question: q.question, answer: `נשאל ב${STAGE_TITLE[q.stage] || "ראיון"} ב-${bank.company}${q.topic ? ` (נושא: ${q.topic})` : ""}${q.count > 1 ? `, דווח על ידי ${q.count} מועמדים` : q.count === 0 ? ", לפי דיווחים פומביים ברשת" : ""}. הכנה מלאה לשאלה הזו — עם המראיין הקולי של JobMatch.` }))),
   ];
-  const sourceParts = [
-    bank.reported > 0 && `${bank.reported} דווחו על ידי ${bank.reporters} ${bank.reporters === 1 ? "מועמד/ת" : "מועמדים"} של JobMatch אחרי ראיונות אמיתיים`,
-    bank.webCount > 0 && `${bank.webCount} נאספו מדיווחים פומביים ברשת (Glassdoor, Reddit, בלוגים ופורומים)`,
-  ].filter(Boolean) as string[];
 
   return (
-    <div className="jm-page" dir="rtl">
+    <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <Link href="/interview-questions" className="jm-btn jm-btn-ghost jm-btn-sm -ms-3.5">← כל החברות</Link>
-      <header className="mt-4 mb-6 flex items-start gap-4">
-        <CompanyLogo name={bank.company} className="w-14 h-14 flex-shrink-0 rounded-xl" />
-        <div className="min-w-0">
-          <h1 className="jm-title">שאלות ראיון ב-{bank.company}</h1>
-          <p className="jm-subtitle">{bank.total} שאלות: {sourceParts.join("; ")}. אנונימי לחלוטין.</p>
-          {topics.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {topics.map((t) => <span key={t} className="jm-chip jm-chip-sky">{t}</span>)}
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="space-y-6">
-          {groups.map((g) => (
-            <section key={g.stage} className="jm-card p-5 sm:p-6">
-              <h2 className="jm-h2 mb-3"><bdi>{STAGE_TITLE[g.stage] || g.stage}</bdi> <span className="jm-muted font-normal" dir="rtl">· <bdi>{g.shown.length + g.hidden}</bdi> שאלות</span></h2>
-              <ol className="space-y-3 list-decimal ps-5">
-                {g.shown.map((q, i) => (
-                  <li key={i} className="text-ink">
-                    <div className="font-medium text-navy" dir="auto">{q.question}</div>
-                    <Provenance q={q} />
-                    {userId && <SuggestedAnswer company={bank.company} question={q.question} stage={q.stage} topic={q.topic} />}
-                  </li>
-                ))}
-              </ol>
-              {g.hidden > 0 && (
-                <div className="mt-4 rounded-control border border-dashed border-line p-4 text-center space-y-2 bg-canvas">
-                  <p className="text-sm text-ink-600">עוד {g.hidden} שאלות מה{STAGE_TITLE[g.stage]} ב-{bank.company} למשתמשי JobMatch.</p>
-                  <div className="flex flex-wrap justify-center gap-2">
-                    <Link href={`/Login?next=${encodeURIComponent(`/interview-questions/${company}`)}`} className="jm-btn jm-btn-primary jm-btn-sm">התחברות</Link>
-                    <Link href="/SignUp" className="jm-btn jm-btn-secondary jm-btn-sm">הרשמה חינם</Link>
-                  </div>
-                </div>
-              )}
-            </section>
-          ))}
-        </div>
-
-        <aside className="space-y-4">
-          <section className="jm-card p-5 space-y-3">
-            <h3 className="jm-h2 text-base">להתאמן על זה בקול</h3>
-            <p className="text-sm text-ink-600 leading-relaxed">המראיין של JobMatch מכיר את {bank.company} ואת השאלות האלה, ומנהל איתך ראיון אמיתי — בשיחה, לא בצ&apos;אט — עם משוב בסוף.</p>
-            <Link href={`/?company=${encodeURIComponent(bank.company)}`} className="jm-btn jm-btn-primary w-full">משרות פתוחות ב-{bank.company}</Link>
-            {!userId && <p className="jm-muted text-center">{hidden > 0 ? `${hidden} שאלות נוספות ותשובה מוצעת לכל שאלה, לפי קורות החיים שלך — אחרי התחברות` : "תשובה מוצעת לכל שאלה, לפי קורות החיים שלך — למשתמשים רשומים"}</p>}
-          </section>
-          <section className="jm-card p-5 space-y-2">
-            <h3 className="jm-h2 text-base">מאיפה השאלות</h3>
-            <p className="text-sm text-ink-600 leading-relaxed"><span className="text-teal">●</span> אחרי כל ראיון אמיתי JobMatch שואל את המועמד/ת &quot;מה שאלו?&quot;. התשובות נשמרות בלי פרטים מזהים.</p>
-            <p className="text-sm text-ink-600 leading-relaxed"><span className="text-sky">◆</span> בנוסף, סוכן מחקר סורק פעם בחודש דיווחים פומביים על ראיונות בחברה (Glassdoor, Reddit, Blind, בלוגים ופורומים בעברית) ומוסיף רק שאלות שדווחו שם במפורש, עם קישור למקור.</p>
-          </section>
-        </aside>
-      </div>
-    </div>
+      <CompanyBankView slug={company} company={bank.company} total={bank.total} reported={bank.reported} reporters={bank.reporters} webCount={bank.webCount} groups={groups} hidden={hidden} topics={topics} signedIn={!!userId} />
+    </>
   );
 }

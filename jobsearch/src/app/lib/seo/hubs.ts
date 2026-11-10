@@ -1,6 +1,7 @@
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
-import { PRACTICE_ROLES, ROLE_INFO, roleTitleRegex, type PracticeRole } from "@/app/lib/practice/roles";
+import { roleTitleRegex } from "@/app/lib/practice/roles";
+import type { HubRole } from "./hubsShared";
 import { memo, ttl } from "@/app/lib/cache";
 
 /**
@@ -9,14 +10,9 @@ import { memo, ttl } from "@/app/lib/cache";
  * "משרות הייטק בחיפה"). Everything is read from the open catalogue and
  * cached briefly; the pages themselves are ISR.
  */
-export const HUB_ROLES = PRACTICE_ROLES;
-export type HubRole = PracticeRole;
-export const isHubRole = (s: string): s is HubRole => (PRACTICE_ROLES as readonly string[]).includes(s);
-
-export const ROLE_HE: Record<HubRole, string> = { frontend: "Frontend", backend: "Backend", fullstack: "Full Stack", data: "Data ו-ML", devops: "DevOps", qa: "QA ואוטומציה", mobile: "Mobile" };
-
-export type HubJob = { _id: string; job: string; company: string; city: string; country: string; remote?: boolean; logoUrl?: string; companyDomain?: string; firstSeenAt?: Date; postedAt?: Date; experienceMin?: number | null; tech?: string[]; /** "היום" / "אתמול" / "לפני N ימים", computed when the data is read */ ageLabel: string };
-export type HubData = { total: number; juniorCount: number; jobs: HubJob[]; cities: { city: string; n: number }[]; tech: { tech: string; n: number }[]; companies: number };
+export { HUB_ROLES, isHubRole, ROLE_HE, roleLabel, citySlug } from "./hubsShared";
+export type { HubRole, HubJob, HubData } from "./hubsShared";
+import type { HubData } from "./hubsShared";
 
 const SELECT = "job company city country remote logoUrl companyDomain firstSeenAt postedAt experienceMin tech";
 const LIST = 60;
@@ -45,15 +41,25 @@ async function hubForOrThrow(match: Record<string, unknown>, key: string): Promi
       ExternalJobs.distinct("company", filter).then((c) => c.length),
     ]);
     const now = Date.now();
-    const ageLabel = (d?: Date) => {
-      if (!d) return "";
-      const days = Math.max(0, Math.round((now - new Date(d).getTime()) / 86_400_000));
-      return days === 0 ? "היום" : days === 1 ? "אתמול" : `לפני ${days} ימים`;
-    };
+    const ageDays = (d?: Date) => (d ? Math.max(0, Math.round((now - new Date(d).getTime()) / 86_400_000)) : null);
     return {
       total,
       juniorCount,
-      jobs: (jobs as any[]).map((j) => ({ ...j, _id: String(j._id), ageLabel: ageLabel(j.postedAt || j.firstSeenAt) })),
+      jobs: (jobs as any[]).map((j) => ({
+        _id: String(j._id),
+        job: String(j.job || ""),
+        company: String(j.company || ""),
+        city: String(j.city || ""),
+        country: String(j.country || ""),
+        remote: !!j.remote,
+        logoUrl: j.logoUrl ? String(j.logoUrl) : undefined,
+        companyDomain: j.companyDomain ? String(j.companyDomain) : undefined,
+        firstSeenAt: j.firstSeenAt ? new Date(j.firstSeenAt).toISOString() : undefined,
+        postedAt: j.postedAt ? new Date(j.postedAt).toISOString() : undefined,
+        experienceMin: j.experienceMin ?? null,
+        tech: Array.isArray(j.tech) ? j.tech.map(String) : [],
+        ageDays: ageDays(j.postedAt || j.firstSeenAt),
+      })),
       cities: (cities as any[]).map((c) => ({ city: String(c._id), n: c.n })),
       tech: (tech as any[]).map((t) => ({ tech: String(t._id), n: t.n })),
       companies,
@@ -83,5 +89,3 @@ async function topCitiesOrThrow(limit: number): Promise<{ city: string; n: numbe
   });
 }
 
-export const roleLabel = (role: HubRole) => ROLE_HE[role] || ROLE_INFO[role].en;
-export const citySlug = (city: string) => encodeURIComponent(city);

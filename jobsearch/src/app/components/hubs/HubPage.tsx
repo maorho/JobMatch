@@ -1,23 +1,24 @@
 "use client";
 import Link from "next/link";
 import CompanyLogo from "@/app/components/CompanyLogo";
-import { HUB_ROLES, roleLabel, citySlug, type HubData } from "@/app/lib/seo/hubs";
-import { absolute } from "@/app/lib/seo/site";
+import { HUB_ROLES, isHubRole, roleLabel, citySlug, type HubData } from "@/app/lib/seo/hubsShared";
+import { ROLE_INFO } from "@/app/lib/practice/roles";
 import { useT } from "@/app/lib/i18n/LanguageProvider";
 
 /** The shared layout of a role / city hub: headline with counts, the freshest postings, and links onward. */
-export default function HubPage({ title, intro, data, path, cities, current }: { title: string; intro: string; data: HubData; path: string; cities: { city: string; n: number }[]; current: { role?: string; city?: string } }) {
-  const { t, dir } = useT();
-  const itemList = {
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    name: title,
-    numberOfItems: data.jobs.length,
-    itemListElement: data.jobs.slice(0, 30).map((j, i) => ({ "@type": "ListItem", position: i + 1, url: absolute(`/job/external/${j._id}`), name: `${j.job} – ${j.company}` })),
-  };
+export default function HubPage({ data, path, cities, current }: { data: HubData; path: string; cities: { city: string; n: number }[]; current: { role?: string; city?: string } }) {
+  const { t, dir, lang } = useT();
+  // Headline and intro follow the interface language (the server page keeps Hebrew for metadata and JSON-LD).
+  const role = current.role && isHubRole(current.role) ? current.role : null;
+  const remote = current.city === "remote";
+  const title = role
+    ? t("pages.hubs.roleTitle", { role: lang === "he" ? roleLabel(role) : ROLE_INFO[role].en })
+    : remote ? t("pages.hubs.remoteTitle") : t("pages.hubs.cityTitle", { city: current.city || "" });
+  const intro = role
+    ? t("pages.hubs.roleIntro", { role: ROLE_INFO[role].en, stack: ROLE_INFO[role].stack })
+    : remote ? t("pages.hubs.remoteIntro") : t("pages.hubs.cityIntro", { city: current.city || "" });
   return (
     <div className="jm-page" dir={dir}>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList) }} />
       <nav className="jm-muted text-sm mb-3" aria-label="breadcrumb">
         <Link href="/" className="hover:text-navy">{t("hubs.jobs")}</Link> <span aria-hidden="true">/</span> <span className="text-navy">{title}</span>
       </nav>
@@ -32,7 +33,7 @@ export default function HubPage({ title, intro, data, path, cities, current }: {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px] items-start">
-        <section aria-label="משרות">
+        <section aria-label={t("hubs.jobs")}>
           {data.jobs.length === 0 ? (
             <div className="jm-card p-6 jm-muted">{t("hubs.none")}</div>
           ) : (
@@ -50,7 +51,7 @@ export default function HubPage({ title, intro, data, path, cities, current }: {
                         {j.experienceMin != null ? ` · ${t("hubs.years", { n: j.experienceMin })}` : ""}
                       </div>
                     </div>
-                    <div className="text-xs text-ink-400 shrink-0">{j.ageLabel}</div>
+                    <div className="text-xs text-ink-400 shrink-0">{j.ageDays == null ? "" : j.ageDays === 0 ? t("pages.hubs.today") : j.ageDays === 1 ? t("pages.hubs.yesterday") : t("pages.hubs.daysAgo", { n: j.ageDays })}</div>
                   </Link>
                 </li>
               ))}

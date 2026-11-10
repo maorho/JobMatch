@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { ProsodyMeter } from "@/app/lib/interview/prosodyClient";
 import type { Prosody, VocalImpression } from "@/app/lib/interview/voice";
+import { useT } from "@/app/lib/i18n/LanguageProvider";
 
 /**
  * The live voice interview. Browser ↔ OpenAI Realtime over WebRTC using a
@@ -31,6 +32,7 @@ const CHECK_IN_MS = 12_000;
 type Status = "connecting" | "live" | "ended" | "error";
 
 export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, onEnded }: Props) {
+  const { t, dir } = useT();
   const [status, setStatus] = useState<Status>("connecting");
   const [error, setError] = useState("");
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
@@ -177,7 +179,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       }
       case "error":
         console.warn("[realtime] error", ev.error);
-        setError(ev.error?.message || "שגיאה בשיחה");
+        setError(ev.error?.message || t("interview.voice.error"));
         break;
     }
   };
@@ -224,11 +226,11 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         await pc.setLocalDescription(offer);
         const url = endpoint === "calls" ? `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}` : `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
         const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
-        if (!res.ok) throw new Error(`Realtime handshake failed (${res.status})`);
+        if (!res.ok) throw new Error(t("interview.voice.handshakeFailed", { status: res.status }));
         await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
       } catch (e: any) {
         if (cancelled) return;
-        setError(e?.name === "NotAllowedError" ? "צריך לאשר גישה למיקרופון כדי לקיים ראיון קולי." : e?.message || "החיבור נכשל");
+        setError(e?.name === "NotAllowedError" ? t("interview.voice.micDenied") : e?.message || t("interview.voice.connectFailed"));
         hangUp("error");
       }
     };
@@ -265,12 +267,12 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const ss = String(elapsed % 60).padStart(2, "0");
 
   return (
-    <div className="flex flex-col" dir="rtl">
+    <div className="flex flex-col" dir={dir}>
       <audio ref={audioElRef} autoPlay />
       <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
         <span className={`h-2.5 w-2.5 rounded-full ${status === "live" ? "bg-red-500 animate-pulse" : status === "connecting" ? "bg-sky" : "bg-ink-400"}`} />
-        <span className="font-medium text-navy">{status === "connecting" ? "מתחבר…" : status === "live" ? `שיחה חיה · ${mm}:${ss}` : status === "ended" ? "השיחה הסתיימה" : "שגיאה"}</span>
-        <span className="jm-chip">שאלה {Math.min(Math.max(asked - 1, 1), targetQuestions)} מתוך {targetQuestions}</span>
+        <span className="font-medium text-navy">{status === "connecting" ? t("interview.voice.connecting") : status === "live" ? t("interview.voice.live", { time: `${mm}:${ss}` }) : status === "ended" ? t("interview.voice.ended") : t("interview.voice.errorShort")}</span>
+        <span className="jm-chip">{t("interview.questionOf", { a: Math.min(Math.max(asked - 1, 1), targetQuestions), b: targetQuestions })}</span>
         <span className="jm-muted">{interviewer ? `${interviewer.name} · ` : ""}{stageTitle} · {company}</span>
       </div>
 
@@ -284,34 +286,34 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
               <span key={i} className={`w-1.5 rounded-full bg-sky transition-all duration-150 ${speaking === "interviewer" ? "animate-pulse" : ""}`} style={{ height: speaking === "interviewer" ? `${8 + ((i * 7) % 20)}px` : "4px" }} />
             ))}
           </div>
-          <div className="text-sm text-white/80">{speaking === "interviewer" ? "המראיין/ת מדבר/ת…" : speaking === "candidate" ? "שומע/ת אותך…" : status === "live" ? "תורך — דבר/י כשמוכן/ה" : ""}</div>
+          <div className="text-sm text-white/80">{speaking === "interviewer" ? t("interview.voice.speaking") : speaking === "candidate" ? t("interview.voice.listening") : status === "live" ? t("interview.voice.yourTurn") : ""}</div>
           {partial && <p className="text-xs text-white/60 max-w-md text-center" dir="auto">{partial}</p>}
         </div>
         {/* Self view */}
         <div className="relative bg-black min-h-[200px]">
           <video ref={videoElRef} autoPlay muted playsInline className={`h-full w-full object-cover ${camOn ? "" : "hidden"}`} style={{ transform: "scaleX(-1)" }} />
-          {!camOn && <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm">המצלמה כבויה</div>}
+          {!camOn && <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm">{t("interview.voice.camOff")}</div>}
           <div className="absolute bottom-2 inset-x-2 flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-white/20 overflow-hidden"><div className="h-full bg-teal transition-all" style={{ width: `${Math.round(level * 100)}%` }} /></div>
-            <span className="text-[10px] text-white/70">{muted ? "מושתק" : "מיקרופון"}</span>
+            <span className="text-[10px] text-white/70">{muted ? t("interview.voice.muted") : t("interview.voice.mic")}</span>
           </div>
         </div>
       </div>
 
       <div className="p-3 border-t border-b border-line flex flex-wrap items-center gap-2">
-        <button type="button" onClick={toggleMute} disabled={status !== "live"} className={`jm-btn jm-btn-sm ${muted ? "jm-btn-accent" : "jm-btn-secondary"}`}>{muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {muted ? "בטל השתקה" : "השתק"}</button>
-        <button type="button" onClick={toggleCam} disabled={status !== "live"} className="jm-btn jm-btn-secondary jm-btn-sm">{camOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />} מצלמה</button>
-        <button type="button" onClick={() => hangUp("candidate")} disabled={status === "ended"} className="jm-btn jm-btn-danger jm-btn-sm ms-auto"><PhoneOff className="h-4 w-4" /> סיים ראיון וקבל משוב</button>
+        <button type="button" onClick={toggleMute} disabled={status !== "live"} className={`jm-btn jm-btn-sm ${muted ? "jm-btn-accent" : "jm-btn-secondary"}`}>{muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />} {muted ? t("interview.voice.unmute") : t("interview.voice.mute")}</button>
+        <button type="button" onClick={toggleCam} disabled={status !== "live"} className="jm-btn jm-btn-secondary jm-btn-sm">{camOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />} {t("interview.voice.camera")}</button>
+        <button type="button" onClick={() => hangUp("candidate")} disabled={status === "ended"} className="jm-btn jm-btn-danger jm-btn-sm ms-auto"><PhoneOff className="h-4 w-4" /> {t("interview.finishAndFeedback")}</button>
       </div>
       {error && <div className="m-3 jm-alert jm-alert-err">{error}</div>}
 
       <div ref={transcriptRef} className="jm-scroll overflow-y-auto p-4 space-y-2 max-h-[32vh] min-h-[120px]">
-        {turns.length === 0 && <p className="jm-muted">התמלול יופיע כאן תוך כדי השיחה.</p>}
-        {turns.map((t, i) => (
-          <div key={i} className={`flex ${t.role === "candidate" ? "justify-end" : "justify-start"}`}>
-            <div dir="auto" className={`max-w-[85%] px-3 py-2 text-sm leading-relaxed ${t.role === "candidate" ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line rounded-2xl rounded-es-sm"}`}>
-              {t.content}
-              {t.seconds ? <span className="ms-2 text-[10px] opacity-60">{t.seconds}s</span> : null}
+        {turns.length === 0 && <p className="jm-muted">{t("interview.voice.transcriptHint")}</p>}
+        {turns.map((turn, i) => (
+          <div key={i} className={`flex ${turn.role === "candidate" ? "justify-end" : "justify-start"}`}>
+            <div dir="auto" className={`max-w-[85%] px-3 py-2 text-sm leading-relaxed ${turn.role === "candidate" ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line rounded-2xl rounded-es-sm"}`}>
+              {turn.content}
+              {turn.seconds ? <span className="ms-2 text-[10px] opacity-60">{turn.seconds}s</span> : null}
             </div>
           </div>
         ))}

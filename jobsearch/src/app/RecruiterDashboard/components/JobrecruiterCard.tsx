@@ -8,10 +8,12 @@ import JobrecruiterCandidateList from "./JobrecruiterCandidateList";
 import CompanyLogo from "@/app/components/CompanyLogo";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
+import "dayjs/locale/he.js";
 import { CloseIcon, EditIcon, UpdateIcon } from "@/app/components/icons";
 import { DeleteIcon } from "lucide-react";
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
 import { ConfirmInline, InlineNotice, Modal } from "@/app/components/Dialog";
+import { useT } from "@/app/lib/i18n/LanguageProvider";
 
 interface TagCompProps {
   headline: string;
@@ -35,6 +37,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   jobIndex,
   onSuccess,
 }) => {
+  const { t, lang, dir } = useT();
   const [showModal, setShowModal] = useState(false);
   // Inline replacements for confirm()/alert(): a pending delete question and a result notice.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -72,12 +75,12 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
   const { user } = useCurrentUser();
   const router = useRouter();
   dayjs.extend(relativeTime);
-  const time = dayjs(job.createdAt).fromNow();
+  const time = dayjs(job.createdAt).locale(lang).fromNow();
   const tag_json: { headline: string; number: number }[] = [
-    { headline: "Total Candidates", number: totalCandidates },
-    { headline: "Under reviews", number: underReview },
-    { headline: "Shortlisted", number: shortlisted },
-    { headline: "Rejected", number: rejected },
+    { headline: t("recruiter.card.total"), number: totalCandidates },
+    { headline: t("recruiter.card.underReview"), number: underReview },
+    { headline: t("recruiter.card.shortlisted"), number: shortlisted },
+    { headline: t("recruiter.card.rejected"), number: rejected },
   ];
   if (!user) return null;
   const isPublisher =
@@ -131,14 +134,14 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
         headers: { "Content-Type": "application/json" },
       });
       if (res.ok) {
-        setNotice({ kind: "ok", text: "Job deleted" });
+        setNotice({ kind: "ok", text: t("recruiter.card.deleted") });
         setShowModal(false);
         if (onSuccess) onSuccess();
       } else {
-        setNotice({ kind: "err", text: "Something went wrong" });
+        setNotice({ kind: "err", text: t("recruiter.card.deleteError") });
       }
     } catch {
-      setNotice({ kind: "err", text: "Something went wrong" });
+      setNotice({ kind: "err", text: t("recruiter.card.deleteError") });
     } finally {
       setDeleting(false);
       setConfirmingDelete(false);
@@ -147,9 +150,9 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
   const deletePrompt = confirmingDelete ? (
     <ConfirmInline
-      text={`Delete "${job.job}"? This cannot be undone.`}
-      confirmLabel="Delete"
-      cancelLabel="Cancel"
+      text={t("recruiter.card.confirmDelete", { job: job.job })}
+      confirmLabel={t("recruiter.card.confirm")}
+      cancelLabel={t("recruiter.card.cancel")}
       danger
       busy={deleting}
       onConfirm={handleDelete}
@@ -171,6 +174,7 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: jobIndex * 0.05, duration: 0.5 }}
         className="jm-card jm-card-hover p-5 h-full flex flex-col gap-4 cursor-pointer"
+        dir={dir}
       >
         {/* כותרת עליונה */}
         <div className="flex items-start justify-between gap-3">
@@ -199,8 +203,8 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
 
         {/* תגיות */}
         <div className="flex flex-wrap gap-2">
-          <span className="jm-chip">Project Strategy</span>
-          <span className="jm-chip">Cloud</span>
+          <span className="jm-chip">{t("recruiter.card.chipStrategy")}</span>
+          <span className="jm-chip">{t("recruiter.card.chipCloud")}</span>
           <span className="jm-chip">AWS</span>
         </div>
 
@@ -215,19 +219,19 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
                     router.push(`/RecruiterDashboard/Edit/${job._id}`);
                   }}
           className="jm-btn jm-btn-secondary jm-btn-sm">
-            Edit Position
+            {t("recruiter.card.edit")}
           </button>
           <button
             onClick={askDelete}
            className="jm-btn jm-btn-danger jm-btn-sm">
-            Delete Job
+            {t("recruiter.card.delete")}
           </button>
         </div>
       </motion.div>
 
       {/* Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} label={job.job}>
-          <div className="jm-card w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="jm-card w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden" dir={dir}>
             {/* כותרת + כפתורים */}
             <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-line">
               <h2 className="jm-h2 truncate">
@@ -243,26 +247,26 @@ const JobrecruiterCard: React.FC<JobrecruiterCardProps> = ({
                   }}
                 >
                   <EditIcon />
-                  {!isMobile&&'Edit Position'}
+                  {!isMobile && t("recruiter.card.edit")}
                 </button>
                 <button
                   className="jm-btn jm-btn-primary jm-btn-sm"
                   onClick={handleUpdate}
                 >
                   <UpdateIcon />
-                  {!isMobile&&'Update Statuses'}
+                  {!isMobile && t("recruiter.card.updateStatuses")}
                 </button>
                 <button
                   className="jm-btn jm-btn-danger jm-btn-icon h-9 w-9"
                   onClick={askDelete}
-                  aria-label="Delete job"
+                  aria-label={t("recruiter.card.delete")}
                 >
                   <DeleteIcon className="h-4 w-4" />
                 </button>
                 <button
                   className="jm-btn jm-btn-ghost jm-btn-icon h-9 w-9 text-ink-400"
                   onClick={() => setShowModal(false)}
-                  aria-label="Close"
+                  aria-label={t("recruiter.card.close")}
                 >
                   <CloseIcon color="currentColor" />
                 </button>

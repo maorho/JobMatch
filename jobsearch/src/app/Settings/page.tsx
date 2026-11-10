@@ -13,6 +13,7 @@ import InsiderCard from "../components/InsiderCard";
 import { PageHeader, Spinner, SignInGate } from "../components/ui";
 import PushCard from "../components/PushCard";
 import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
+import type { Key } from "../lib/i18n/dict";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string; privacy?: { excludeFromTraining?: boolean } };
 
@@ -20,7 +21,7 @@ const card = "jm-card p-6 space-y-4";
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { t, dir } = useT();
+  const { t, dir, lang } = useT();
   const { user, loading, mutateUser } = useCurrentUser();
   const [p, setP] = useState<Profile | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -37,26 +38,20 @@ export default function SettingsPage() {
     // (the callback redirects here with ?gmail=...).
     loadGmail().then(() => {
       const outcome = new URLSearchParams(window.location.search).get("gmail");
-      const text: Record<string, [kind: "ok" | "err", text: string]> = {
-        connected: ["ok", "Gmail חובר — הסטטוס של המועמדויות יתעדכן מהמיילים"],
-        denied: ["err", "החיבור ל-Gmail בוטל"],
-        state: ["err", "החיבור פג — נסה/י שוב"],
-        failed: ["err", "החיבור ל-Gmail נכשל"],
-        no_refresh_token: ["err", "Google לא החזיר הרשאה קבועה — הסר/י את JobMatch מהרשאות חשבון Google ונסה/י שוב"],
-        not_configured: ["err", "חיבור Gmail עדיין לא מוגדר בסביבה הזו"],
-      };
-      if (outcome && text[outcome]) {
-        setMsg({ kind: text[outcome][0], text: text[outcome][1] });
+      const kinds: Record<string, "ok" | "err"> = { connected: "ok", denied: "err", state: "err", failed: "err", no_refresh_token: "err", not_configured: "err" };
+      if (outcome && kinds[outcome]) {
+        setMsg({ kind: kinds[outcome], text: t(`settings.gmailOutcome.${outcome}` as Key) });
         window.history.replaceState(null, "", "/Settings");
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const disconnectGmail = async () => {
     const r = await fetch("/api/integrations/gmail", { method: "DELETE" });
-    if (!r.ok) return flash("err", "הניתוק נכשל");
+    if (!r.ok) return flash("err", t("settings.gmailDisconnectFailed"));
     loadGmail();
-    flash("ok", "Gmail נותק");
+    flash("ok", t("settings.gmailDisconnected"));
   };
 
   const flash = (kind: "ok" | "err", text: string) => { setMsg({ kind, text }); setTimeout(() => setMsg(null), 4000); };
@@ -66,39 +61,39 @@ export default function SettingsPage() {
     if (!p) return;
     const r = await fetch("/api/settings/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fullname: p.fullname, phone: p.phone, currentJob: p.currentJob, company: p.company }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) return flash("err", d?.error || "השמירה נכשלה");
+    if (!r.ok) return flash("err", d?.error || t("settings.saveFailed"));
     setP(d.user);
     mutateUser();
-    flash("ok", "הפרופיל נשמר");
+    flash("ok", t("settings.profileSaved"));
   };
 
   const setTrainingOptOut = async (exclude: boolean) => {
     const r = await fetch("/api/settings/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ excludeFromTraining: exclude }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) return flash("err", d?.error || "השמירה נכשלה");
+    if (!r.ok) return flash("err", d?.error || t("settings.saveFailed"));
     setP(d.user);
-    flash("ok", exclude ? "התוצאות שלך לא ישמשו לאימון מעכשיו" : "התוצאות שלך ישמשו לשיפור הציון");
+    flash("ok", exclude ? t("settings.trainingOptedOut") : t("settings.trainingOptedIn"));
   };
 
   const changePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pw.newPassword !== pw.again) return flash("err", "הסיסמאות אינן זהות");
+    if (pw.newPassword !== pw.again) return flash("err", t("settings.pwMismatch"));
     const r = await fetch("/api/settings/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: pw.currentPassword, newPassword: pw.newPassword }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) return flash("err", d?.error || "שינוי הסיסמה נכשל");
+    if (!r.ok) return flash("err", d?.error || t("settings.pwChangeFailed"));
     setPw({ currentPassword: "", newPassword: "", again: "" });
-    flash("ok", "הסיסמה עודכנה");
+    flash("ok", t("settings.pwUpdated"));
   };
 
   const deleteAccount = async () => {
     const r = await fetch("/api/settings/account", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: confirmDelete }) });
-    if (!r.ok) return flash("err", "המחיקה נכשלה");
+    if (!r.ok) return flash("err", t("settings.deleteFailed"));
     router.push("/");
     router.refresh();
   };
 
-  if (loading) return <Spinner label="טוען…" />;
-  if (!user) return <SignInGate text="צריך להתחבר כדי לערוך הגדרות." next="/Settings" />;
+  if (loading) return <Spinner label={t("common.loading")} />;
+  if (!user) return <SignInGate text={t("settings.signInToEdit")} next="/Settings" />;
 
   return (
     <div className="jm-page" dir={dir}>
@@ -110,17 +105,17 @@ export default function SettingsPage() {
           <form onSubmit={saveProfile} className={card}>
             <h2 className="jm-h2">{t("settings.profile")}</h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              <label className="block"><span className="jm-label">שם מלא</span><input className="jm-input" value={p.fullname || ""} onChange={(e) => setP({ ...p, fullname: e.target.value })} required /></label>
-              <label className="block"><span className="jm-label">טלפון</span><input className="jm-input" value={p.phone || ""} onChange={(e) => setP({ ...p, phone: e.target.value })} dir="ltr" /></label>
-              <label className="block"><span className="jm-label">תפקיד נוכחי</span><input className="jm-input" value={p.currentJob || ""} onChange={(e) => setP({ ...p, currentJob: e.target.value })} placeholder="למשל: Junior Frontend Developer" /></label>
-              {p.recruiter && <label className="block"><span className="jm-label">חברה</span><input className="jm-input" value={p.company || ""} onChange={(e) => setP({ ...p, company: e.target.value })} /></label>}
+              <label className="block"><span className="jm-label">{t("settings.fullName")}</span><input className="jm-input" value={p.fullname || ""} onChange={(e) => setP({ ...p, fullname: e.target.value })} required /></label>
+              <label className="block"><span className="jm-label">{t("settings.phone")}</span><input className="jm-input" value={p.phone || ""} onChange={(e) => setP({ ...p, phone: e.target.value })} dir="ltr" /></label>
+              <label className="block"><span className="jm-label">{t("settings.currentJob")}</span><input className="jm-input" value={p.currentJob || ""} onChange={(e) => setP({ ...p, currentJob: e.target.value })} placeholder={t("settings.currentJobPlaceholder")} /></label>
+              {p.recruiter && <label className="block"><span className="jm-label">{t("settings.company")}</span><input className="jm-input" value={p.company || ""} onChange={(e) => setP({ ...p, company: e.target.value })} /></label>}
             </div>
             <div className="jm-muted">
-              אימייל: <span dir="ltr">{p.email}</span> · שם משתמש: {p.username}
-              {p.authProvider && p.authProvider !== "local" && ` · מתחבר/ת דרך ${p.authProvider}`}
+              {t("settings.emailLabel")} <span dir="ltr">{p.email}</span> · {t("settings.usernameLabel")} {p.username}
+              {p.authProvider && p.authProvider !== "local" && ` · ${t("settings.viaProvider", { provider: p.authProvider })}`}
             </div>
             <div className="flex justify-start">
-              <button className="jm-btn jm-btn-primary">שמור</button>
+              <button className="jm-btn jm-btn-primary">{t("settings.save")}</button>
             </div>
           </form>
         )}
@@ -128,10 +123,12 @@ export default function SettingsPage() {
         <div className={card}>
           <h2 className="jm-h2">{t("settings.resume")}</h2>
           <p className="text-sm text-ink-600 leading-relaxed">
-            {p?.resumeUpdatedAt ? `קורות החיים עודכנו ב-${new Date(p.resumeUpdatedAt).toLocaleDateString("he-IL")}${p.resumeScore ? ` · ציון ${p.resumeScore}/100` : ""}.` : "עדיין לא העלית קורות חיים — הפיד לא מותאם אישית."}
+            {p?.resumeUpdatedAt
+              ? `${t("settings.resumeUpdated", { date: new Date(p.resumeUpdatedAt).toLocaleDateString(lang === "he" ? "he-IL" : "en-GB") })}${p.resumeScore ? t("settings.resumeScore", { score: p.resumeScore }) : ""}.`
+              : t("settings.noResume")}
           </p>
           <div>
-            <Link href="/ResumeAI" className="jm-btn jm-btn-accent">לעדכן ב-ResumeAI</Link>
+            <Link href="/ResumeAI" className="jm-btn jm-btn-accent">{t("settings.updateInResumeAI")}</Link>
           </div>
         </div>
 
@@ -139,15 +136,15 @@ export default function SettingsPage() {
           <h2 className="jm-h2">{t("settings.gmail")}</h2>
           <p className="text-sm text-ink-600 leading-relaxed">
             {gmail?.connected
-              ? <>מחובר ל-<span dir="ltr">{gmail.address}</span>. הסוכן קורא (לקריאה בלבד) מיילים שקשורים למועמדויות שלך ומעדכן את הסטטוס בדשבורד.</>
-              : "חבר/י את ה-Gmail כדי שזימונים לראיון, הצעות ודחיות יעדכנו את הסטטוס של המועמדויות אוטומטית. הרשאת קריאה בלבד; אפשר לנתק בכל רגע."}
+              ? <>{t("settings.gmailConnectedPrefix")}<span dir="ltr">{gmail.address}</span>{t("settings.gmailConnectedSuffix")}</>
+              : t("settings.gmailPitch")}
           </p>
           {gmail?.connected ? (
-            <div><button onClick={disconnectGmail} className="jm-btn jm-btn-secondary">נתק Gmail</button></div>
+            <div><button onClick={disconnectGmail} className="jm-btn jm-btn-secondary">{t("settings.gmailDisconnect")}</button></div>
           ) : gmail?.configured ? (
-            <div><a href="/api/integrations/gmail/connect" className="jm-btn jm-btn-accent">חבר Gmail</a></div>
+            <div><a href="/api/integrations/gmail/connect" className="jm-btn jm-btn-accent">{t("settings.gmailConnect")}</a></div>
           ) : (
-            <p className="jm-muted">לא מוגדר בסביבה הזו (נדרשים GOOGLE_CLIENT_ID ו-TOKEN_ENCRYPTION_KEY).</p>
+            <p className="jm-muted">{t("settings.gmailNotConfiguredEnv")}</p>
           )}
         </div>
 
@@ -200,13 +197,13 @@ export default function SettingsPage() {
         {(!p?.authProvider || p.authProvider === "local") && (
           <form onSubmit={changePassword} className={card}>
             <h2 className="jm-h2">{t("settings.password")}</h2>
-            <input className="jm-input" type="password" placeholder="סיסמה נוכחית" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} required dir="ltr" />
+            <input className="jm-input" type="password" placeholder={t("settings.pwCurrent")} value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} required dir="ltr" />
             <div className="grid sm:grid-cols-2 gap-4">
-              <input className="jm-input" type="password" placeholder="סיסמה חדשה (8+ תווים)" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} required minLength={8} dir="ltr" />
-              <input className="jm-input" type="password" placeholder="אימות סיסמה חדשה" value={pw.again} onChange={(e) => setPw({ ...pw, again: e.target.value })} required minLength={8} dir="ltr" />
+              <input className="jm-input" type="password" placeholder={t("settings.pwNew")} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} required minLength={8} dir="ltr" />
+              <input className="jm-input" type="password" placeholder={t("settings.pwAgain")} value={pw.again} onChange={(e) => setPw({ ...pw, again: e.target.value })} required minLength={8} dir="ltr" />
             </div>
             <div>
-              <button className="jm-btn jm-btn-secondary">עדכן סיסמה</button>
+              <button className="jm-btn jm-btn-secondary">{t("settings.pwUpdate")}</button>
             </div>
           </form>
         )}
@@ -216,19 +213,19 @@ export default function SettingsPage() {
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" className="mt-1 h-4 w-4 accent-teal" checked={!!p?.privacy?.excludeFromTraining} disabled={!p} onChange={(e) => setTrainingOptOut(e.target.checked)} />
             <span className="text-sm text-ink-600 leading-relaxed">
-              <span className="font-semibold text-navy">לא לשתף את תוצאות המועמדויות שלי באימון ציון הסיכוי לראיון.</span>{" "}
-              ציון הסיכוי לומד מתוצאות אמיתיות של כל המשתמשים (הגשה, מענה, זימון לראיון), בצורה מצטברת ובלי פרטים מזהים. סימון כאן מוציא את התוצאות שלך מהאימון הבא. הציון עצמו ימשיך להופיע לך.
+              <span className="font-semibold text-navy">{t("settings.privacyOptOutTitle")}</span>{" "}
+              {t("settings.privacyOptOutText")}
             </span>
           </label>
-          <p className="text-xs jm-muted">פרטים מלאים ב<a href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">מדיניות הפרטיות</a>.</p>
+          <p className="text-xs jm-muted">{t("settings.privacyDetails")}<a href="/PrivacyPolicy" className="text-sky-600 underline underline-offset-2">{t("settings.privacyPolicyLink")}</a>{t("settings.privacyDetailsEnd")}</p>
         </div>
 
         <div className={`${card} border-red-200`}>
           <h2 className="jm-h2 text-red-700">{t("settings.delete")}</h2>
           <p className="text-sm text-ink-600 leading-relaxed">{t("settings.deleteText")}</p>
           <div className="flex flex-col sm:flex-row gap-3">
-            <input className="jm-input" placeholder='הקלד/י DELETE לאישור' value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} dir="ltr" />
-            <button onClick={deleteAccount} disabled={confirmDelete !== "DELETE"} className="jm-btn jm-btn-danger shrink-0">מחק חשבון</button>
+            <input className="jm-input" placeholder={t("settings.deleteConfirmPlaceholder")} value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} dir="ltr" />
+            <button onClick={deleteAccount} disabled={confirmDelete !== "DELETE"} className="jm-btn jm-btn-danger shrink-0">{t("settings.deleteBtn")}</button>
           </div>
         </div>
       </div>

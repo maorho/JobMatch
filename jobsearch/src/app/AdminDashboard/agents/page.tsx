@@ -3,8 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
+import "dayjs/locale/he.js";
 import { useCurrentUser } from "@/app/lib/hooks/useCurrentUser";
 import { PageHeader, Spinner, EmptyState, SignInGate } from "@/app/components/ui";
+import { useT } from "@/app/lib/i18n/LanguageProvider";
 
 dayjs.extend(relativeTime);
 
@@ -14,20 +16,23 @@ type Msg = { _id: string; from: string; to: string; type: string; says: string; 
 
 const AGENT_EMOJI: Record<string, string> = { scout: "🔭", locator: "📍", matcher: "🧭", notifier: "🔔", tracker: "📬", coach: "🎯", janitor: "🧹", cron: "⏰", admin: "🛠️", user: "🙂", resumeai: "📄", system: "⚙️" };
 const STATUS_CHIP: Record<string, string> = { queued: "jm-chip", processing: "jm-chip jm-chip-sky", done: "jm-chip jm-chip-teal", failed: "jm-chip bg-red-50 text-red-700 border-red-200", running: "jm-chip jm-chip-sky" };
+const STATUS_KEY = { queued: "admin.status.queued", processing: "admin.status.processing", done: "admin.status.done", failed: "admin.status.failed", running: "admin.status.running" } as const;
 
 export default function AgentsPage() {
   const { user, loading } = useCurrentUser();
+  const { t, lang, dir } = useT();
   const [data, setData] = useState<{ agents: Agent[]; runs: Run[]; queue: { queued: number; processing: number; failed: number } } | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [conv, setConv] = useState<{ run: Run; messages: Msg[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const statusLabel = (s: string) => (s in STATUS_KEY ? t(STATUS_KEY[s as keyof typeof STATUS_KEY]) : s);
 
   const load = useCallback(async () => {
     const r = await fetch("/api/agents", { cache: "no-store" });
-    if (!r.ok) return setErr(r.status === 403 ? "רק אדמין יכול לראות את הסוכנים." : "הטעינה נכשלה");
+    if (!r.ok) return setErr(r.status === 403 ? t("admin.agents.forbidden") : t("admin.loadFailed"));
     setData(await r.json());
-  }, []);
+  }, [t]);
   const loadRun = useCallback(async (id: string) => {
     const r = await fetch(`/api/agents/runs/${id}`, { cache: "no-store" });
     if (r.ok) setConv(await r.json());
@@ -56,40 +61,40 @@ export default function AgentsPage() {
     try {
       const r = await fetch("/api/agents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error || "failed");
+      if (!r.ok) throw new Error(d?.error || t("admin.failed"));
       await load();
       if (d.runId) setRunId(d.runId);
       else if (runId) loadRun(runId);
     } catch (e: any) {
-      setErr(e?.message || "failed");
+      setErr(e?.message || t("admin.failed"));
     } finally {
       setBusy(null);
     }
   };
 
-  if (loading) return <Spinner label="טוען…" />;
-  if (!user) return <SignInGate text="צריך להתחבר כאדמין" next="/AdminDashboard/agents" />;
-  if (!user.admin) return <div className="jm-page"><EmptyState icon="🔒" title="רק אדמין" text="העמוד הזה זמין למנהלי המערכת בלבד." action={<Link href="/" className="jm-btn jm-btn-primary">חזרה לפיד</Link>} /></div>;
+  if (loading) return <Spinner label={t("admin.loading")} />;
+  if (!user) return <SignInGate text={t("admin.signInAsAdmin")} next="/AdminDashboard/agents" />;
+  if (!user.admin) return <div className="jm-page" dir={dir}><EmptyState icon="🔒" title={t("admin.adminOnlyTitle")} text={t("admin.adminOnlyText")} action={<Link href="/" className="jm-btn jm-btn-primary">{t("admin.backToFeed")}</Link>} /></div>;
 
   return (
-    <div className="jm-page" dir="rtl">
+    <div className="jm-page" dir={dir}>
       <PageHeader
-        eyebrow="Admin"
-        title="צוות הסוכנים"
-        subtitle="הסוכנים מדברים דרך bus משותף: כל הודעה נשמרת, וכל ריצה נקראת כשיחה."
+        eyebrow={t("admin.eyebrow")}
+        title={t("admin.agents.title")}
+        subtitle={t("admin.agents.subtitle")}
         actions={
           <>
             <button disabled={!!busy} onClick={() => start({ flow: "catalog.refresh" }, "refresh")} className="jm-btn jm-btn-primary jm-btn-sm">
-              {busy === "refresh" ? "מתחיל…" : "🔭 רענון קטלוג"}
+              {busy === "refresh" ? t("admin.agents.starting") : t("admin.agents.refresh")}
             </button>
             <button disabled={!!busy} onClick={() => start({ flow: "digest" }, "digest")} className="jm-btn jm-btn-secondary jm-btn-sm">
-              🔔 התאמות עכשיו
+              {t("admin.agents.digest")}
             </button>
             <button disabled={!!busy} onClick={() => start({ flow: "catalog.sweep" }, "sweep")} className="jm-btn jm-btn-secondary jm-btn-sm">
-              🧹 ניקוי
+              {t("admin.agents.sweep")}
             </button>
             <button disabled={!!busy} onClick={() => start({ drain: true }, "drain")} className="jm-btn jm-btn-ghost jm-btn-sm">
-              ▶ הרץ תור ({data?.queue.queued ?? 0})
+              {t("admin.agents.drain", { n: data?.queue.queued ?? 0 })}
             </button>
           </>
         }
@@ -118,12 +123,12 @@ export default function AgentsPage() {
         {/* Runs */}
         <div className="jm-card p-3 space-y-1 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] overflow-y-auto jm-scroll">
           <div className="flex items-center justify-between px-2 py-1">
-            <span className="jm-h2 text-base">ריצות אחרונות</span>
-            <span className="jm-muted" dir="ltr">
-              {data?.queue.queued ?? 0} queued · {data?.queue.failed ?? 0} failed
+            <span className="jm-h2 text-base">{t("admin.agents.recentRuns")}</span>
+            <span className="jm-muted">
+              {t("admin.agents.queueStats", { queued: data?.queue.queued ?? 0, failed: data?.queue.failed ?? 0 })}
             </span>
           </div>
-          {(data?.runs ?? []).length === 0 && <p className="jm-muted px-2 py-4">עדיין אין ריצות — התחל/י אחת למעלה.</p>}
+          {(data?.runs ?? []).length === 0 && <p className="jm-muted px-2 py-4">{t("admin.agents.noRuns")}</p>}
           {(data?.runs ?? []).map((r) => (
             <button
               key={r._id}
@@ -132,10 +137,10 @@ export default function AgentsPage() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{r.title || r.flow}</span>
-                <span className={`${STATUS_CHIP[r.status] ?? "jm-chip"} ${runId === r._id ? "!bg-white/15 !text-white !border-white/20" : ""}`}>{r.status}</span>
+                <span className={`${STATUS_CHIP[r.status] ?? "jm-chip"} ${runId === r._id ? "!bg-white/15 !text-white !border-white/20" : ""}`}>{statusLabel(r.status)}</span>
               </div>
-              <div className={`text-xs mt-0.5 ${runId === r._id ? "text-white/70" : "text-ink-400"}`} dir="ltr">
-                {r.stats.messages} msgs · {dayjs(r.createdAt).fromNow()} · {r.startedBy}
+              <div className={`text-xs mt-0.5 ${runId === r._id ? "text-white/70" : "text-ink-400"}`}>
+                {t("admin.agents.msgs", { n: r.stats.messages })} · {dayjs(r.createdAt).locale(lang).fromNow()} · <span dir="ltr">{r.startedBy}</span>
               </div>
             </button>
           ))}
@@ -144,12 +149,12 @@ export default function AgentsPage() {
         {/* Conversation */}
         <div className="min-w-0">
           {!conv ? (
-            <EmptyState icon="💬" title="בחר/י ריצה" text="כל ריצה מוצגת כשיחה בין הסוכנים — מי אמר מה למי, ומה יצא מזה." />
+            <EmptyState icon="💬" title={t("admin.agents.pickRun")} text={t("admin.agents.pickRunText")} />
           ) : (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="jm-h2">{conv.run.title || conv.run.flow}</h2>
-                <span className={STATUS_CHIP[conv.run.status] ?? "jm-chip"}>{conv.run.status}</span>
+                <span className={STATUS_CHIP[conv.run.status] ?? "jm-chip"}>{statusLabel(conv.run.status)}</span>
                 <span className="jm-muted" dir="ltr">
                   {dayjs(conv.run.createdAt).format("DD/MM HH:mm")}
                   {conv.run.finishedAt ? ` → ${dayjs(conv.run.finishedAt).format("HH:mm:ss")}` : ""}
@@ -166,9 +171,9 @@ export default function AgentsPage() {
                       {AGENT_EMOJI[m.to] ?? "🤖"} {m.to}
                     </span>
                     <span className="font-mono text-[11px] text-ink-400 bg-canvas rounded px-1.5 py-0.5">{m.type}</span>
-                    {m.replyTo && <span className="jm-chip">reply</span>}
+                    {m.replyTo && <span className="jm-chip">{t("admin.agents.reply")}</span>}
                     <span className={`${STATUS_CHIP[m.status] ?? "jm-chip"} ms-auto`}>
-                      {m.status}
+                      {statusLabel(m.status)}
                       {m.attempts > 1 ? ` ×${m.attempts}` : ""}
                     </span>
                   </div>
@@ -181,7 +186,7 @@ export default function AgentsPage() {
                   )}
                   {m.error && <p className="mt-2 jm-alert jm-alert-err">{m.error}</p>}
                   <details className="mt-2">
-                    <summary className="text-xs text-ink-400 cursor-pointer select-none">payload · {dayjs(m.createdAt).format("HH:mm:ss")}</summary>
+                    <summary className="text-xs text-ink-400 cursor-pointer select-none">{t("admin.agents.payload")} · {dayjs(m.createdAt).format("HH:mm:ss")}</summary>
                     <pre className="mt-1 text-xs bg-canvas rounded-xl p-3 overflow-x-auto">{JSON.stringify(m.payload, null, 2)}</pre>
                   </details>
                 </article>

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { Bell } from "lucide-react";
+import { useT } from "../lib/i18n/LanguageProvider";
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
@@ -14,9 +15,10 @@ export const BELL_KEY = "/api/notifications?limit=1";
  */
 export default function NotificationBell({ className = "jm-btn jm-btn-secondary jm-btn-icon relative" }: { className?: string }) {
   const { data } = useSWR(BELL_KEY, fetcher, { refreshInterval: 60_000, revalidateOnFocus: true, dedupingInterval: 30_000 });
+  const { t } = useT();
   const n: number = data?.unreadCount ?? 0;
   return (
-    <Link href="/notifications" aria-label={n > 0 ? `${n} התראות שלא נקראו` : "התראות"} className={className}>
+    <Link href="/notifications" aria-label={n > 0 ? t("widgets.bell.unread", { n }) : t("notif.title")} className={className}>
       <Bell className="h-5 w-5" />
       {n > 0 && (
         <span className="absolute -top-1.5 -end-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-semibold flex items-center justify-center shadow">

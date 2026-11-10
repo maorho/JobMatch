@@ -2,22 +2,25 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { Target } from "lucide-react";
+import { useT } from "../lib/i18n/LanguageProvider";
+import type { Key } from "../lib/i18n/dict";
 
 type Profile = { roles: string[]; level?: string; cities: string[]; workModes: string[]; keywords: string[] };
 type Data = { profile: Profile; options: { roles: { key: string; label: string; en: string }[]; levels: string[]; workModes: string[] } };
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
-const LEVEL_HE: Record<string, string> = { junior: "ג'וניור (0–2 שנים)", mid: "Mid (3–5)", senior: "סניור (5+)" };
-const MODE_HE: Record<string, string> = { Remote: "מרחוק", Hybrid: "היברידי", "On Site": "במשרד" };
+const LEVEL_KEY: Record<string, Key> = { junior: "settings.sp.level.junior", mid: "settings.sp.level.mid", senior: "settings.sp.level.senior" };
+const MODE_KEY: Record<string, Key> = { Remote: "mode.Remote", Hybrid: "mode.Hybrid", "On Site": "mode.On Site" };
 const CITY_OPTIONS = ["Tel Aviv", "Herzliya", "Petah Tikva", "Ramat Gan", "Haifa", "Jerusalem", "Beer Sheva", "Netanya", "Raanana", "Rehovot"];
 
 /** "What I'm looking for": the few answers that turn a résumé-only feed into a precise one. */
 export default function SearchProfileCard({ onSaved, compact }: { onSaved?: (p: Profile) => void; compact?: boolean }) {
+  const { t, lang } = useT();
   const { data, mutate } = useSWR<Data>("/api/settings/search-profile", fetcher, { revalidateOnFocus: false });
   const [edits, setEdits] = useState<Profile | null>(null);
   const [keyword, setKeyword] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
-  if (!data) return <p className="jm-muted">טוען…</p>;
+  if (!data) return <p className="jm-muted">{t("common.loading")}</p>;
   const p: Profile = edits ?? data.profile;
   const setP = (next: Profile | ((cur: Profile) => Profile)) => setEdits(typeof next === "function" ? next(p) : next);
 
@@ -43,31 +46,27 @@ export default function SearchProfileCard({ onSaved, compact }: { onSaved?: (p: 
 
   return (
     <div className="space-y-4">
-      {!compact && (
-        <p className="text-sm text-ink-600 leading-relaxed">
-          הקו״ח אומר מה עשית. זה אומר מה את/ה רוצה. הפיד מסנן לפי זה בקשיחות: תפקידים אחרים, רמה לא מתאימה ומקומות לא רלוונטיים פשוט לא יופיעו.
-        </p>
-      )}
+      {!compact && <p className="text-sm text-ink-600 leading-relaxed">{t("settings.sp.intro")}</p>}
       <div>
-        <div className="jm-label">תפקיד (עד 3)</div>
-        <div className="flex flex-wrap gap-1.5">{data.options.roles.map((r) => <button key={r.key} type="button" onClick={() => toggle("roles", r.key, 3)} className={chip(p.roles.includes(r.key))}>{r.label}</button>)}</div>
+        <div className="jm-label">{t("settings.sp.role")}</div>
+        <div className="flex flex-wrap gap-1.5">{data.options.roles.map((r) => <button key={r.key} type="button" onClick={() => toggle("roles", r.key, 3)} className={chip(p.roles.includes(r.key))}>{lang === "en" ? r.en || r.label : r.label}</button>)}</div>
       </div>
       <div>
-        <div className="jm-label">רמה</div>
-        <div className="flex flex-wrap gap-1.5">{data.options.levels.map((l) => <button key={l} type="button" onClick={() => setP({ ...p, level: p.level === l ? undefined : l })} className={chip(p.level === l)}>{LEVEL_HE[l] || l}</button>)}</div>
+        <div className="jm-label">{t("settings.sp.level")}</div>
+        <div className="flex flex-wrap gap-1.5">{data.options.levels.map((l) => <button key={l} type="button" onClick={() => setP({ ...p, level: p.level === l ? undefined : l })} className={chip(p.level === l)}>{LEVEL_KEY[l] ? t(LEVEL_KEY[l]) : l}</button>)}</div>
       </div>
       <div>
-        <div className="jm-label">איפה</div>
+        <div className="jm-label">{t("settings.sp.where")}</div>
         <div className="flex flex-wrap gap-1.5">
-          {data.options.workModes.map((m) => <button key={m} type="button" onClick={() => toggle("workModes", m)} className={chip(p.workModes.includes(m))}>{MODE_HE[m] || m}</button>)}
+          {data.options.workModes.map((m) => <button key={m} type="button" onClick={() => toggle("workModes", m)} className={chip(p.workModes.includes(m))}>{MODE_KEY[m] ? t(MODE_KEY[m]) : m}</button>)}
           <span className="w-px bg-line mx-1" />
           {CITY_OPTIONS.map((c) => <button key={c} type="button" onClick={() => toggle("cities", c, 8)} className={chip(p.cities.includes(c))}>{c}</button>)}
         </div>
-        <p className="jm-muted mt-1">בלי בחירה = הכול. &quot;מרחוק&quot; מתאים גם אם לא נבחרה עיר.</p>
+        <p className="jm-muted mt-1">{t("settings.sp.noneHint")}</p>
       </div>
       <div>
-        <div className="jm-label">מילות מפתח (טכנולוגיות, תחומים, כותרות)</div>
-        <div className="flex flex-wrap gap-1.5 mb-2">{p.keywords.map((k) => <button key={k} type="button" onClick={() => toggle("keywords", k)} className="jm-chip jm-chip-teal cursor-pointer" title="הסר">{k} ×</button>)}</div>
+        <div className="jm-label">{t("settings.sp.keywords")}</div>
+        <div className="flex flex-wrap gap-1.5 mb-2">{p.keywords.map((k) => <button key={k} type="button" onClick={() => toggle("keywords", k)} className="jm-chip jm-chip-teal cursor-pointer" title={t("settings.sp.remove")}>{k} ×</button>)}</div>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -78,12 +77,12 @@ export default function SearchProfileCard({ onSaved, compact }: { onSaved?: (p: 
           className="flex gap-2"
         >
           <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="React, Python, fintech, data…" className="jm-input py-2 text-sm" dir="ltr" />
-          <button type="submit" className="jm-btn jm-btn-secondary jm-btn-sm">הוסף</button>
+          <button type="submit" className="jm-btn jm-btn-secondary jm-btn-sm">{t("settings.sp.add")}</button>
         </form>
       </div>
       <div className="flex items-center gap-3 pt-1">
-        <button type="button" onClick={save} disabled={busy} className="jm-btn jm-btn-primary"><Target className="h-4 w-4" /> {busy ? "שומר…" : "שמור וכוון את הפיד"}</button>
-        {saved && <span className="text-sm text-teal">נשמר. הפיד מסודר מחדש.</span>}
+        <button type="button" onClick={save} disabled={busy} className="jm-btn jm-btn-primary"><Target className="h-4 w-4" /> {busy ? t("settings.sp.saving") : t("settings.sp.save")}</button>
+        {saved && <span className="text-sm text-teal">{t("settings.sp.saved")}</span>}
       </div>
     </div>
   );

@@ -5,6 +5,20 @@ import React, { useEffect, useState } from "react";
 import { PdfIcon } from "@/app/components/icons";
 import { Search } from "lucide-react"; // אייקון זכוכית מגדלת
 import { useIsMobile } from "@/app/lib/hooks/useIsMobile";
+import { useT } from "@/app/lib/i18n/LanguageProvider";
+
+// Application stages. The values are stored in English on the server; only the labels are translated.
+const STATUSES = [
+  "Rejected",
+  "HR Phone Interview",
+  "Technical Interview",
+  "Final Interview",
+  "Recived an Offer",
+  "Accepted",
+] as const;
+type Status = (typeof STATUSES)[number];
+const statusKey = (s: Status): `recruiter.status.${Status}` => `recruiter.status.${s}`;
+const isKnownStatus = (s: string): s is Status => (STATUSES as readonly string[]).includes(s);
 
 
 interface ApplicantStatusProps {
@@ -23,37 +37,28 @@ const ApplicantStatus: React.FC<ApplicantStatusProps> = ({
   bg_option_color,
   updateStatuses,
   setStatus,
-}) => (
-  <select
-    className={`jm-input jm-select py-2 text-xs sm:text-sm w-full md:w-44 ${
-      bg_option_color[candidate.status] || ""
-    }`}
-    value={updateStatuses.get(candidate.candidateId._id) || candidate.status}
-    onChange={(e) =>
-      setStatus(candidate.candidateId._id, e.target.value, candidate.status)
-    }
-  >
-    <option value={candidate.status}>{candidate.status}</option>
-    <option value="Rejected" className="bg-surface text-ink">
-      Rejected
-    </option>
-    <option value="HR Phone Interview" className="bg-surface text-ink">
-      HR Phone Interview
-    </option>
-    <option value="Technical Interview" className="bg-surface text-ink">
-      Technical Interview
-    </option>
-    <option value="Final Interview" className="bg-surface text-ink">
-      Final Interview
-    </option>
-    <option value="Recived an Offer" className="bg-surface text-ink">
-      Recived an Offer
-    </option>
-    <option value="Accepted" className="bg-surface text-ink">
-      Accepted
-    </option>
-  </select>
-);
+}) => {
+  const { t } = useT();
+  const label = (s: string) => (isKnownStatus(s) ? t(statusKey(s)) : s);
+  return (
+    <select
+      className={`jm-input jm-select py-2 text-xs sm:text-sm w-full md:w-44 ${
+        bg_option_color[candidate.status] || ""
+      }`}
+      value={updateStatuses.get(candidate.candidateId._id) || candidate.status}
+      onChange={(e) =>
+        setStatus(candidate.candidateId._id, e.target.value, candidate.status)
+      }
+    >
+      <option value={candidate.status}>{label(candidate.status)}</option>
+      {STATUSES.map((s) => (
+        <option key={s} value={s} className="bg-surface text-ink">
+          {t(statusKey(s))}
+        </option>
+      ))}
+    </select>
+  );
+};
 
 interface JobrecruiterCandidateListProps {
   jobId: string;
@@ -98,6 +103,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
   setRejected,
   onRegisterRefresh,
 }) => {
+  const { t, dir } = useT();
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("All");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -200,7 +206,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
   const messageLink = (candidate: Candidate, label: React.ReactNode) => (
     <Link
       href={`/messages?to=${candidate.candidateId._id}&job=${jobId}`}
-      title="שלח הודעה למועמד/ת"
+      title={t("recruiter.list.messageTitle")}
       className="jm-btn jm-btn-ghost jm-btn-sm"
     >
       {label}
@@ -208,12 +214,12 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
   );
 
   return (
-    <div className="jm-card p-4 sm:p-5 space-y-4">
+    <div className="jm-card p-4 sm:p-5 space-y-4" dir={dir}>
         {/* Header with search + filter */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           {/* כותרת */}
           <h3 className="jm-h2">
-            Candidates
+            {t("recruiter.list.title")}
           </h3>
 
           {/* קונטיינר של חיפוש + פילטר */}
@@ -225,7 +231,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
               />
               <input
                 type="text"
-                placeholder="Search candidates..."
+                placeholder={t("recruiter.list.searchPh")}
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -244,13 +250,12 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
               }}
               className="jm-input jm-select py-2.5 sm:w-auto"
             >
-              <option value="All">All</option>
-              <option value="Rejected">Rejected</option>
-              <option value="HR Phone Interview">HR Phone Interview</option>
-              <option value="Technical Interview">Technical Interview</option>
-              <option value="Final Interview">Final Interview</option>
-              <option value="Recived an Offer">Recived an Offer</option>
-              <option value="Accepted">Accepted</option>
+              <option value="All">{t("recruiter.list.all")}</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {t(statusKey(s))}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -262,11 +267,11 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
              <table className="jm-table">
               <thead>
                 <tr>
-                  <th>Full Name</th>
-                  <th>Contact</th>
-                  <th>Resume</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>{t("recruiter.list.fullName")}</th>
+                  <th>{t("recruiter.list.contact")}</th>
+                  <th>{t("recruiter.list.resume")}</th>
+                  <th>{t("recruiter.list.status")}</th>
+                  <th>{t("recruiter.list.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -280,10 +285,10 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                     </td>
                     <td>
                       <div className="flex flex-col">
-                        <span className="font-medium text-ink">
+                        <span className="font-medium text-ink" dir="ltr">
                           {candidate.candidateId.email}
                         </span>
-                        <span className="text-ink-600">{candidate.candidateId.phone}</span>
+                        <span className="text-ink-600" dir="ltr">{candidate.candidateId.phone}</span>
                       </div>
                     </td>
                     <td>
@@ -318,17 +323,17 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                   <p className="text-base font-semibold text-navy">{candidate.candidateId.fullname}</p>
                 </div>
                 <p className="text-sm text-ink-600">
-                    <strong className="text-ink">Email:</strong> {candidate.candidateId.email}
+                    <strong className="text-ink">{t("recruiter.list.email")}</strong> <span dir="ltr">{candidate.candidateId.email}</span>
                 </p>
                 <p className="text-sm text-ink-600">
-                    <strong className="text-ink">Phone:</strong> {candidate.candidateId.phone}
+                    <strong className="text-ink">{t("recruiter.list.phone")}</strong> <span dir="ltr">{candidate.candidateId.phone}</span>
                 </p>
                 <div className="flex items-center gap-2">
                     <PdfIcon />
                     <ResumeLink resumeKey={candidate.candidateId.resume} />
                 </div>
                 <div>
-                  <span className="jm-label">Status</span>
+                  <span className="jm-label">{t("recruiter.list.status")}</span>
                   <ApplicantStatus
                     candidate={candidate}
                     bg_option_color={bg_option_color}
@@ -337,7 +342,7 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
                   />
                 </div>
                 <div className="flex justify-end">
-                  {messageLink(candidate, "💬 הודעה")}
+                  {messageLink(candidate, t("recruiter.list.message"))}
                 </div>
               </div>
             )
@@ -351,9 +356,11 @@ const JobrecruiterCandidateList: React.FC<JobrecruiterCandidateListProps> = ({
         {/* ✅ Pagination Controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
           <p className="jm-muted">
-            Showing {startIndex + 1}–
-            {Math.min(startIndex + itemsPerPage, filteredCandidates.length)} of{" "}
-            {filteredCandidates.length} candidates
+            {t("recruiter.list.showing", {
+              from: startIndex + 1,
+              to: Math.min(startIndex + itemsPerPage, filteredCandidates.length),
+              total: filteredCandidates.length,
+            })}
           </p>
 
           <Pagination page={currentPage} total={totalPages} onChange={setCurrentPage} />

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
+import { useT } from "../lib/i18n/LanguageProvider";
 import JobrecruiterCard from "./components/JobrecruiterCard";
 import AddNewPositionRecruiter from "./components/AddNewPositionRecruiter";
 import { RecruiterHeroImage } from "../components/HeroImages";
@@ -12,6 +13,7 @@ import { Modal } from "../components/Dialog";
 const LOGIN_HREF = "/Login?next=%2FRecruiterDashboard";
 
 const RecruiterDashboardPage: React.FC = () => {
+  const { t, dir } = useT();
   const { user, loading } = useCurrentUser();
   const [jobs, setJobs] = useState<any[]>([]);
   const [error, setError] = useState("");
@@ -35,7 +37,7 @@ const RecruiterDashboardPage: React.FC = () => {
       setjobLength(data.length);
     } catch (err) {
       console.error(err);
-      setError("Something went wrong while loading your positions.");
+      setError(t("recruiter.loadError"));
     } finally {
       setLoadingJobs(false); // סיום טעינה
     }
@@ -52,17 +54,17 @@ const RecruiterDashboardPage: React.FC = () => {
     }
   }, [user]);
 
-  if (loading) return <Spinner label="Loading..." />;
+  if (loading) return <Spinner label={t("recruiter.loading")} />;
 
   if (!user) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🔒"
-          title="You are not logged in."
+          title={t("common.youAreNotLoggedIn")}
           action={
             <Link href={LOGIN_HREF} className="jm-btn jm-btn-primary">
-              Go to Login
+              {t("common.goToLogin")}
             </Link>
           }
         />
@@ -72,13 +74,13 @@ const RecruiterDashboardPage: React.FC = () => {
 
   if (!user.recruiter && !user.admin) {
     return (
-      <div className="jm-page">
+      <div className="jm-page" dir={dir}>
         <EmptyState
           icon="🧭"
-          title="You are not a recruiter."
+          title={t("recruiter.notRecruiter")}
           action={
             <Link href="/Dashboard" className="jm-btn jm-btn-primary">
-              Go to Dashboard
+              {t("recruiter.goToDashboard")}
             </Link>
           }
         />
@@ -89,14 +91,14 @@ const RecruiterDashboardPage: React.FC = () => {
   // Stat tiles are a pure read of the loaded positions — no extra state.
   const typeOf = (job: any) => String(job?.type ?? "").toLowerCase();
   const stats = [
-    { label: "Active positions", value: jobLength },
-    { label: "Remote", value: jobs.filter((j) => typeOf(j) === "remote").length },
-    { label: "Hybrid", value: jobs.filter((j) => typeOf(j) === "hybrid").length },
-    { label: "On site", value: jobs.filter((j) => typeOf(j) === "on site").length },
+    { label: t("recruiter.stat.active"), value: jobLength },
+    { label: t("recruiter.stat.remote"), value: jobs.filter((j) => typeOf(j) === "remote").length },
+    { label: t("recruiter.stat.hybrid"), value: jobs.filter((j) => typeOf(j) === "hybrid").length },
+    { label: t("recruiter.stat.onSite"), value: jobs.filter((j) => typeOf(j) === "on site").length },
   ];
 
   return (
-    <div className="jm-page space-y-6">
+    <div className="jm-page space-y-6" dir={dir}>
       <section
         id="recruiter hero section"
         className="jm-hero min-h-[220px] sm:min-h-[260px] flex"
@@ -104,10 +106,10 @@ const RecruiterDashboardPage: React.FC = () => {
         <RecruiterHeroImage />
         <div className="relative z-10 flex flex-col justify-center gap-3 p-6 sm:p-10 max-w-2xl">
           <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight leading-tight">
-            Welcome, {user.fullname}! 👋
+            {t("recruiter.welcome", { name: user.fullname })}
           </h1>
           <p className="text-sm sm:text-base text-white/80">
-            Manage your open positions and review the candidates who applied.
+            {t("recruiter.heroSub")}
           </p>
           {user.approved && (
             <div>
@@ -115,7 +117,7 @@ const RecruiterDashboardPage: React.FC = () => {
                 onClick={() => setShowModal(true)}
                 className="jm-btn jm-btn-accent"
               >
-                Add New Job +
+                {t("recruiter.addJob")}
               </button>
             </div>
           )}
@@ -137,14 +139,14 @@ const RecruiterDashboardPage: React.FC = () => {
 
       <div>
         {loadingJobs ? (
-          <Spinner label="Loading your jobs..." />
+          <Spinner label={t("recruiter.loadingJobs")} />
         ) : jobs.length == 0 ? (
-          <EmptyState icon="🗂️" title="Your Board is Empty" />
+          <EmptyState icon="🗂️" title={t("recruiter.boardEmpty")} />
         ) : (
           user.approved?(
             <div className="space-y-5">
             <h2 className="jm-h2">
-              You Have {jobLength} Active Job Posts
+              {t("recruiter.activeCount", { n: jobLength })}
             </h2>
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
               {jobs.map((element, ind) => {
@@ -160,13 +162,13 @@ const RecruiterDashboardPage: React.FC = () => {
             </div>
           </div>
           ):(
-            <p className="jm-alert jm-alert-err">Your recruiter account is not approved yet. Please wait for admin approval.</p>
+            <p className="jm-alert jm-alert-err">{t("recruiter.notApproved")}</p>
           )
         )}
       </div>
 
-      <Modal open={showModal} onClose={() => setShowModal(false)} label="Add new position">
-        <div className="jm-card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto">
+      <Modal open={showModal} onClose={() => setShowModal(false)} label={t("recruiter.addModalLabel")}>
+        <div className="jm-card w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto" dir={dir}>
           <AddNewPositionRecruiter
             onSuccess={() => {
               setShowModal(false);
