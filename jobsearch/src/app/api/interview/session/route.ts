@@ -10,11 +10,11 @@ import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
-import { reportedQuestionsText } from "@/app/lib/outcomes/questions";
 import { buildCompanyBrief, interviewerTurn, pickStyle, isStyle, CODE_SUBMITTED_PREFIX, type SessionTurn } from "@/app/lib/interview/simulator";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/coachMemory";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
+import { realQuestionsForInterview } from "@/app/lib/interview/realQuestions";
 import { tasksFor, startAttempt } from "@/app/lib/practice/attempts";
 import { inferRole, type PracticeLevel } from "@/app/lib/practice/roles";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
@@ -91,6 +91,7 @@ const publicSession = (s: any) => ({
   wrappedUp: !!s.wrappedUp,
   targetQuestions: s.targetQuestions,
   persona: s.persona || "",
+  realQuestions: s.realQuestions ? { count: s.realQuestions.count || 0, stageCount: s.realQuestions.stageCount || 0, harvest: s.realQuestions.harvest || "skipped" } : null,
   codeTask: s.codeTask?.status ? { attemptId: String(s.codeTask.attemptId), title: s.codeTask.title, timeLimitMin: s.codeTask.timeLimitMin, status: s.codeTask.status, score: s.codeTask.score ?? null } : null,
   asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length,
   transcript: (s.transcript || []).map((t: any) => ({ role: t.role, content: t.content })),
@@ -147,14 +148,17 @@ export async function POST(req: NextRequest) {
     // The interviewer's knowledge: the plan's company section + live catalog signals (no website fetch here — keep the start snappy).
     const ctx = await gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null);
     const cachedResearch: any = await CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null);
-    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, await reportedQuestionsText(prep.company, { limit: 12 }).catch(() => ""));
+    // The questions this company really asks (our candidates' reports + the web harvest, run now when due); they go into the prompt as their own block.
+    const real = await realQuestionsForInterview(prep.company, stage, { domain: ctx?.domain, sampleTitles: ctx?.sampleTitles, harvest: process.env.NODE_ENV !== "test" });
+    const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, null);
     const resumeText = await resumeTextFor(userId);
     const job = { title: prep.jobTitle, company: prep.company };
     const memory = await loadCoachMemory(userId);
     const style = pickStyle(stage);
-    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [], coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, codeTask: { allowed: CODE_STAGES.has(stage), done: false } });
+    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [], coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, codeTask: { allowed: CODE_STAGES.has(stage), done: false }, realQuestions: real });
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief, persona: style,
+      realQuestions: { text: real.text, count: real.count, stageCount: real.stageCount, harvest: real.harvest },
       transcript: [{ role: "interviewer", content: first.message }],
     });
     return NextResponse.json({ ok: true, session: publicSession(session.toObject()) });
@@ -188,7 +192,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const session: any = await InterviewSession.findOne({ _id: sessionId, userId });
+    const session: any = await InterviewSession.findOne({ _id: sessionId, userId }).select("+realQuestions.text");
     if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (session.status !== "active" || session.wrappedUp) return NextResponse.json({ error: "This interview is over — ask for the feedback." }, { status: 409 });
     const prep: any = await InterviewPrep.findById(session.prepId).lean();
@@ -212,7 +216,7 @@ export async function PATCH(req: NextRequest) {
     // Adaptive difficulty: the live per-answer reviews (written in the background after each turn).
     const liveScores = [...(session.reviews || [])].sort((a: any, b: any) => a.index - b.index).map((r: any) => Number(r.score)).filter((n) => Number.isFinite(n));
     const codeTask = { allowed: CODE_STAGES.has(session.stage) && (session.mode || "chat") === "chat", done: session.codeTask?.status === "done", title: session.codeTask?.title, score: session.codeTask?.score ?? null };
-    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, session.stage), style: isStyle(session.persona) ? session.persona : undefined, liveScores, codeTask });
+    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, session.stage), style: isStyle(session.persona) ? session.persona : undefined, liveScores, codeTask, realQuestions: session.realQuestions?.text ? { text: session.realQuestions.text, count: session.realQuestions.count, stageCount: session.realQuestions.stageCount } : undefined });
     let message = turn.message;
     if (turn.codeTask && !session.codeTask?.status) {
       const handed = await handOutCodeTask(session, userId, prep.plan?.roleSummary || "").catch((e) => {

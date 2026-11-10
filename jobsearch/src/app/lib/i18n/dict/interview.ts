@@ -178,6 +178,10 @@ export const he = {
   "interview.persona.dry": "מראיין/ת יבש/ה ופורמלי/ת",
   "interview.persona.probing": "מראיין/ת ספקן/ית שחופר/ת",
   "interview.persona.brisk": "מראיין/ת קצר/ה ולחוץ/ה בזמן",
+  "interview.realQ.some": "{n} שאלות אמיתיות מ-{company} בשלב הזה",
+  "interview.realQ.other": "{n} שאלות אמיתיות מ-{company} (משלבים אחרים)",
+  "interview.realQ.none": "עוד לא דווחו שאלות מ-{company}; המראיין מתבסס על תוכנית ההכנה",
+  "interview.realQ.title": "שאלות אמיתיות מהחברה",
 } as const;
 
 export const en: Record<keyof typeof he, string> = {
@@ -347,4 +351,8 @@ export const en: Record<keyof typeof he, string> = {
   "interview.persona.dry": "A dry, formal interviewer",
   "interview.persona.probing": "A skeptical interviewer who digs",
   "interview.persona.brisk": "A brisk, time-boxed interviewer",
+  "interview.realQ.some": "{n} real questions from {company} for this stage",
+  "interview.realQ.other": "{n} real questions from {company} (other stages)",
+  "interview.realQ.none": "No reported questions from {company} yet; the interviewer works from the prep plan",
+  "interview.realQ.title": "Real questions from the company",
 };

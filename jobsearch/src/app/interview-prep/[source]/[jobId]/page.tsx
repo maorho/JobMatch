@@ -38,7 +38,8 @@ type Feedback = {
   codeTask?: { title: string; score: number | null; verdict: string } | null;
 };
 type CodeTask = { attemptId: string; title: string; timeLimitMin: number; status: "open" | "done"; score: number | null };
-type Session = { sessionId: string; stage: string; status: string; mode?: "chat" | "voice"; delivery?: Delivery | null; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null; persona?: string; codeTask?: CodeTask | null };
+type RealQ = { count: number; stageCount: number; harvest: string };
+type Session = { sessionId: string; stage: string; status: string; mode?: "chat" | "voice"; delivery?: Delivery | null; wrappedUp: boolean; targetQuestions: number; asked: number; transcript: Turn[]; feedback: Feedback | null; startedAt: string; finishedAt: string | null; persona?: string; codeTask?: CodeTask | null; realQuestions?: RealQ | null };
 type SessionRow = { sessionId: string; stage: string; status: string; asked: number; targetQuestions: number; overallScore: number | null; verdict: string; startedAt: string };
 
 const STAGE_ICON: Record<string, string> = { hr: "☎️", technical: "💻", home_assignment: "🏠", system_design: "🧩", behavioral: "🤝", final: "🏁" };
@@ -179,7 +180,7 @@ export default function InterviewPrepPage() {
       } else if (mode === "voice") {
         const d = await call("/api/interview/voice", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
         setVoice({ sessionId: d.sessionId, clientSecret: d.clientSecret, model: d.model, endpoint: d.endpoint, targetQuestions: d.targetQuestions, interviewer: d.interviewer, longAnswerSec: d.longAnswerSec });
-        setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null });
+        setSession({ sessionId: d.sessionId, stage: stageKey, status: "active", mode: "voice", wrappedUp: false, targetQuestions: d.targetQuestions, asked: 0, transcript: [], feedback: null, startedAt: new Date().toISOString(), finishedAt: null, realQuestions: d.realQuestions || null });
       } else {
         const d = await call("/api/interview/session", "POST", { prepId: prep.prepId, stage: stageKey, language: "he", questions });
         setSession(d.session);
@@ -460,6 +461,15 @@ export default function InterviewPrepPage() {
                     <div className="p-3 border-b border-line flex flex-wrap items-center gap-2 text-sm">
                       <span className="font-medium text-navy">{STAGE_ICON[session.stage]} {t("interview.chatTitle", { stage: stage.title })}</span>
                       <span className="jm-chip">{t("interview.questionOf", { a: Math.min(session.asked, session.targetQuestions), b: session.targetQuestions })}</span>
+                      {session.realQuestions && (
+                        <span className={`jm-chip ${session.realQuestions.stageCount ? "jm-chip-teal" : session.realQuestions.count ? "jm-chip-sky" : ""}`} title={t("interview.realQ.title")}>
+                          {session.realQuestions.stageCount
+                            ? t("interview.realQ.some", { n: session.realQuestions.stageCount, company: prep.job.company })
+                            : session.realQuestions.count
+                              ? t("interview.realQ.other", { n: session.realQuestions.count, company: prep.job.company })
+                              : t("interview.realQ.none", { company: prep.job.company })}
+                        </span>
+                      )}
                       <button onClick={finish} disabled={busy !== "" || session.transcript.filter((t) => t.role === "candidate").length === 0} className="jm-btn jm-btn-secondary jm-btn-sm ms-auto">
                         {busy === "finish" ? t("interview.writingShort") : session.wrappedUp ? t("interview.getFeedback") : t("interview.finishAndFeedback")}
                       </button>

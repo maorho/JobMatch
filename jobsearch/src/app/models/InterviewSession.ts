@@ -53,6 +53,13 @@ const InterviewSessionSchema = new mongoose.Schema(
     targetQuestions: { type: Number, default: 8 },
     /** The interviewer's character this time (lib/interview/simulator.ts STYLES). */
     persona: { type: String, default: "" },
+    /** The company's real questions handed to the interviewer (lib/interview/realQuestions.ts), frozen at start. */
+    realQuestions: {
+      text: { type: String, default: "", maxlength: 8000, select: false },
+      count: { type: Number, default: 0 },
+      stageCount: { type: Number, default: 0 },
+      harvest: { type: String, default: "" },
+    },
     /** The timed coding exercise handed out mid-interview (chat mode, technical stages). */
     codeTask: {
       attemptId: { type: mongoose.Schema.Types.ObjectId, ref: "PracticeAttempt" },

@@ -25,6 +25,7 @@ vi.mock("@langchain/openai", () => ({
       const asked = Number(/Interviewer turns so far: (\d+)/.exec(sys)?.[1] || 0);
       turns++;
       if (asked >= target) return { content: "תודה רבה, זה הכול מצידי. נחזור אליך בימים הקרובים. <<END>>" };
+      if (asked === 0 && sys.includes("REAL QUESTIONS FIRST")) return { content: `היי, אני מהנדס בכיר ב-Acme. [real:${/at least (\d+) of your/.exec(sys)?.[1]}] ספר/י על עצמך.` };
       const lastAnswer = String(msgs[msgs.length - 1]?.content || "");
       if (sys.includes("CODING EXERCISE (once per interview)") && lastAnswer.includes("give me code")) return { content: "בוא/י נראה קצת קוד עכשיו — תקבל/י תרגיל קצר בעוד רגע. <<CODE_TASK>>" };
       if (lastAnswer.startsWith("[CODE SUBMITTED]")) return { content: "ראיתי את הפתרון. למה בחרת ב-Map ולא במערך?" };
@@ -43,6 +44,11 @@ import mongoose from "mongoose";
 import PracticeTask from "@/app/models/PracticeTask";
 import PracticeAttempt from "@/app/models/PracticeAttempt";
 import { peerComparison, percentileOf } from "@/app/lib/interview/peers";
+import { realQuestionsForInterview, BANK_STAGES } from "@/app/lib/interview/realQuestions";
+import InterviewQuestion from "@/app/models/InterviewQuestion";
+import WebInterviewQuestion from "@/app/models/WebInterviewQuestion";
+import { companyKey } from "@/app/lib/outcomes/companyKey";
+import { questionKey } from "@/app/lib/outcomes/questions";
 import { GET as sessGET, POST as sessPOST, PATCH as sessPATCH } from "@/app/api/interview/session/route";
 import { POST as finishPOST } from "@/app/api/interview/session/finish/route";
 
@@ -108,6 +114,36 @@ describe("interviewer prompt", () => {
     // Styles are drawn from a pool per stage: deterministic for a seed, never outside the four.
     expect(["warm", "dry", "probing", "brisk"]).toContain(pickStyle("technical", 0.1));
     expect(pickStyle("hr", 0.2)).toBe(pickStyle("hr", 0.2));
+  });
+});
+
+describe("real questions from the company", () => {
+  it("hands the interviewer what the company really asks (our reports + the web), stage first, and makes them mandatory", async () => {
+    const key = companyKey("Acme");
+    const q = (question: string, stage: string, extra: object = {}) => ({ company: "Acme", companyKey: key, stage, question, key: questionKey(question), ...extra });
+    await InterviewQuestion.create([q("Explain the React reconciliation algorithm", "technical", { userId: other, roleTitle: "Frontend" }), q("Why Acme?", "hr", { userId: other })] as any);
+    await WebInterviewQuestion.create([q("Design a rate limiter", "technical", { sourceUrl: "https://glassdoor.com/x", sourceName: "glassdoor.com", harvestedAt: new Date() })] as any);
+    const real = await realQuestionsForInterview("Acme", "technical", { harvest: false });
+    expect(real).toMatchObject({ count: 3, stageCount: 2, harvest: "skipped" });
+    expect(real.text).toMatch(/REAL QUESTIONS asked at Acme \(2 reported by our own candidates/);
+    expect(real.text).toMatch(/FOR THIS STAGE:[\s\S]*reconciliation[\s\S]*rate limiter \(seen on glassdoor.com\)/);
+    expect(real.text).toMatch(/FROM OTHER STAGES[\s\S]*Why Acme\?/);
+    expect(BANK_STAGES.system_design).toEqual(["technical"]);
+    expect((await realQuestionsForInterview("Nobody Inc", "hr", { harvest: false })).count).toBe(0);
+
+    const sys = buildInterviewerPrompt({ plan: PLAN as any, stage: "technical", job: { title: "Dev", company: "Acme" }, companyBrief: "b", language: "he", targetQuestions: 6, transcript: [], realQuestions: real });
+    expect(sys).toContain(real.text);
+    expect(sys).toMatch(/REAL QUESTIONS FIRST: at least 2 of your 6 main questions MUST/);
+    expect(buildInterviewerPrompt({ plan: PLAN as any, stage: "hr", job: { title: "Dev", company: "Acme" }, companyBrief: "b", language: "he", targetQuestions: 6, transcript: [], realQuestions: { text: "x", count: 3, stageCount: 0 } })).toMatch(/nothing is reported for this stage yet/);
+
+    // A session carries them (frozen) and tells the page how many it has.
+    const started = await j(await sessPOST(new NextRequest(`${O}/api/interview/session`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ prepId, stage: "technical", questions: 4 }) })));
+    expect(started.body.session.realQuestions).toMatchObject({ count: 3, stageCount: 2 });
+    expect(started.body.session.transcript[0].content).toContain("[real:2]");
+    const row: any = await InterviewSession.findById(started.body.session.sessionId).select("+realQuestions.text").lean();
+    expect(row.realQuestions.text).toContain("rate limiter");
+    await InterviewQuestion.deleteMany({ companyKey: key });
+    await WebInterviewQuestion.deleteMany({ companyKey: key });
   });
 });
 
