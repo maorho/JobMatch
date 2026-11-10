@@ -6,7 +6,6 @@ import JobsFilters from "./FilterJobs";
 import LocationSelect from "./LocationSelect";
 import { Search, SlidersHorizontal, X, ArrowRight } from "lucide-react";
 import LogoMarquee from "./LogoMarquee";
-import CompanyLogo from "./CompanyLogo";
 import { EmptyState } from "./ui";
 import { useModalBehavior } from "./Dialog";
 import type { JobFacets } from "./FilterJobs";
