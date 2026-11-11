@@ -17,7 +17,7 @@ function teaser(text: string, max = 120): string {
   const t = (text || "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   const head = t.slice(0, max);
-  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), head.lastIndexOf(".\n"));
+  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "));
   if (sentence >= 50) return head.slice(0, sentence + 1);
   const word = head.lastIndexOf(" ");
   return (word > 40 ? head.slice(0, word) : head).replace(/[,;:\-–]+$/, "");
@@ -62,7 +62,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const posted = postedRaw && dayjs(postedRaw).isValid() && !dayjs(postedRaw).isAfter(dayjs().add(1, "day")) ? dayjs(postedRaw) : null;
   const time = posted ? t("card.posted", { ago: posted.locale(lang).fromNow() }) : "";
   const timeTitle = posted ? `${job.postedAt ? t("card.postedAt") : t("card.firstSeen")} ${posted.format("D MMM YYYY, HH:mm")}` : "";
-  const why = (job as any).why as string | undefined;
+  // The verdict sentence in the interface language (the reranker writes both; English falls back to Hebrew for old rows).
+  const why = (lang === "en" ? ((job as any).whyEn as string | undefined) || ((job as any).why as string | undefined) : ((job as any).why as string | undefined)) || undefined;
   const matched = ((job as any).matched as string[] | undefined) || [];
   const gaps = ((job as any).gaps as string[] | undefined) || [];
   const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");

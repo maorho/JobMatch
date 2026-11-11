@@ -39,6 +39,8 @@ export type RankedJob = {
   cosine: number;
   levelFit: number;
   why?: string;
+  /** The verdict sentence in English (why is Hebrew); the card picks by interface language. */
+  whyEn?: string;
   matched?: string[];
   gaps?: string[];
   reranked: boolean;
@@ -274,7 +276,6 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       resumeVersion: profile.resumeVersion,
       resumeSummary: profile.resumeSummary,
       level: profile.level,
-      language: opts.language,
       ...(opts.rerankCachedOnly ? { useLLM: false } : {}), // otherwise rerankForUser's own default (off under test, env-gated)
       jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t.seniority, experienceMin: t.experienceMin, experienceMax: t.experienceMax })),
     });
@@ -283,6 +284,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       if (!v) continue;
       t.matchScore = v.fit;
       t.why = v.why;
+      t.whyEn = v.whyEn;
       t.matched = v.matched;
       t.gaps = v.gaps;
       t.reranked = true;

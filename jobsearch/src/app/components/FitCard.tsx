@@ -5,12 +5,12 @@ import { Target } from "lucide-react";
 import { useT } from "../lib/i18n/LanguageProvider";
 import type { Key } from "../lib/i18n/dict";
 
-type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; matched?: string[]; gaps: string[]; reranked: boolean; likelihood?: { pct: number; basis: "prior" | "blended" | "learned"; samples: number } };
+type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; whyEn?: string; matched?: string[]; gaps: string[]; reranked: boolean; likelihood?: { pct: number; basis: "prior" | "blended" | "learned"; samples: number } };
 const LEVEL_KEY: Record<string, Key> = { junior: "widgets.fit.level.junior", mid: "widgets.fit.level.mid", senior: "widgets.fit.level.senior" };
 
 /** Job page sidebar: the reranker's verdict for this user — fit score, why, what's missing. */
 export default function FitCard({ jobId }: { jobId: string }) {
-  const { t, dir } = useT();
+  const { t, dir, lang } = useT();
   const [fit, setFit] = useState<Fit | null>(null);
   useEffect(() => {
     fetch(`/api/matcher/explain?jobId=${jobId}`)
@@ -32,6 +32,8 @@ export default function FitCard({ jobId }: { jobId: string }) {
   const verdict = score >= 75 ? t("widgets.fit.good") : score >= 55 ? t("widgets.fit.possible") : t("widgets.fit.unrealistic");
   const level = fit.level ? t("widgets.fit.yourLevel", { level: LEVEL_KEY[fit.level] ? t(LEVEL_KEY[fit.level]) : fit.level }) : "";
   const lk = fit.likelihood;
+  // The verdict sentence in the interface language (the reranker writes both; English falls back to Hebrew for old rows).
+  const why = lang === "en" ? fit.whyEn || fit.why : fit.why;
   return (
     <section className="jm-card p-5 space-y-3" dir={dir}>
       <div className="flex items-center gap-3">
@@ -47,7 +49,7 @@ export default function FitCard({ jobId }: { jobId: string }) {
           <span className="jm-muted"> · {lk.basis === "prior" ? t("widgets.fit.prior") : lk.basis === "blended" ? t("widgets.fit.blended", { n: lk.samples }) : t("widgets.fit.learned", { n: lk.samples })}</span>
         </p>
       )}
-      {fit.why && <p className="text-sm text-ink-600 leading-relaxed" dir={dir}>{fit.why}</p>}
+      {why && <p className="text-sm text-ink-600 leading-relaxed" dir={dir}>{why}</p>}
       {(fit.matched?.length || 0) > 0 && (
         <div>
           <div className="text-xs font-semibold text-ink-400 mb-1">{t("widgets.fit.have")}</div>

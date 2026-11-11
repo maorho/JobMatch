@@ -50,15 +50,16 @@ export default function MatchTooltip({ why, matched, gaps, label, children }: { 
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        setPinned((p) => !p);
-        setOpen((o) => (pinned ? false : true) || !o);
+        // A tap pins it open; a second tap closes it.
+        setPinned(!pinned);
+        setOpen(!pinned);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           e.stopPropagation();
-          setPinned((p) => !p);
-          setOpen((o) => !o);
+          setPinned(!pinned);
+          setOpen(!pinned);
         }
       }}
       tabIndex={0}

@@ -15,9 +15,10 @@ describe("Hebrew style rule in prompts", () => {
     expect(HEBREW_STYLE).toMatch(/ב-Connecteam/);
     expect(HEBREW_STYLE).toMatch(/never "בConnecteam"/);
 
-    expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "he").system).toContain("HEBREW STYLE");
-    expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "he").system).toMatch(/"matched": 2–4 skills[\s\S]*"gaps": up to 3 requirements[\s\S]*\{"id","fit","why","matched":\[\.\.\.\],"gaps":\[\.\.\.\]\}/);
-    expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "en").system).not.toContain("HEBREW STYLE");
+    // The verdict is written in both languages at once (one cache row serves either interface), so the Hebrew rule is always on.
+    const { system } = buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }]);
+    expect(system).toContain("HEBREW STYLE");
+    expect(system).toMatch(/"why": ONE plain sentence in Hebrew[\s\S]*"whyEn": the same sentence in English[\s\S]*"matched": 2–4 skills[\s\S]*"gaps": up to 3 requirements[\s\S]*\{"id","fit","why","whyEn","matched":\[\.\.\.\],"gaps":\[\.\.\.\]\}/);
     const base = { plan: PLAN, stage: "hr" as const, job: { title: "Dev", company: "Acme" }, companyBrief: "b", targetQuestions: 4, transcript: [] };
     expect(buildInterviewerPrompt({ ...base, language: "he" })).toContain("HEBREW STYLE");
     expect(buildInterviewerPrompt({ ...base, language: "en" })).not.toContain("HEBREW STYLE");
@@ -31,11 +32,12 @@ describe("Hebrew style rule in prompts", () => {
 describe("rerank: the years a posting asks for", () => {
   const dev = { _id: "1", job: "Full Stack Engineer", company: "Acme", description: "x" };
   it("tells the model the stated years and the candidate's band", () => {
-    const { system, user } = buildRerankPrompt("junior react dev", "junior", [{ ...dev, experienceMin: 8 }, { ...dev, _id: "2", experienceMin: 2, experienceMax: 4 }, { ...dev, _id: "3" }], "en");
+    const { system, user } = buildRerankPrompt("junior react dev", "junior", [{ ...dev, experienceMin: 8 }, { ...dev, _id: "2", experienceMin: 2, experienceMax: 4 }, { ...dev, _id: "3" }, { ...dev, _id: "4", experienceMin: 2, experienceMax: 2 }]);
     expect(user).toContain("CANDIDATE (junior, 0–2 years of experience)");
     expect(user).toContain("Full Stack Engineer @ Acme — REQUIRES 8+ years");
     expect(user).toContain("Full Stack Engineer @ Acme — REQUIRES 2–4 years");
-    expect(user.match(/REQUIRES/g)).toHaveLength(2);
+    expect(user).toContain("Full Stack Engineer @ Acme — REQUIRES 2 years");
+    expect(user.match(/REQUIRES/g)).toHaveLength(3);
     expect(system).toContain("hard requirement");
   });
   it("caps the verdict and lists the years as the first gap when the posting is out of reach", () => {

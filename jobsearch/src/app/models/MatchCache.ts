@@ -12,6 +12,8 @@ const MatchCacheSchema = new mongoose.Schema(
     resumeVersion: { type: Number, required: true },
     fit: { type: Number, required: true }, // 0–100
     why: { type: String, default: "", maxlength: 400 },
+    /** The same sentence in English (the interface picks by language). */
+    whyEn: { type: String, default: "", maxlength: 400 },
     /** Skills of the posting the candidate has (short terms), and the ones they lack. */
     matched: { type: [String], default: [] },
     gaps: { type: [String], default: [] },

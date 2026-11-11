@@ -42,6 +42,7 @@ export class FaceMeter {
   private frames: Frame[] = [];
   private recording = false;
   private failed = false;
+  private disposed = false;
   ready = false;
 
   constructor(video: HTMLVideoElement) {
@@ -61,6 +62,14 @@ export class FaceMeter {
         outputFaceBlendshapes: true,
         outputFacialTransformationMatrixes: true,
       })) as unknown as Landmarker;
+      if (this.disposed) {
+        // The call ended while the model was loading: nothing to sample, release it.
+        try {
+          this.landmarker.close();
+        } catch {}
+        this.landmarker = null;
+        return false;
+      }
       this.ready = true;
       this.timer = setInterval(() => this.sample(), SAMPLE_MS);
       return true;
@@ -133,6 +142,7 @@ export class FaceMeter {
   }
 
   dispose() {
+    this.disposed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     try {

@@ -42,7 +42,7 @@ describe("reranker fit vs recruiter labels", () => {
     for (const [cid, cand] of Object.entries<any>(d.candidates)) {
       const pairs = d.pairs.filter((p: any) => p.candidate === cid);
       const jobs = pairs.map((p: any) => ({ _id: p.posting, job: d.postings[p.posting].title, company: d.postings[p.posting].company, description: d.postings[p.posting].description }));
-      const { system, user } = buildRerankPrompt(cand.resume, cand.level, jobs, "en");
+      const { system, user } = buildRerankPrompt(cand.resume, cand.level, jobs);
       const res = await new ChatOpenAI({ modelName: "gpt-4o-mini", temperature: 0, openAIApiKey: process.env.OPENAI_API_KEY, modelKwargs: { response_format: { type: "json_object" } } }).invoke([new SystemMessage(system), new HumanMessage(user)]);
       const out: any = extractJson(contentOf(res));
       for (const p of pairs) {

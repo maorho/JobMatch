@@ -47,5 +47,5 @@ export async function GET(req: NextRequest) {
   const fit = v?.fit ?? heuristic;
   const hasReferral = (await contactsAtCompany(userId, job.company, 1).catch(() => [])).length > 0;
   const likelihood = await interviewLikelihood({ matchScore: fit, cosine: profile.vector && Array.isArray(job.embedding) ? cosineSimilarity(profile.vector, job.embedding) : null, levelFit: lf, rerankFit: v?.fit ?? null, level: profile.level, jobSeniority: String(seniorityOf(job.job, job.seniority) || "").toLowerCase(), hasReferral });
-  return NextResponse.json({ ok: true, ready: true, level: profile.level, levelFit: lf, heuristic, fit, why: v?.why || "", matched: v?.matched || [], gaps: v?.gaps || [], reranked: !!v, likelihood });
+  return NextResponse.json({ ok: true, ready: true, level: profile.level, levelFit: lf, heuristic, fit, why: v?.why || "", whyEn: v?.whyEn || "", matched: v?.matched || [], gaps: v?.gaps || [], reranked: !!v, likelihood });
 }

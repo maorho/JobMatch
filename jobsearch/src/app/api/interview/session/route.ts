@@ -16,6 +16,11 @@ import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 import { realQuestionsForInterview } from "@/app/lib/interview/realQuestions";
 import { loadJob } from "@/app/lib/jobs/loadJob";
+import { tasksFor, startAttempt } from "@/app/lib/practice/attempts";
+import { inferRole, type PracticeLevel } from "@/app/lib/practice/roles";
+import { seniorityOf } from "@/app/lib/jobTaxonomy";
+import PracticeTask from "@/app/models/PracticeTask";
+import PracticeAttempt from "@/app/models/PracticeAttempt";
 
 /** What the interviewer presents and probes: the posting's text and its stated requirements/technologies. */
 async function postingFor(source: string, jobId: unknown): Promise<{ jobDescription?: string; jobRequirements?: string[] }> {
@@ -24,11 +29,6 @@ async function postingFor(source: string, jobId: unknown): Promise<{ jobDescript
   const reqs = [...(Array.isArray(j.requirements) ? j.requirements : []), ...(Array.isArray(j.tech) ? j.tech : [])].map(String).filter(Boolean);
   return { jobDescription: String(j.description || j.qualifications || "").replace(/\s+/g, " ").slice(0, 1800), jobRequirements: [...new Set(reqs)].slice(0, 14) };
 }
-import { tasksFor, startAttempt } from "@/app/lib/practice/attempts";
-import { inferRole, type PracticeLevel } from "@/app/lib/practice/roles";
-import { seniorityOf } from "@/app/lib/jobTaxonomy";
-import PracticeTask from "@/app/models/PracticeTask";
-import PracticeAttempt from "@/app/models/PracticeAttempt";
 
 /** Stages where the interviewer may hand out a timed coding exercise (chat mode). */
 const CODE_STAGES = new Set<string>(["technical", "system_design"]);
