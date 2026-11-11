@@ -17,6 +17,24 @@ type Frame = { visible: boolean; yaw: number; pitch: number; gaze: number; smile
 
 const SAMPLE_MS = 250; // 4 frames/s is plenty for posture and expression
 
+/**
+ * MediaPipe's wasm prints its own INFO lines ("Created TensorFlow Lite XNNPACK
+ * delegate for CPU.") through console.error, which Next's dev overlay shows as
+ * an error. Run `fn` with those lines dropped; real errors still get through.
+ */
+function withoutInfoLogs<T>(fn: () => T): T {
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && /^INFO:/.test(args[0])) return;
+    original(...args);
+  };
+  try {
+    return fn();
+  } finally {
+    console.error = original;
+  }
+}
+
 export class FaceMeter {
   private video: HTMLVideoElement;
   private landmarker: Landmarker | null = null;
@@ -56,7 +74,7 @@ export class FaceMeter {
   private sample() {
     if (!this.recording || !this.landmarker || this.video.readyState < 2 || this.video.videoWidth === 0) return;
     try {
-      const r = this.landmarker.detectForVideo(this.video, performance.now());
+      const r = withoutInfoLogs(() => this.landmarker!.detectForVideo(this.video, performance.now()));
       const face = r.faceLandmarks?.[0];
       if (!face) {
         this.frames.push({ visible: false, yaw: 0, pitch: 0, gaze: 0, smile: 0, furrow: 0 });
