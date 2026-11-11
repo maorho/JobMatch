@@ -10,6 +10,7 @@ import CompanyLogo from "./CompanyLogo";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime.js";
 import { useT } from "../lib/i18n/LanguageProvider";
+import type { Key } from "../lib/i18n/dict";
 import "dayjs/locale/he.js";
 
 /** The first ~120 characters of a posting, cut at the end of a sentence (or the last word), so the card never shows "…". */
@@ -24,6 +25,9 @@ function teaser(text: string, max = 120): string {
 }
 
 dayjs.extend(relativeTime);
+
+/** What the ranked feed adds to a posting beyond the catalogue row (lib/matcher/hybrid.ts RankedJob). */
+type RankedExtras = { remote?: boolean; why?: string; whyEn?: string; matched?: string[]; gaps?: string[] };
 
 interface JobCardProps {
   job: Job;
@@ -54,7 +58,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   if (hidden) return null;
 
   const companyName = isInternalJob(job) ? job.company.companyName : job.company;
-  const location = [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ") || ((job as any).remote ? "Remote" : "");
+  const extra = job as typeof job & RankedExtras;
+  const location = [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ") || (extra.remote ? "Remote" : "");
   const workMode = getJobType(job);
   const level = getSeniorityLevel(job);
   // When it was posted: the employer's date, else when we first saw it, else when it was added here.
@@ -63,10 +68,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const time = posted ? t("card.posted", { ago: posted.locale(lang).fromNow() }) : "";
   const timeTitle = posted ? `${job.postedAt ? t("card.postedAt") : t("card.firstSeen")} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   // The verdict sentence in the interface language (the reranker writes both; English falls back to Hebrew for old rows).
-  const why = (lang === "en" ? ((job as any).whyEn as string | undefined) || ((job as any).why as string | undefined) : ((job as any).why as string | undefined)) || undefined;
-  const matched = ((job as any).matched as string[] | undefined) || [];
-  const gaps = ((job as any).gaps as string[] | undefined) || [];
-  const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
+  const why = (lang === "en" ? extra.whyEn || extra.why : extra.why) || undefined;
+  const matched = extra.matched || [];
+  const gaps = extra.gaps || [];
+  const meta = [location + (extra.remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
   // Years of experience required, read from the description — more honest than the title.
   const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("card.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("card.years", { n: job.experienceMin })) : "";
   const techChips = (job.tech || []).slice(0, 3);
@@ -111,7 +116,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             <span className="truncate">{meta}</span>
           </span>
         )}
-        {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{t(`level.${level}` as any)}</span>}
+        {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{t(`level.${level}` as Key)}</span>}
         {years && <span className="jm-chip shrink-0" title={t("card.yearsTitle")}>{years}</span>}
         {time && (
           <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">

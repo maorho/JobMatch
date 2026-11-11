@@ -33,15 +33,20 @@ const EN_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, fi
 /** Things that look like "N years" but are not a requirement. */
 const NOT_A_REQUIREMENT = /(years?\s+(old|in a row|running|ago|of (launch|operation|growth|history|business|success)))|(\d+\s*years?\s+(?:of\s+)?(?:company|track record))|(within\s+(?:just\s+)?\d+\s*years)|(founded|established|celebrat|anniversary|warranty|contract\s+of|shelf|guarantee)/i;
 
-type Found = { min: number; max: number | null; index: number; strong: boolean };
+/** `secondary`: a part of the headline requirement ("…including 2+ years managing a team"), never the posting's bar on its own. */
+type Found = { min: number; max: number | null; index: number; strong: boolean; secondary?: boolean };
 
-function pushRange(out: Found[], a: string, b: string | undefined, index: number, strong: boolean, plus = false) {
+/** "2+ years managing / leading / as a team lead", "of which 3 years…": a sub-requirement that qualifies another phrase. */
+const SECONDARY_AFTER = /^\s*(?:of\s+)?(?:managing|leading|mentoring|supervising|as an? (?:team|tech|technical|group) lead(?:er)?|in (?:a |an )?(?:leadership|management|managerial) (?:role|position)|(?:of )?(?:people|team) management|בניהול|כמנהל|כראש צוות)/i;
+const SECONDARY_BEFORE = /(?:including|incl\.|of which|out of which|of them|מתוכן|מתוכם|מהן|מהם|מתוכו)\s*(?:at least\s+|minimum\s+|לפחות\s+)?$/i;
+
+function pushRange(out: Found[], a: string, b: string | undefined, index: number, strong: boolean, plus = false, secondary = false) {
   const min = Number(a);
   if (!Number.isFinite(min) || min > 25) return;
   let max: number | null = b !== undefined ? Number(b) : null;
   if (max !== null && (!Number.isFinite(max) || max > 30 || max < min)) max = null;
   if (plus) max = null;
-  out.push({ min, max, index, strong });
+  out.push({ min, max, index, strong, secondary });
 }
 
 /**
@@ -63,7 +68,10 @@ export function extractExperience(text: string): Experience | null {
     const window = text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 45);
     const strong = /experience|ניסיון|background|exposure|working (in|with)|hands[- ]on|track record|in a similar role/i.test(window);
     const plus = /^\d{1,2}\s*\+/.test(m[0]) || /\+\s*(?:years?|yrs?)/i.test(m[0]) || /ומעלה|or more|and above|at least|minimum|לפחות|מינימום/i.test(window);
-    pushRange(found, m[1], m[2], m.index, strong, plus && m[2] === undefined);
+    // "…including 2+ years managing a team": qualifies the headline years, it is not the bar itself.
+    const before = text.slice(Math.max(0, m.index - 24), m.index);
+    const secondary = SECONDARY_AFTER.test(m[3] || "") || (SECONDARY_BEFORE.test(before) && found.length > 0);
+    pushRange(found, m[1], m[2], m.index, strong, plus && m[2] === undefined, secondary);
   }
   // Written-out numbers: "two years", "שנתיים ניסיון", "שלוש שנות ניסיון", "at least five years".
   const words = new RegExp(`\\b(${[...Object.keys(EN_WORDS)].join("|")})\\s+(?:\\+\\s*)?years?\\b|(${Object.keys(HE_WORDS).join("|")})\\s*(?:שנות\\s+)?ניסיון|(?:לפחות|מינימום)\\s+(${Object.keys(HE_WORDS).join("|")})\\s+שנ`, "gi");
@@ -77,7 +85,7 @@ export function extractExperience(text: string): Experience | null {
   }
   if (!found.length) return null;
   found.sort((a, b) => a.index - b.index);
-  const pick = found.find((f) => f.strong) || found[0];
+  const pick = found.find((f) => f.strong && !f.secondary) || found.find((f) => !f.secondary) || found[0];
   return { min: pick.min, max: pick.max };
 }
 

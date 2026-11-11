@@ -6,11 +6,11 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import User from "@/app/models/User";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
-import { STAGE_KEYS, type StageKey } from "@/app/lib/interview/prepare";
+import { STAGE_KEYS, type StageKey, type InterviewPlan } from "@/app/lib/interview/prepare";
 import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import CompanyBrief from "@/app/models/CompanyBrief";
 import { researchToText } from "@/app/lib/interview/companyResearch";
-import { buildCompanyBrief, interviewerTurn, pickStyle, isStyle, CODE_SUBMITTED_PREFIX, type SessionTurn } from "@/app/lib/interview/simulator";
+import { buildCompanyBrief, interviewerTurn, pickStyle, isStyle, mainQuestionsAsked, CODE_SUBMITTED_PREFIX, type SessionTurn } from "@/app/lib/interview/simulator";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/coachMemory";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
@@ -22,9 +22,37 @@ import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import PracticeTask from "@/app/models/PracticeTask";
 import PracticeAttempt from "@/app/models/PracticeAttempt";
 
+type Turn = { role: "interviewer" | "candidate"; content: string; kind?: "main" | "followup" };
+type Review = { index: number; score?: number; kind?: string };
+type CodeTaskState = { attemptId?: unknown; taskId?: unknown; title?: string; timeLimitMin?: number; status?: string; score?: number | null; verdict?: string };
+type SessionLike = {
+  _id: unknown;
+  prepId: unknown;
+  stage: string;
+  language: "he" | "en";
+  status: string;
+  mode?: string;
+  delivery?: unknown;
+  wrappedUp?: boolean;
+  targetQuestions: number;
+  persona?: string;
+  realQuestions?: { count?: number; stageCount?: number; harvest?: string; text?: string };
+  codeTask?: CodeTaskState;
+  transcript?: Turn[];
+  reviews?: Review[];
+  feedback?: unknown;
+  createdAt?: Date;
+  finishedAt?: Date | null;
+};
+type TaskLite = { _id: unknown; title: string; timeLimitMin?: number; done?: boolean };
+type AttemptLite = { _id: unknown; status?: string; score?: number | null; verdict?: string; breakdown?: { criterion: string; score: number }[]; timedOut?: boolean; durationSec?: number; language?: string; answer?: string; taskId?: unknown };
+type Posting = { description?: string; qualifications?: string; requirements?: unknown; tech?: unknown };
+type PrepLite = { company: string; jobTitle: string; jobId: unknown; source: string; plan: InterviewPlan };
+const errMsg = (e: unknown) => (e as { message?: string })?.message;
+
 /** What the interviewer presents and probes: the posting's text and its stated requirements/technologies. */
 async function postingFor(source: string, jobId: unknown): Promise<{ jobDescription?: string; jobRequirements?: string[] }> {
-  const j: any = await loadJob(source, String(jobId)).catch(() => null);
+  const j = (await loadJob(source, String(jobId)).catch(() => null)) as Posting | null;
   if (!j) return {};
   const reqs = [...(Array.isArray(j.requirements) ? j.requirements : []), ...(Array.isArray(j.tech) ? j.tech : [])].map(String).filter(Boolean);
   return { jobDescription: String(j.description || j.qualifications || "").replace(/\s+/g, " ").slice(0, 1800), jobRequirements: [...new Set(reqs)].slice(0, 14) };
@@ -37,9 +65,9 @@ const CODE_STAGES = new Set<string>(["technical", "system_design"]);
 function background(fn: () => Promise<unknown>) {
   if (process.env.NODE_ENV === "test") return;
   try {
-    after(() => fn().catch((e) => console.warn("[interview] background job failed:", e?.message)));
+    after(() => fn().catch((e) => console.warn("[interview] background job failed:", errMsg(e))));
   } catch {
-    void fn().catch((e) => console.warn("[interview] background job failed:", e?.message));
+    void fn().catch((e) => console.warn("[interview] background job failed:", errMsg(e)));
   }
 }
 
@@ -54,14 +82,14 @@ const levelOf = (title: string): PracticeLevel => {
  * the attempt to this session. Returns null when the bank has nothing ready
  * (authoring new tasks takes a model call we don't want inside a turn).
  */
-async function handOutCodeTask(session: any, userId: string, roleSummary: string): Promise<{ attemptId: string; taskId: string; title: string; timeLimitMin: number } | null> {
+async function handOutCodeTask(session: { _id: unknown; jobTitle: string }, userId: string, roleSummary: string): Promise<{ attemptId: string; taskId: string; title: string; timeLimitMin: number } | null> {
   const role = inferRole(`${session.jobTitle}\n${roleSummary}`);
   const level = levelOf(session.jobTitle);
-  let task: any = (await tasksFor(role, level, { kinds: ["coding"], author: false, userId }).catch(() => [])).find((t: any) => !t.done) || null;
+  let task: TaskLite | null = ((await tasksFor(role, level, { kinds: ["coding"], author: false, userId }).catch(() => [])) as TaskLite[]).find((t) => !t.done) || null;
   if (!task) {
-    const done = new Set((await PracticeAttempt.find({ userId, status: { $ne: "in_progress" } }).select("taskId").lean()).map((a: any) => String(a.taskId)));
-    const any: any[] = await PracticeTask.find({ kind: "coding", role, active: true }).sort({ difficulty: 1 }).limit(20).lean();
-    task = any.find((t) => !done.has(String(t._id))) || null;
+    const done = new Set(((await PracticeAttempt.find({ userId, status: { $ne: "in_progress" } }).select("taskId").lean()) as unknown as { taskId: unknown }[]).map((a) => String(a.taskId)));
+    const candidates = (await PracticeTask.find({ kind: "coding", role, active: true }).sort({ difficulty: 1 }).limit(20).lean()) as unknown as TaskLite[];
+    task = candidates.find((t) => !done.has(String(t._id))) || null;
   }
   if (!task) return null;
   const attempt = await startAttempt(userId, String(task._id));
@@ -71,10 +99,10 @@ async function handOutCodeTask(session: any, userId: string, roleSummary: string
 }
 
 /** The candidate's solution, back into the conversation as one turn the interviewer can question. */
-function codeSubmittedTurn(task: any, attempt: any): string {
+function codeSubmittedTurn(task: { title?: string } | null, attempt: AttemptLite): string {
   const grade = attempt.score != null ? `${attempt.score}/100` : "pending";
   const verdict = attempt.verdict ? ` (${attempt.verdict})` : "";
-  const crit = (attempt.breakdown || []).slice(0, 4).map((b: any) => `${b.criterion}: ${b.score}`).join(", ");
+  const crit = (attempt.breakdown || []).slice(0, 4).map((b) => `${b.criterion}: ${b.score}`).join(", ");
   return `${CODE_SUBMITTED_PREFIX} "${task?.title || "coding exercise"}" — automatic grade ${grade}${verdict}${crit ? `; ${crit}` : ""}${attempt.timedOut ? "; handed in late" : ""}; ${attempt.durationSec ? `${Math.round(attempt.durationSec / 60)} min` : ""}\n\`\`\`${attempt.language || ""}\n${String(attempt.answer || "").slice(0, 2500)}\n\`\`\``;
 }
 
@@ -85,11 +113,22 @@ export const maxDuration = 60;
 const MAX_ANSWER = 4000;
 
 async function resumeTextFor(userId: string): Promise<string> {
-  const user: any = await User.findById(userId).select("+resumeText +resumeStructured").lean();
-  return (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user.resumeStructured) : "");
+  const user = (await User.findById(userId).select("+resumeText +resumeStructured").lean()) as unknown as { resumeText?: string; resumeStructured?: unknown } | null;
+  return (user?.resumeText || "").trim() || (isStructuredResume(user?.resumeStructured) ? structuredToText(user!.resumeStructured as Parameters<typeof structuredToText>[0]) : "");
 }
 
-const publicSession = (s: any) => ({
+/**
+ * Main questions asked so far (the opening included). Chat turns carry their
+ * own `kind`; a voice session has no marks, so its reviewed follow-ups are
+ * subtracted instead (one answer behind, like the browser's budget).
+ */
+function askedOf(s: SessionLike): number {
+  const turns = (s.transcript || []).filter((t) => t.role === "interviewer");
+  if (s.mode === "voice") return Math.max(0, turns.length - (s.reviews || []).filter((r) => r.kind && r.kind !== "main").length);
+  return turns.filter((t) => t.kind !== "followup").length;
+}
+
+const publicSession = (s: SessionLike) => ({
   sessionId: String(s._id),
   prepId: String(s.prepId),
   stage: s.stage,
@@ -102,8 +141,8 @@ const publicSession = (s: any) => ({
   persona: s.persona || "",
   realQuestions: s.realQuestions ? { count: s.realQuestions.count || 0, stageCount: s.realQuestions.stageCount || 0, harvest: s.realQuestions.harvest || "skipped" } : null,
   codeTask: s.codeTask?.status ? { attemptId: String(s.codeTask.attemptId), title: s.codeTask.title, timeLimitMin: s.codeTask.timeLimitMin, status: s.codeTask.status, score: s.codeTask.score ?? null } : null,
-  asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length,
-  transcript: (s.transcript || []).map((t: any) => ({ role: t.role, content: t.content })),
+  asked: askedOf(s),
+  transcript: (s.transcript || []).map((t) => ({ role: t.role, content: t.content })),
   feedback: s.feedback || null,
   startedAt: s.createdAt,
   finishedAt: s.finishedAt || null,
@@ -118,16 +157,16 @@ export async function GET(req: NextRequest) {
   const sessionId = sp.get("sessionId");
   if (sessionId) {
     if (!mongoose.Types.ObjectId.isValid(sessionId)) return NextResponse.json({ error: "Invalid sessionId" }, { status: 400 });
-    const s: any = await InterviewSession.findOne({ _id: sessionId, userId }).lean();
+    const s = (await InterviewSession.findOne({ _id: sessionId, userId }).lean()) as unknown as SessionLike | null;
     if (!s) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ ok: true, session: publicSession(s) });
   }
   const prepId = sp.get("prepId") || "";
   if (!mongoose.Types.ObjectId.isValid(prepId)) return NextResponse.json({ error: "Invalid prepId" }, { status: 400 });
-  const list: any[] = await InterviewSession.find({ userId, prepId }).sort({ createdAt: -1 }).limit(20).select("stage status mode wrappedUp targetQuestions transcript feedback.overallScore feedback.verdict createdAt finishedAt").lean();
+  const list = (await InterviewSession.find({ userId, prepId }).sort({ createdAt: -1 }).limit(20).select("stage status mode wrappedUp targetQuestions transcript reviews feedback.overallScore feedback.verdict createdAt finishedAt").lean()) as unknown as (SessionLike & { feedback?: { overallScore?: number; verdict?: string } })[];
   return NextResponse.json({
     ok: true,
-    sessions: list.map((s) => ({ sessionId: String(s._id), stage: s.stage, status: s.status, mode: s.mode || "chat", asked: (s.transcript || []).filter((t: any) => t.role === "interviewer").length, targetQuestions: s.targetQuestions, overallScore: s.feedback?.overallScore ?? null, verdict: s.feedback?.verdict ?? "", startedAt: s.createdAt, finishedAt: s.finishedAt || null })),
+    sessions: list.map((s) => ({ sessionId: String(s._id), stage: s.stage, status: s.status, mode: s.mode || "chat", asked: askedOf(s), targetQuestions: s.targetQuestions, overallScore: s.feedback?.overallScore ?? null, verdict: s.feedback?.verdict ?? "", startedAt: s.createdAt, finishedAt: s.finishedAt || null })),
   });
 }
 
@@ -152,11 +191,11 @@ export async function POST(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const prep: any = await InterviewPrep.findOne({ _id: prepId, userId }).lean();
+    const prep = (await InterviewPrep.findOne({ _id: prepId, userId }).lean()) as unknown as PrepLite | null;
     if (!prep) return NextResponse.json({ error: "Not found" }, { status: 404 });
     // The interviewer's knowledge: the plan's company section + live catalog signals (no website fetch here — keep the start snappy).
     const ctx = await gatherCompanyContext(prep.company, { fetchWebsite: false }).catch(() => null);
-    const cachedResearch: any = await CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null);
+    const cachedResearch = (await CompanyBrief.findOne({ key: String(prep.company || "").toLowerCase() }).lean().catch(() => null)) as unknown as { brief?: Parameters<typeof researchToText>[0] } | null;
     // The questions this company really asks (our candidates' reports + the web harvest, run now when due); they go into the prompt as their own block.
     const real = await realQuestionsForInterview(prep.company, stage, { domain: ctx?.domain, sampleTitles: ctx?.sampleTitles, harvest: process.env.NODE_ENV !== "test" });
     const companyBrief = buildCompanyBrief(prep.plan, ctx, cachedResearch?.brief ? researchToText(cachedResearch.brief) : null, null);
@@ -169,12 +208,12 @@ export async function POST(req: NextRequest) {
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief, persona: style,
       realQuestions: { text: real.text, count: real.count, stageCount: real.stageCount, harvest: real.harvest },
-      transcript: [{ role: "interviewer", content: first.message }],
+      transcript: [{ role: "interviewer", content: first.message, kind: "main" }],
     });
-    return NextResponse.json({ ok: true, session: publicSession(session.toObject()) });
-  } catch (err: any) {
+    return NextResponse.json({ ok: true, session: publicSession(session.toObject() as SessionLike) });
+  } catch (err: unknown) {
     console.error("❌ interview session start:", err);
-    return NextResponse.json({ error: err?.message || "Could not start the interview" }, { status: 500 });
+    return NextResponse.json({ error: errMsg(err) || "Could not start the interview" }, { status: 500 });
   }
 }
 
@@ -202,17 +241,17 @@ export async function PATCH(req: NextRequest) {
 
   try {
     await connectToDatabase();
-    const session: any = await InterviewSession.findOne({ _id: sessionId, userId }).select("+realQuestions.text");
+    const session = await InterviewSession.findOne({ _id: sessionId, userId }).select("+realQuestions.text");
     if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (session.status !== "active" || session.wrappedUp) return NextResponse.json({ error: "This interview is over — ask for the feedback." }, { status: 409 });
-    const prep: any = await InterviewPrep.findById(session.prepId).lean();
+    const prep = (await InterviewPrep.findById(session.prepId).lean()) as unknown as PrepLite | null;
     if (!prep) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
 
     if (codeSubmitted) {
       if (session.codeTask?.status !== "open") return NextResponse.json({ error: "No coding exercise is open in this interview." }, { status: 409 });
-      const attempt: any = await PracticeAttempt.findOne({ _id: session.codeTask.attemptId, userId }).lean();
+      const attempt = (await PracticeAttempt.findOne({ _id: session.codeTask.attemptId, userId }).lean()) as unknown as AttemptLite | null;
       if (!attempt || attempt.status === "in_progress") return NextResponse.json({ error: "The exercise has not been handed in yet.", pending: true }, { status: 409 });
-      const task: any = await PracticeTask.findById(session.codeTask.taskId).select("title").lean();
+      const task = (await PracticeTask.findById(session.codeTask.taskId).select("title").lean()) as unknown as { title?: string } | null;
       answer = codeSubmittedTurn(task, attempt);
       session.codeTask.status = "done";
       session.codeTask.score = attempt.score ?? null;
@@ -220,38 +259,39 @@ export async function PATCH(req: NextRequest) {
     }
 
     session.transcript.push({ role: "candidate", content: answer });
-    const transcript: SessionTurn[] = session.transcript.map((t: any) => ({ role: t.role, content: t.content }));
+    const transcript: SessionTurn[] = (session.transcript as Turn[]).map((t) => ({ role: t.role, content: t.content, ...(t.kind ? { kind: t.kind } : {}) }));
     const resumeText = await resumeTextFor(userId);
     const memory = await loadCoachMemory(userId);
     // Adaptive difficulty: the live per-answer reviews (written in the background after each turn).
-    const liveScores = [...(session.reviews || [])].sort((a: any, b: any) => a.index - b.index).map((r: any) => Number(r.score)).filter((n) => Number.isFinite(n));
+    const liveScores = [...((session.reviews || []) as Review[])].sort((a, b) => a.index - b.index).map((r) => Number(r.score)).filter((n) => Number.isFinite(n));
     const codeTask = { allowed: CODE_STAGES.has(session.stage) && (session.mode || "chat") === "chat", done: session.codeTask?.status === "done", title: session.codeTask?.title, score: session.codeTask?.score ?? null };
     const posting = await postingFor(session.source, session.jobId);
     const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, session.stage), style: isStyle(session.persona) ? session.persona : undefined, liveScores, codeTask, realQuestions: session.realQuestions?.text ? { text: session.realQuestions.text, count: session.realQuestions.count, stageCount: session.realQuestions.stageCount } : undefined, ...posting });
     let message = turn.message;
     if (turn.codeTask && !session.codeTask?.status) {
-      const handed = await handOutCodeTask(session, userId, prep.plan?.roleSummary || "").catch((e) => {
-        console.warn("[interview] code task not handed out:", (e as Error)?.message);
+      const handed = await handOutCodeTask(session, userId, prep.plan?.roleSummary || "").catch((e: unknown) => {
+        console.warn("[interview] code task not handed out:", errMsg(e));
         return null;
       });
       if (handed) session.codeTask = { attemptId: handed.attemptId, taskId: handed.taskId, title: handed.title, timeLimitMin: handed.timeLimitMin, status: "open", score: null, verdict: "" };
       else message += session.language === "en" ? "\n\n(The exercise isn't available right now — let's continue with questions.)" : "\n\n(התרגיל לא זמין כרגע — נמשיך בשאלות.)";
     }
-    // Safety net: whatever the model does, the interview ends a couple of questions past its budget.
-    const askedNow = session.transcript.filter((t: any) => t.role === "interviewer").length; // includes the opening
-    if (!turn.done && askedNow >= session.targetQuestions + 2) {
+    // Safety net: whatever the model does, the interview ends a couple of main questions past its budget
+    // (follow-ups and clarifications, marked by the interviewer, are not main questions).
+    const askedNow = mainQuestionsAsked(session.transcript as Turn[]) + (turn.followUp ? 0 : 1); // includes the opening and this turn
+    if (!turn.done && askedNow > session.targetQuestions + 2) {
       message = `${message}\n\n${session.language === "en" ? "That's all the time we have — thank you, we'll be in touch." : "זה כל מה שהספקנו — תודה רבה, נהיה בקשר."}`;
       turn.done = true;
     }
-    session.transcript.push({ role: "interviewer", content: message });
+    session.transcript.push({ role: "interviewer", content: message, kind: turn.followUp && !turn.done ? "followup" : "main" });
     if (turn.done) session.wrappedUp = true;
     await session.save();
     // One step behind the conversation: review the new answer now; write the whole debrief once the interviewer said goodbye.
     const id = String(session._id);
     background(() => (session.wrappedUp ? generateAndStoreFeedback(id) : reviewPendingAnswers(id)));
-    return NextResponse.json({ ok: true, message, done: turn.done, session: publicSession(session.toObject()) });
-  } catch (err: any) {
+    return NextResponse.json({ ok: true, message, done: turn.done, session: publicSession(session.toObject() as SessionLike) });
+  } catch (err: unknown) {
     console.error("❌ interview session turn:", err);
-    return NextResponse.json({ error: err?.message || "The interviewer did not answer" }, { status: 500 });
+    return NextResponse.json({ error: errMsg(err) || "The interviewer did not answer" }, { status: 500 });
   }
 }

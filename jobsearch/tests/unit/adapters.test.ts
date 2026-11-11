@@ -5,6 +5,7 @@ import { html } from "@/app/lib/scout/adapters/html";
 import { comeet } from "@/app/lib/scout/adapters/comeet";
 import { greenhouse } from "@/app/lib/scout/adapters/greenhouse";
 import { toPartialPostings, type AdapterResult, type NormalizedPosting } from "@/app/lib/scout/types";
+import { resetRendererBudget, rendererBudgetLeftMs, RENDERER_RUN_BUDGET_MS } from "@/app/lib/apply/server";
 
 /** A paginating adapter that reached the whole board returns the plain array (see AdapterResult). */
 async function complete(p: Promise<AdapterResult>): Promise<NormalizedPosting[]> {
@@ -164,6 +165,14 @@ describe("html adapter", () => {
     const out = await html("https://agency.example/list", JSON.stringify({ item: "div.inner.font_s", title: "h3.title_job a", link: "h3.title_job a", desc: ".desc", company: "Agency", country: "Israel" }));
     expect(out).toHaveLength(2);
     expect(calls.some((u) => u.includes("/api/fetch-html?url=https%3A%2F%2Fagency.example%2Flist"))).toBe(true);
+    // The run's renderer budget was charged for that fetch.
+    expect(rendererBudgetLeftMs()).toBeLessThanOrEqual(RENDERER_RUN_BUDGET_MS);
+    // Budget spent (a chunk full of blocked boards): the fallback is skipped and the 403 stands, without a call to the renderer.
+    resetRendererBudget(0);
+    const second = stubFetch({ "/list": { status: 403, body: "blocked" }, "renderer.example/api/fetch-html": { body: { status: 200, html: LISTING } } });
+    await expect(html("https://agency.example/list", JSON.stringify({ item: "div.inner.font_s", title: "h3.title_job a", link: "h3.title_job a", company: "Agency" }))).rejects.toThrow(/HTTP 403/);
+    expect(second.calls.some((u) => u.includes("/api/fetch-html"))).toBe(false);
+    resetRendererBudget();
     delete process.env.PUPPETEER_SERVER_URL;
     // Without a renderer the 403 is still an error.
     stubFetch({ "/list": { status: 403, body: "blocked" } });

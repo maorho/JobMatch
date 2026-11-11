@@ -63,7 +63,42 @@ export const NEW_USER_LIMITS: Record<string, number> = {
   question_answer: 10,
 };
 
+/**
+ * The free plan: a monthly allowance on the features that cost real money
+ * (interview simulations, voice calls, plans, tailoring, résumé generation…),
+ * on top of the daily caps. A "pro" account or an admin has only the daily
+ * caps. Override per key with QUOTA_MONTH_<KEY>=n. Keys not listed here are
+ * capped per day only.
+ */
+export const FREE_MONTHLY_LIMITS: Record<string, number> = {
+  voice_session: 4,
+  interview_session: 8,
+  prep_plan: 8,
+  tailor: 8,
+  resume_build: 5,
+  resume_chat: 200,
+  research: 10,
+  practice_grade: 60,
+  practice_author: 5,
+  practice_turn: 150,
+  outreach: 20,
+  question_answer: 30,
+  mcp_prep: 8,
+  mcp_apply: 5,
+};
+/** What the Settings page lists (the user-facing features; the MCP keys ride on the same counters). */
+export const USAGE_KEYS = ["interview_session", "voice_session", "prep_plan", "tailor", "resume_build", "resume_chat", "practice_grade", "research", "outreach", "question_answer"] as const;
+
+export const monthlyLimitFor = (key: string): number | null => {
+  const env = process.env[`QUOTA_MONTH_${key.toUpperCase()}`];
+  const n = env ? parseInt(env, 10) : NaN;
+  if (Number.isFinite(n) && n >= 0) return n;
+  return FREE_MONTHLY_LIMITS[key] ?? null;
+};
+
 export const dayKey = (d = new Date()) => d.toISOString().slice(0, 10);
+/** Month rows share the day counter's collection under a "YYYY-MM" key. */
+export const monthKey = (d = new Date()) => d.toISOString().slice(0, 7);
 export const limitFor = (key: string, opts: { newAccount?: boolean } = {}): number => {
   if (opts.newAccount) {
     const env = process.env[`QUOTA_NEW_${key.toUpperCase()}`];
@@ -76,23 +111,28 @@ export const limitFor = (key: string, opts: { newAccount?: boolean } = {}): numb
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_LIMITS[key] ?? 50;
 };
 
-// Account age is looked up once per instance per 10 minutes, not per call.
-const ageCache = new Map<string, { isNew: boolean; until: number }>();
-export async function isNewAccount(userId: string | mongoose.Types.ObjectId, now = Date.now()): Promise<boolean> {
+// Account age and plan are looked up once per instance per 10 minutes, not per call.
+type Account = { isNew: boolean; plan: "free" | "pro"; until: number };
+const ageCache = new Map<string, Account>();
+export async function accountFor(userId: string | mongoose.Types.ObjectId, now = Date.now()): Promise<{ isNew: boolean; plan: "free" | "pro" }> {
   const id = String(userId);
   const hit = ageCache.get(id);
-  if (hit && hit.until > now) return hit.isNew;
-  const u = await User.findById(id).select("createdAt").lean<{ createdAt?: Date }>().catch(() => null);
+  if (hit && hit.until > now) return hit;
+  const u = await User.findById(id).select("createdAt plan admin").lean<{ createdAt?: Date; plan?: string; admin?: boolean }>().catch(() => null);
   const isNew = !!u?.createdAt && now - new Date(u.createdAt).getTime() < NEW_USER_DAYS() * 86_400_000;
-  ageCache.set(id, { isNew, until: now + 10 * 60_000 });
-  return isNew;
+  const plan: "free" | "pro" = u?.plan === "pro" || u?.admin ? "pro" : "free";
+  ageCache.set(id, { isNew, plan, until: now + 10 * 60_000 });
+  return { isNew, plan };
+}
+export async function isNewAccount(userId: string | mongoose.Types.ObjectId, now = Date.now()): Promise<boolean> {
+  return (await accountFor(userId, now)).isNew;
 }
 /** Test hook. */
 export const _resetAgeCache = () => ageCache.clear();
 
 export class QuotaError extends Error {
-  constructor(public key: string, public limit: number, public used: number) {
-    super(`Daily limit reached for ${key} (${used}/${limit})`);
+  constructor(public key: string, public limit: number, public used: number, public period: "day" | "month" = "day") {
+    super(`${period === "month" ? "Monthly" : "Daily"} limit reached for ${key} (${used}/${limit})`);
   }
 }
 
@@ -102,29 +142,65 @@ export async function consumeQuota(userId: string | mongoose.Types.ObjectId, key
   enterUsageScope({ userId: String(userId), feature: key });
   if (process.env.NODE_ENV === "test" && !process.env.QUOTA_ENFORCE_IN_TESTS) return { used: 0, limit: limitFor(key), remaining: limitFor(key) };
   await connectToDatabase();
-  const limit = limitFor(key, { newAccount: await isNewAccount(userId) });
+  const account = await accountFor(userId);
+  const limit = limitFor(key, { newAccount: account.isNew });
   const day = dayKey();
   const cost = opts.cost ?? 1;
-  const row: any = await UsageCounter.findOneAndUpdate({ userId, day, key }, { $inc: { n: cost }, $setOnInsert: { userId, day, key } }, { upsert: true, new: true }).lean();
+  type Row = { _id: mongoose.Types.ObjectId; n: number };
+  const row = (await UsageCounter.findOneAndUpdate({ userId, day, key }, { $inc: { n: cost }, $setOnInsert: { userId, day, key } }, { upsert: true, new: true }).lean()) as unknown as Row;
   if (row.n > limit) {
     await UsageCounter.updateOne({ _id: row._id }, { $inc: { n: -cost } }); // not counted when refused
     throw new QuotaError(key, limit, row.n - cost);
   }
+  // The free plan's monthly allowance, on the same counters under the month key.
+  const monthly = account.plan === "free" ? monthlyLimitFor(key) : null;
+  if (monthly !== null) {
+    const month = monthKey();
+    const mrow = (await UsageCounter.findOneAndUpdate({ userId, day: month, key }, { $inc: { n: cost }, $setOnInsert: { userId, day: month, key } }, { upsert: true, new: true }).lean()) as unknown as Row;
+    if (mrow.n > monthly) {
+      await Promise.all([UsageCounter.updateOne({ _id: mrow._id }, { $inc: { n: -cost } }), UsageCounter.updateOne({ _id: row._id }, { $inc: { n: -cost } })]);
+      throw new QuotaError(key, monthly, mrow.n - cost, "month");
+    }
+  }
   return { used: row.n, limit, remaining: Math.max(0, limit - row.n) };
 }
 
-/** The response a route sends when consumeQuota throws (429 + a Hebrew hint the UI can show as is). */
+/** What a person has used this month against the free plan (for Settings). */
+export async function usageForUser(userId: string | mongoose.Types.ObjectId): Promise<{ plan: "free" | "pro"; newAccount: boolean; month: string; features: { key: string; used: number; limit: number | null }[] }> {
+  await connectToDatabase();
+  const account = await accountFor(userId);
+  const month = monthKey();
+  const rows = (await UsageCounter.find({ userId, day: month, key: { $in: [...USAGE_KEYS] } }).select("key n").lean()) as unknown as { key: string; n: number }[];
+  const used = new Map(rows.map((r) => [r.key, r.n]));
+  return {
+    plan: account.plan,
+    newAccount: account.isNew,
+    month,
+    features: USAGE_KEYS.map((key) => ({ key, used: used.get(key) || 0, limit: account.plan === "free" ? monthlyLimitFor(key) : null })),
+  };
+}
+
+/** The response a route sends when consumeQuota throws (429 + a hint in both languages the UI can show as is). */
 export function quotaResponse(e: unknown): NextResponse | null {
   if (!(e instanceof QuotaError)) return null;
+  const month = e.period === "month";
   return NextResponse.json(
-    { ok: false, error: "quota", key: e.key, limit: e.limit, message: `הגעת למכסה היומית (${e.limit}). נסו שוב מחר, או כתבו לנו אם צריך יותר.`, messageEn: `You've reached today's limit (${e.limit}). Try again tomorrow, or write to us if you need more.` },
-    { status: 429, headers: { "Retry-After": "3600" } }
+    {
+      ok: false,
+      error: "quota",
+      key: e.key,
+      limit: e.limit,
+      period: e.period,
+      message: month ? `הגעת למכסה החודשית של החשבון החינמי (${e.limit}). המכסה מתחדשת בתחילת החודש; כתבו לנו אם צריך יותר.` : `הגעת למכסה היומית (${e.limit}). נסו שוב מחר, או כתבו לנו אם צריך יותר.`,
+      messageEn: month ? `You've reached this month's free-plan allowance (${e.limit}). It resets at the start of next month; write to us if you need more.` : `You've reached today's limit (${e.limit}). Try again tomorrow, or write to us if you need more.`,
+    },
+    { status: 429, headers: { "Retry-After": month ? "86400" : "3600" } }
   );
 }
 
 /** Today's totals across everyone (for the health page). */
 export async function usageToday(): Promise<Record<string, number>> {
   await connectToDatabase();
-  const rows: any[] = await UsageCounter.aggregate([{ $match: { day: dayKey() } }, { $group: { _id: "$key", n: { $sum: "$n" } } }]);
+  const rows = (await UsageCounter.aggregate([{ $match: { day: dayKey() } }, { $group: { _id: "$key", n: { $sum: "$n" } } }])) as { _id: string; n: number }[];
   return Object.fromEntries(rows.map((r) => [r._id, r.n]));
 }

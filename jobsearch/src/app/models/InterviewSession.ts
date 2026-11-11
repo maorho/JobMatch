@@ -11,6 +11,8 @@ const TurnSchema = new mongoose.Schema(
   {
     role: { type: String, enum: ["interviewer", "candidate"], required: true },
     content: { type: String, required: true, maxlength: 6000 },
+    /** Interviewer turns (chat mode): a follow-up / clarification is not a main question. */
+    kind: { type: String, enum: ["main", "followup"] },
     at: { type: Date, default: Date.now },
     /** Voice mode: how long this turn was spoken, and the measured voice profile. */
     seconds: { type: Number },

@@ -27,22 +27,38 @@ export const applyServerToken = () => process.env.SCRAPER_TOKEN || process.env.C
  * For sites that answer our serverless egress with 403. Null when the renderer
  * is not configured, busy, or failed — the caller keeps its own error.
  */
-export async function fetchHtmlViaRenderer(url: string, timeoutMs = 45_000): Promise<{ status: number; html: string } | null> {
+export async function fetchHtmlViaRenderer(url: string, timeoutMs = RENDERER_FETCH_MS): Promise<{ status: number; html: string } | null> {
   const base = applyServerBase();
   if (!base) return null;
+  // The run's budget: a chunk full of blocked boards must not spend its whole call waiting on the renderer.
+  if (rendererBudget.leftMs < RENDERER_MIN_LEFT_MS) return null;
+  const t0 = Date.now();
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), Math.min(timeoutMs, rendererBudget.leftMs));
   try {
     const res = await fetch(`${base}/api/fetch-html?url=${encodeURIComponent(url)}`, { headers: { "x-scraper-token": applyServerToken() }, cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return null;
-    const d: any = await res.json();
+    const d = (await res.json()) as { html?: unknown; status?: unknown } | null;
     return typeof d?.html === "string" ? { status: Number(d.status) || 200, html: d.html } : null;
   } catch {
     return null;
   } finally {
     clearTimeout(timer);
+    rendererBudget.leftMs -= Date.now() - t0;
   }
 }
+
+/** One board page through the renderer: 20 s at most (a 403 board that needs longer is not worth the chunk's time). */
+export const RENDERER_FETCH_MS = 20_000;
+/** All renderer fallbacks in one scout run share this much time; below the minimum the fallback is skipped. */
+export const RENDERER_RUN_BUDGET_MS = 60_000;
+const RENDERER_MIN_LEFT_MS = 3_000;
+const rendererBudget = { leftMs: RENDERER_RUN_BUDGET_MS };
+/** Called at the start of a scout run (lib/scout/runScout.ts). */
+export function resetRendererBudget(ms = RENDERER_RUN_BUDGET_MS) {
+  rendererBudget.leftMs = ms;
+}
+export const rendererBudgetLeftMs = () => rendererBudget.leftMs;
 
 export type ApplyServerHealth = { ok: boolean; reason?: string };
 
@@ -64,7 +80,7 @@ export async function probeApplyServer(timeoutMs = 20_000): Promise<ApplyServerP
     const res = await fetch(`${base}/health`, { headers: { "x-scraper-token": applyServerToken() }, signal: ctrl.signal, cache: "no-store" });
     const ms = Date.now() - t0;
     if (!res.ok) return { ok: false, configured: true, reachable: false, ms, reason: `health returned ${res.status}` };
-    const body: any = await res.json().catch(() => ({}));
+    const body = (await res.json().catch(() => ({}))) as { authorized?: unknown; agent?: unknown };
     const authorized = typeof body.authorized === "boolean" ? body.authorized : null;
     return {
       ok: authorized !== false,
@@ -75,8 +91,9 @@ export async function probeApplyServer(timeoutMs = 20_000): Promise<ApplyServerP
       ms,
       ...(authorized === false ? { reason: "the server rejects SCRAPER_TOKEN: set the same value in Vercel and on the server" } : {}),
     };
-  } catch (e: any) {
-    return { ok: false, configured: true, reachable: false, reason: e?.name === "AbortError" ? `no answer in ${timeoutMs / 1000}s` : `unreachable: ${e?.message || e}` };
+  } catch (e: unknown) {
+    const err = e as { name?: string; message?: string } | null;
+    return { ok: false, configured: true, reachable: false, reason: err?.name === "AbortError" ? `no answer in ${timeoutMs / 1000}s` : `unreachable: ${err?.message || String(e)}` };
   } finally {
     clearTimeout(timer);
   }
@@ -95,8 +112,9 @@ export async function checkApplyServer(timeoutMs = 8_000): Promise<ApplyServerHe
     const res = await fetch(`${base}/health`, { signal: ctrl.signal, cache: "no-store" });
     if (!res.ok) return { ok: false, reason: `apply server health returned ${res.status}` };
     return { ok: true };
-  } catch (e: any) {
-    return { ok: false, reason: e?.name === "AbortError" ? "apply server health check timed out" : `apply server unreachable: ${e?.message || e}` };
+  } catch (e: unknown) {
+    const err = e as { name?: string; message?: string } | null;
+    return { ok: false, reason: err?.name === "AbortError" ? "apply server health check timed out" : `apply server unreachable: ${err?.message || String(e)}` };
   } finally {
     clearTimeout(timer);
   }

@@ -22,7 +22,7 @@ vi.mock("@langchain/openai", () => ({
       if (this.opts.modelKwargs?.response_format) return { content: JSON.stringify(sys.includes("debrief") ? FEEDBACK : { stages: [] }) };
       // Interviewer: never coaches; wraps up after the target count.
       const target = Number(/Plan for (\d+) main questions/.exec(sys)?.[1] || 8);
-      const asked = Number(/Interviewer turns so far: (\d+)/.exec(sys)?.[1] || 0);
+      const asked = Number(/Main questions asked so far, including the opening: (\d+)/.exec(sys)?.[1] || 0);
       turns++;
       if (asked >= target) return { content: "תודה רבה, זה הכול מצידי. נחזור אליך בימים הקרובים. <<END>>" };
       if (asked === 0 && sys.includes("REAL QUESTIONS FIRST")) return { content: `היי, אני מהנדס בכיר ב-Acme. [real:${/at least (\d+) of your/.exec(sys)?.[1]}] ספר/י על עצמך.` };
@@ -39,7 +39,7 @@ import ExternalJobs from "@/app/models/ExternalJobs";
 import InterviewPrep from "@/app/models/InterviewPrep";
 import InterviewSession from "@/app/models/InterviewSession";
 import { signJwt } from "@/app/lib/jwt";
-import { buildInterviewerPrompt, buildCompanyBrief, END_MARK, CODE_MARK, adaptiveSteer, pickStyle, FOLLOWUP_BUDGET } from "@/app/lib/interview/simulator";
+import { buildInterviewerPrompt, buildCompanyBrief, END_MARK, CODE_MARK, FOLLOWUP_MARK, mainQuestionsAsked, adaptiveSteer, pickStyle, FOLLOWUP_BUDGET } from "@/app/lib/interview/simulator";
 import mongoose from "mongoose";
 import PracticeTask from "@/app/models/PracticeTask";
 import PracticeAttempt from "@/app/models/PracticeAttempt";
@@ -86,7 +86,7 @@ describe("interviewer prompt", () => {
     expect(sys).toMatch(/senior engineer on the team at Acme/);
     expect(sys).toMatch(/Do NOT evaluate, grade, coach/);
     expect(sys).toContain(END_MARK);
-    expect(sys).toMatch(/Interviewer turns so far: 1/);
+    expect(sys).toMatch(/Main questions asked so far, including the opening: 1/);
     expect(sys).toMatch(/OPENING/);
   });
 
@@ -121,6 +121,14 @@ describe("interviewer prompt", () => {
     expect(mid).toMatch(/ALREADY ASKED[\s\S]*1\. Tell me about a conflict you handled[\s\S]*2\. Why us\?/);
     expect(mid).toMatch(/BUDGET SPENT: you have asked all 2 main questions/);
     expect(buildInterviewerPrompt({ ...base, stage: "hr", transcript: [{ role: "interviewer", content: "opening" }] })).not.toMatch(/ALREADY ASKED|BUDGET SPENT/);
+    // Follow-ups and clarifications carry a private mark and do not count as main questions: the budget is not spent by digging deeper.
+    expect(mid).toContain(`append the exact token ${FOLLOWUP_MARK}`);
+    const withFollowUps = [{ role: "interviewer", content: "opening" }, { role: "candidate", content: "hi" }, { role: "interviewer", content: "Tell me about a conflict you handled" }, { role: "candidate", content: "…" }, { role: "interviewer", content: "And what was your own part in it?", kind: "followup" }, { role: "candidate", content: "…" }, { role: "interviewer", content: "Do you mean the manager or the teammate?", kind: "followup" }, { role: "candidate", content: "…" }] as const;
+    expect(mainQuestionsAsked([...withFollowUps])).toBe(2); // the opening + one main question
+    const deep = buildInterviewerPrompt({ ...base, stage: "hr", targetQuestions: 2, transcript: [...withFollowUps] });
+    expect(deep).not.toMatch(/BUDGET SPENT/);
+    expect(deep).toMatch(/ALREADY ASKED[\s\S]*1\. Tell me about a conflict you handled/);
+    expect(deep).not.toMatch(/ALREADY ASKED[\s\S]*your own part in it/);
     expect(adaptiveSteer([7, 7]).steer).toBe("step_up");
     expect(adaptiveSteer([4, 2]).steer).toBe("step_down");
     expect(adaptiveSteer([4, 8]).steer).toBeNull();

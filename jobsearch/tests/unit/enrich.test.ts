@@ -23,6 +23,14 @@ describe("years of experience", () => {
     expect(extractExperience("No experience needed, we train you")).toBeNull();
   });
 
+  it("does not take a sub-requirement for the bar: 'including 2+ years managing' qualifies the headline years", () => {
+    expect(extractExperience("5+ years of software development experience, including 2+ years managing a team")).toEqual({ min: 5, max: null });
+    expect(extractExperience("Experience as a backend developer, of which 3 years as a team lead")).toEqual({ min: 3, max: null }); // nothing else to take
+    expect(extractExperience("3+ years of experience as a full stack developer, 1+ years as a tech lead")).toEqual({ min: 3, max: null });
+    expect(extractExperience("At least 5 years of experience in mechanical design")).toEqual({ min: 5, max: null }); // "at least" is the headline, not a qualifier
+    expect(extractExperience("ניסיון של 4 שנים בפיתוח, מתוכן שנתיים בניהול צוות")).toEqual({ min: 4, max: null });
+  });
+
   it("buckets by the minimum", () => {
     expect(experienceBucket(0)).toBe("0-2");
     expect(experienceBucket(2)).toBe("0-2");

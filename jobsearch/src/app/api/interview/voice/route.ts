@@ -144,7 +144,9 @@ export async function PATCH(req: NextRequest) {
   // answers now; when the interviewer has said goodbye, write the whole thing.
   const id = String(session._id);
   background(() => (session.wrappedUp ? generateAndStoreFeedback(id) : reviewPendingAnswers(id)));
-  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery, reviews: (session.reviews || []).length, steer: steer.steer ? { kind: steer.steer, note: steer.note } : null });
+  // How many of the reviewed questions were follow-ups or clarifications: the browser's question budget counts only main questions.
+  const followUps = (session.reviews || []).filter((r: { kind?: string }) => r.kind && r.kind !== "main").length;
+  return NextResponse.json({ ok: true, turns: turns.length, wrappedUp: !!session.wrappedUp, delivery: session.delivery, reviews: (session.reviews || []).length, followUps, steer: steer.steer ? { kind: steer.steer, note: steer.note } : null });
 }
 
 const num = (v: unknown, lo: number, hi: number) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : 0);

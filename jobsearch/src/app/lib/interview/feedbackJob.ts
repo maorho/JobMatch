@@ -50,14 +50,16 @@ export async function reviewPendingAnswers(sessionId: string): Promise<number> {
   if (!session || session.status === "finished") return 0;
   const transcript: SessionTurn[] = session.transcript.map((t: any) => ({ role: t.role, content: t.content }));
   const done = new Set<number>((session.reviews || []).map((r: any) => r.index));
-  const pending = pairQuestions(transcript).filter((p) => !done.has(p.index) && p.answer.split(/\s+/).length >= 6);
+  const pairs = pairQuestions(transcript);
+  const pending = pairs.filter((p) => !done.has(p.index) && p.answer.split(/\s+/).length >= 6);
   if (!pending.length) return 0;
   const resumeText = await resumeTextFor(String(session.userId));
   const language = detectLanguage(transcript, session.language);
   let n = 0;
   for (const p of pending) {
     try {
-      const r = await reviewAnswer({ question: p.question, answer: p.answer, job: { title: session.jobTitle, company: session.company }, stage: session.stage, resumeText, language });
+      const previousQuestion = pairs[pairs.indexOf(p) - 1]?.question;
+      const r = await reviewAnswer({ question: p.question, answer: p.answer, previousQuestion, job: { title: session.jobTitle, company: session.company }, stage: session.stage, resumeText, language });
       await InterviewSession.updateOne({ _id: sessionId, "reviews.index": { $ne: p.index } }, { $push: { reviews: { index: p.index, ...r } } });
       n++;
     } catch (e) {

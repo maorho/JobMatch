@@ -66,7 +66,7 @@ Return STRICT JSON: {"results":[{"id","fit","why","whyEn","matched":[...],"gaps"
   return { system, user };
 }
 
-const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
+const contentOf = (res: { content: unknown }): string => (typeof res.content === "string" ? res.content : ((res.content as { text?: string }[] | undefined) || []).map((p) => p?.text ?? "").join(""));
 
 /** Whether a cache miss would actually call the LLM (the explain route charges quota only then). */
 export const llmRerankEnabled = () => !!(process.env.OPENAI_API_KEY && process.env.NODE_ENV !== "test");
@@ -76,7 +76,8 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
   await connectToDatabase();
   const out = new Map<string, RerankVerdict>();
   if (!opts.jobs.length) return out;
-  const cached: any[] = await MatchCache.find({ userId: opts.userId, resumeVersion: opts.resumeVersion, jobId: { $in: opts.jobs.map((j) => j._id) } }).lean();
+  type CachedRow = { jobId: unknown; fit: number; why: string; whyEn?: string; matched?: string[]; gaps?: string[] };
+  const cached = (await MatchCache.find({ userId: opts.userId, resumeVersion: opts.resumeVersion, jobId: { $in: opts.jobs.map((j) => j._id) } }).lean()) as unknown as CachedRow[];
   for (const c of cached) out.set(String(c.jobId), { _id: String(c.jobId), fit: c.fit, why: c.why, whyEn: c.whyEn || "", matched: c.matched || [], gaps: c.gaps || [], cached: true });
   const useLLM = opts.useLLM ?? llmRerankEnabled();
   const pending = opts.jobs.filter((j) => !out.has(j._id));

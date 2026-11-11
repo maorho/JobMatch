@@ -7,6 +7,7 @@ import { isIsraelOrRemote } from "./locationFilter";
 import { NormalizedPosting, toPartialPostings } from "./types";
 import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
 import { enrich, titleKey } from "@/app/lib/jobs/enrich";
+import { resetRendererBudget } from "@/app/lib/apply/server";
 
 /** A posting that closed this long ago and comes back under a new id is the same posting again (a repost). */
 const REPOST_WINDOW_MS = 180 * 24 * 3600_000;
@@ -161,6 +162,7 @@ export type RunOptions = {
  */
 export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
   await connectToDatabase();
+  resetRendererBudget(); // blocked boards may use the renderer, but only this much of the run
 
   const query: Record<string, unknown> = { enabled: true };
   if (opts.company) query.companyName = opts.company;

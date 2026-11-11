@@ -36,6 +36,10 @@ const CHECK_IN_MS = 12_000;
 
 type Status = "connecting" | "live" | "ended" | "error";
 
+/** The Realtime server events this component reads (GA and preview names; everything else is ignored). */
+type RealtimeItem = { type?: string; name?: string; call_id?: string; arguments?: string };
+type RealtimeEvent = { type?: string; transcript?: string; delta?: string; response?: { output?: RealtimeItem[] }; error?: { message?: string } };
+
 export default function VoiceInterview({ sessionId, clientSecret, model, endpoint, targetQuestions, stageTitle, company, interviewer, longAnswerSec = 90, timeLimitSec = 15 * 60, onEnded }: Props) {
   const { t, dir } = useT();
   const [status, setStatus] = useState<Status>("connecting");
@@ -66,6 +70,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   // Clock on the current answer: past the stage's limit the interviewer is told to cut in (once per answer).
   const longAnswerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSteerRef = useRef<string>("");
+  // Reviewed questions the server classified as follow-ups / clarifications: they do not count against the budget (one answer behind).
+  const followUpsRef = useRef(0);
   // The clock on the whole call and the question budget: the model is reminded, then told to close, then cut off.
   const closingRef = useRef(false);
   const warnedRef = useRef(false);
@@ -83,7 +89,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   /** After every answer: how far along the interview is and what was already covered, so nothing is asked twice. */
   const progressNote = () => {
     const qs = turnsRef.current.filter((t) => t.role === "interviewer").slice(1); // the opening is not a question
-    const askedN = qs.length;
+    const askedN = Math.max(0, qs.length - followUpsRef.current); // follow-ups and clarifications are not main questions
     const covered = qs.map((q, i) => `${i + 1}. ${q.content.replace(/\s+/g, " ").slice(0, 120)}`).join("\n");
     const left = Math.max(0, targetQuestions - askedN);
     if (askedN >= targetQuestions) {
@@ -140,6 +146,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         });
         // Adaptive difficulty: the server's read of the answers so far becomes a private note in the conversation.
         const d = await r.json().catch(() => ({}));
+        if (typeof d?.followUps === "number") followUpsRef.current = d.followUps;
         const steer = d?.steer?.kind ? `${d.steer.kind}:${turnsRef.current.length}` : "";
         if (!wrappedUp && d?.steer?.note && steer !== lastSteerRef.current && !endedRef.current) {
           lastSteerRef.current = steer;
@@ -173,7 +180,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   );
 
   // ---- Realtime events (GA names first, preview names as fallback) ----
-  const handleEvent = (ev: any) => {
+  const handleEvent = (ev: RealtimeEvent) => {
     const type: string = ev?.type || "";
     switch (type) {
       case "input_audio_buffer.speech_started":
@@ -229,7 +236,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         break;
       }
       case "response.done": {
-        const items: any[] = ev.response?.output || [];
+        const items = ev.response?.output || [];
         const call = items.find((i) => i.type === "function_call" && i.name === "end_interview");
         if (call) {
           try {
@@ -302,9 +309,10 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         const res = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${clientSecret}`, "Content-Type": "application/sdp" }, body: offer.sdp });
         if (!res.ok) throw new Error(t("interview.voice.handshakeFailed", { status: res.status }));
         await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
-        setError(e?.name === "NotAllowedError" ? t("interview.voice.micDenied") : e?.message || t("interview.voice.connectFailed"));
+        const err = e as { name?: string; message?: string } | null;
+        setError(err?.name === "NotAllowedError" ? t("interview.voice.micDenied") : err?.message || t("interview.voice.connectFailed"));
         hangUp("error");
       }
     };

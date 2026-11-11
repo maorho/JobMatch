@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setupTestDb, resetDb } from "../setup/mongo";
 import User from "@/app/models/User";
-import { consumeQuota, limitFor, isNewAccount, NEW_USER_LIMITS, DEFAULT_LIMITS, QuotaError, _resetAgeCache } from "@/app/lib/ops/quota";
+import { consumeQuota, limitFor, isNewAccount, NEW_USER_LIMITS, DEFAULT_LIMITS, FREE_MONTHLY_LIMITS, QuotaError, _resetAgeCache, usageForUser, monthKey } from "@/app/lib/ops/quota";
 
 setupTestDb();
 
@@ -41,5 +41,34 @@ describe("new-account quotas", () => {
 
   it("a key without a new-account entry keeps its normal limit", () => {
     expect(limitFor("some_future_key", { newAccount: true })).toBe(50);
+  });
+});
+
+describe("free-plan monthly allowance", () => {
+  it("a free account stops at the month's allowance even when the day still allows; a pro account does not", async () => {
+    const monthly = FREE_MONTHLY_LIMITS.prep_plan; // 8, under the daily 10
+    expect(monthly).toBeLessThan(DEFAULT_LIMITS.prep_plan);
+    for (let i = 0; i < monthly; i++) await consumeQuota(veteran, "prep_plan");
+    let err: unknown = null;
+    await consumeQuota(veteran, "prep_plan").catch((e) => (err = e));
+    expect(err).toBeInstanceOf(QuotaError);
+    expect((err as QuotaError).period).toBe("month");
+    expect((err as QuotaError).limit).toBe(monthly);
+    // The refused call is not counted, on either counter.
+    const usage = await usageForUser(veteran);
+    expect(usage.plan).toBe("free");
+    expect(usage.month).toBe(monthKey());
+    expect(usage.features.find((f) => f.key === "prep_plan")).toEqual({ key: "prep_plan", used: monthly, limit: monthly });
+    // Upgrade the account: only the daily cap applies and the Settings card shows no limit.
+    await User.updateOne({ _id: veteran }, { $set: { plan: "pro" } });
+    _resetAgeCache();
+    expect((await consumeQuota(veteran, "prep_plan")).limit).toBe(DEFAULT_LIMITS.prep_plan);
+    expect((await usageForUser(veteran)).plan).toBe("pro");
+    expect((await usageForUser(veteran)).features.find((f) => f.key === "prep_plan")?.limit).toBeNull();
+  });
+
+  it("a key without a monthly entry is capped per day only", async () => {
+    for (let i = 0; i < 5; i++) await consumeQuota(veteran, "interview_turn");
+    expect((await usageForUser(veteran)).features.find((f) => f.key === "interview_turn")).toBeUndefined();
   });
 });

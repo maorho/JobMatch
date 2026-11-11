@@ -14,6 +14,7 @@ import { PageHeader, Spinner, SignInGate } from "../components/ui";
 import PushCard from "../components/PushCard";
 import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
 import type { Key } from "../lib/i18n/dict";
+import UsageCard from "../components/UsageCard";
 
 type Profile = { username: string; email: string; fullname: string; phone: string; currentJob: string; company: string; recruiter: boolean; authProvider?: string; resumeScore?: number; resumeUpdatedAt?: string; privacy?: { excludeFromTraining?: boolean } };
 
@@ -100,6 +101,8 @@ export default function SettingsPage() {
       <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
       <div className="max-w-3xl space-y-6">
         {msg && <div className={`jm-alert ${msg.kind === "ok" ? "jm-alert-ok" : "jm-alert-err"}`} role="status">{msg.text}</div>}
+
+        <UsageCard className={card} />
 
         {p && (
           <form onSubmit={saveProfile} className={card}>

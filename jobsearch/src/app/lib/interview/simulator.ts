@@ -13,9 +13,14 @@ import { hebrewRule } from "@/app/lib/llm/hebrew";
  * one question at a time, follows up, and gives NO feedback until the
  * interview is over — then it writes a full debrief.
  */
-export type SessionTurn = { role: "interviewer" | "candidate"; content: string };
+/** `kind` (interviewer turns, chat mode): a follow-up or clarification does not count against the question budget. */
+export type SessionTurn = { role: "interviewer" | "candidate"; content: string; kind?: "main" | "followup" };
 
 export const END_MARK = "<<END>>";
+/** The interviewer marks a follow-up / clarification turn (private; stripped before the candidate sees it), so it is not counted as a main question. */
+export const FOLLOWUP_MARK = "<<FOLLOWUP>>";
+/** Main questions asked so far: interviewer turns minus the ones marked as follow-ups. */
+export const mainQuestionsAsked = (transcript: SessionTurn[]) => transcript.filter((t) => t.role === "interviewer" && t.kind !== "followup").length;
 /** The interviewer asks the system to hand the candidate a timed coding exercise (technical stages, chat mode). */
 export const CODE_MARK = "<<CODE_TASK>>";
 /** A candidate turn that carries the solution back into the conversation starts with this. */
@@ -177,11 +182,11 @@ export function buildInterviewerPrompt(input: SimInput): string {
   const stage = input.plan.stages.find((s) => s.key === input.stage) || input.plan.stages[0];
   const persona = PERSONA[input.stage] || PERSONA.hr;
   const lang = input.language === "en" ? "English" : "Hebrew (natural spoken register; technical terms in English)";
-  const asked = input.transcript.filter((t) => t.role === "interviewer").length;
+  const asked = mainQuestionsAsked(input.transcript); // the opening counts here, follow-ups do not
   const who = input.interviewer ? `${input.interviewer.name} (${input.interviewer.gender}), ${persona.en}` : persona.en;
   const budget = FOLLOWUP_BUDGET[input.stage] ?? 1;
   // What was already asked, so the model never circles back; and a hard close when the budget is spent.
-  const askedList = input.transcript.filter((t) => t.role === "interviewer").slice(1).map((t, i) => `${i + 1}. ${t.content.replace(/\s+/g, " ").slice(0, 140)}`);
+  const askedList = input.transcript.filter((t) => t.role === "interviewer" && t.kind !== "followup").slice(1).map((t, i) => `${i + 1}. ${t.content.replace(/\s+/g, " ").slice(0, 140)}`);
   const alreadyAsked = askedList.length ? `\n- ALREADY ASKED (never repeat or rephrase these subjects; every new main question is on a NEW subject):\n${askedList.join("\n")}` : "";
   const overBudget = asked > input.targetQuestions ? `\n- BUDGET SPENT: you have asked all ${input.targetQuestions} main questions. Do NOT ask anything else. Close the interview now in 1–2 sentences and append ${END_MARK}.` : "";
   const realN = input.realQuestions?.stageCount ? Math.min(3, input.realQuestions.stageCount, Math.max(1, input.targetQuestions - 1)) : 0;
@@ -228,23 +233,25 @@ HOW TO BEHAVE:
 ${realRule}${alreadyAsked}${overBudget}
 - COMPANY-ANCHORED QUESTIONS: at least two of your main questions must be anchored in a specific item from what you know — a product, a recent news item, their stack, a signal from their open roles, or a sentence from the role summary ("we use X for Y — how would you approach Z?"). Only from the brief above, never invented; when the brief is thin, anchor in the role summary and the posting's title.${live}${retest}${code}
 - CLARIFY WHEN NEEDED: if an answer is unclear, incomplete or you did not understand it, ask a short clarifying follow-up ("do you mean…?", "can you give the concrete example?") — that does not count against the budget. Never pretend you understood.
+- FOLLOW-UP MARK: when your message is a follow-up or a clarification on the subject of your previous question (not a new main question), append the exact token ${FOLLOWUP_MARK} at the very end of it. It is private — the candidate never sees it — and it is how the system knows the message does not count as a main question. A new main question carries no token.
 - Do NOT evaluate, grade, coach or say how the candidate is doing. Feedback comes only after the interview. The one exception is the hands-on task in a technical stage: a small hint when they are stuck is allowed (the script says so), the solution is not.
 - Stay in character even if the candidate asks for feedback: politely say you'll share impressions at the end.
 - If the candidate asks YOU something (about the company, the team, the role, the process, salary range you don't know…), answer it briefly and honestly from what you know — say "I don't have that information" when you don't — then give them room to react before moving on. Candidates are expected to ask questions; it's a good sign.
-- Plan for ${input.targetQuestions} main questions (your opening and the candidate's self-introduction do NOT count). Interviewer turns so far: ${asked}. When you have asked all of them and received the last answer — or when the candidate asks to stop — close the interview in 1–2 sentences (thank them, say what happens next) and append the exact token ${END_MARK} at the very end of that message.
+- Plan for ${input.targetQuestions} main questions (your opening and the candidate's self-introduction do NOT count; follow-ups and clarifications do not count either). Main questions asked so far, including the opening: ${asked}. When you have asked all of them and received the last answer — or when the candidate asks to stop — close the interview in 1–2 sentences (thank them, say what happens next) and append the exact token ${END_MARK} at the very end of that message.
 - OPENING (when the transcript is empty), in this order and in one message: (1) introduce yourself by name and role; (2) tell them about ${input.job.company} — what it does, for whom, size/stage, from the brief, 2–3 sentences; (3) present the "${input.job.title}" role — what the person will do, the team, the stack, from the posting, 2–3 sentences — and what this stage is about; (4) ask them to tell you about themselves — and STOP there. Your first real question comes only after they have introduced themselves.`.trim();
 }
 
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
 
-export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean; codeTask: boolean }> {
+export async function interviewerTurn(input: SimInput): Promise<{ message: string; done: boolean; codeTask: boolean; followUp: boolean }> {
   const msgs = [new SystemMessage(buildInterviewerPrompt(input)), ...input.transcript.slice(-30).map((t) => (t.role === "candidate" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (input.transcript.length === 0) msgs.push(new HumanMessage(input.language === "en" ? "(The candidate has joined the call.)" : "(המועמד/ת נכנס/ה לשיחה.)"));
   const res = await chatModel("interviewer", { temperature: 0.6 }).invoke(msgs);
   const raw = contentOf(res).trim();
   const done = raw.includes(END_MARK);
   const codeTask = !done && raw.includes(CODE_MARK) && !!input.codeTask?.allowed && !input.codeTask.done;
-  return { message: raw.replace(END_MARK, "").replace(CODE_MARK, "").trim(), done, codeTask };
+  const followUp = !done && !codeTask && raw.includes(FOLLOWUP_MARK);
+  return { message: raw.replace(END_MARK, "").replace(CODE_MARK, "").replace(FOLLOWUP_MARK, "").trim(), done, codeTask, followUp };
 }
 
 export const feedbackSchema = z.object({
@@ -278,6 +285,8 @@ export const answerReviewSchema = z.object({
   score: z.number().min(0).max(10),
   whatWorked: z.string().default(""),
   betterAnswer: z.string().default(""),
+  /** Whether the question opened a new subject or dug into the previous one (the voice call's question budget counts only "main"). */
+  kind: z.enum(["main", "follow_up", "clarification"]).default("main"),
 });
 export type AnswerReview = z.infer<typeof answerReviewSchema>;
 
@@ -286,11 +295,12 @@ export type AnswerReview = z.infer<typeof answerReviewSchema>;
  * interview is still running so the final debrief has almost nothing left
  * to write when the candidate hangs up.
  */
-export async function reviewAnswer(input: { question: string; answer: string; job: { title: string; company: string }; stage: string; resumeText?: string; language: "he" | "en" }): Promise<AnswerReview> {
+export async function reviewAnswer(input: { question: string; answer: string; previousQuestion?: string; job: { title: string; company: string }; stage: string; resumeText?: string; language: "he" | "en" }): Promise<AnswerReview> {
   const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
   const system = `You are an interviewer at ${input.job.company} reviewing one answer from a "${input.stage}" interview for ${input.job.title}. Write in ${lang}. Be specific and fair; quote what they said. Score 0–10 (7+ = solid). "betterAnswer": a stronger version in the candidate's own voice, 3–5 sentences, using ONLY their real experience from the résumé — never invent. The answer is a speech transcript: ignore small transcription slips.
-Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.${hebrewRule(input.language)}`;
-  const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\nQUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
+"kind": "main" when the question opened a new subject; "follow_up" when it dug deeper into the subject of the previous question; "clarification" when it only asked the candidate to clarify or repeat.
+Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer","kind"}.${hebrewRule(input.language)}`;
+  const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\n${input.previousQuestion ? `PREVIOUS QUESTION: ${input.previousQuestion}\n\n` : ""}QUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
   const res = await chatModel("quality", { temperature: 0.2, maxTokens: 1500, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]); // a Hebrew review with a better answer is ~1k tokens
   const parsed = answerReviewSchema.safeParse(extractJson(contentOf(res)));
   if (!parsed.success) throw new Error("Answer review invalid");
