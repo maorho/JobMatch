@@ -173,6 +173,7 @@ describe("voice session routes", () => {
     expect(fb.body.cached).toBe(true); // ready before the candidate asked
     expect(fb.body.feedback.delivery).toEqual({ score: 5, notes: expect.stringMatching(/וריאציה/) }); // the LLM saw "monotone" in the note
     expect(fb.body.delivery.tone.measuredAnswers).toBe(2);
+    expect(fb.body.delivery.presence).toMatchObject({ measuredAnswers: 1, eyeContact: 0.3 }); // the debrief recomputes delivery from the stored turns, camera included
 
     const one = await j(await sessGET(new NextRequest(`${O}/api/interview/session?sessionId=${sessionId}`, { headers: await cookie(me) })));
     expect(one.body.session).toMatchObject({ mode: "voice", status: "finished" });

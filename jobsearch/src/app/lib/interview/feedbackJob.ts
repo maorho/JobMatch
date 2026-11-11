@@ -97,7 +97,7 @@ export async function generateAndStoreFeedback(sessionId: string, opts: { force?
   let deliveryNote: string | undefined;
   let delivery: any;
   if (claimed.mode === "voice") {
-    delivery = computeDelivery(claimed.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody })), fresh?.impression, claimed.stage);
+    delivery = computeDelivery(claimed.transcript.map((t: any) => ({ role: t.role, content: t.content, seconds: t.seconds, prosody: t.prosody, presence: t.presence })), fresh?.impression, claimed.stage);
     deliveryNote = describeDelivery(delivery, language);
   }
   const memory = await loadCoachMemory(String(claimed.userId));
