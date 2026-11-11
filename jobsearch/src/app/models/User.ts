@@ -16,6 +16,8 @@ export interface IUser extends Document {
   admin: boolean;
   /** Account plan while the service is free: "free" has monthly caps on the paid features (lib/ops/quota.ts); "pro" has only the daily abuse caps. */
   plan?: "free" | "pro";
+  /** Set by an admin: the account cannot sign in and every session is refused until it is enabled again. */
+  disabled?: boolean;
   approved?: boolean;
   company_id?: mongoose.Types.ObjectId | null;
   company?: string;
@@ -100,6 +102,7 @@ const UserSchema = new Schema<IUser>(
     recruiter: { type: Boolean, default: false },
     admin: { type: Boolean, default: false },
     plan: { type: String, enum: ["free", "pro"], default: "free" },
+    disabled: { type: Boolean, default: false },
     approved: { type: Boolean, default: false },
 
     company_id: {

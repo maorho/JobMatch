@@ -129,6 +129,8 @@ export async function isNewAccount(userId: string | mongoose.Types.ObjectId, now
 }
 /** Test hook. */
 export const _resetAgeCache = () => ageCache.clear();
+/** After an admin changes the plan: the next call reads the user again. */
+export const forgetAccount = (userId: string | mongoose.Types.ObjectId) => ageCache.delete(String(userId));
 
 export class QuotaError extends Error {
   constructor(public key: string, public limit: number, public used: number, public period: "day" | "month" = "day") {

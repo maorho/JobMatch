@@ -8,7 +8,8 @@ import User from "@/app/models/User";
  * The authenticated user id from the `token` cookie, or null.
  * Beyond the signature, the session must still be live: the user exists
  * (account deletion revokes) and the token's `tv` equals User.tokenVersion
- * (a password change/reset revokes). That costs one indexed, projected
+ * (a password change/reset revokes), and the account is not disabled by an
+ * admin. That costs one indexed, projected
  * findById per authenticated request — accepted for real revocation.
  * A DB failure throws (callers surface a 500) rather than reading as "signed out".
  */
@@ -25,7 +26,7 @@ export async function getUserIdFromToken(token: string | undefined | null) {
   if (!id || !mongoose.isValidObjectId(id)) return null;
 
   await connectToDatabase();
-  const user = await User.findById(id).select("tokenVersion").lean<{ tokenVersion?: number }>();
-  if (!user || !tokenVersionMatches(decoded, user.tokenVersion)) return null;
+  const user = await User.findById(id).select("tokenVersion disabled").lean<{ tokenVersion?: number; disabled?: boolean }>();
+  if (!user || user.disabled || !tokenVersionMatches(decoded, user.tokenVersion)) return null;
   return id;
 }

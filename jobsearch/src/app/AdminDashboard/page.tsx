@@ -274,6 +274,9 @@ function AdminDashboard() {
             <Link href="/AdminDashboard/partners" className="jm-btn jm-btn-secondary w-fit">
               {t("admin.partnersLink")}
             </Link>
+            <Link href="/AdminDashboard/users" className="jm-btn jm-btn-secondary w-fit">
+              {t("admin.usersLink")}
+            </Link>
           </div>
         </div>
       </section>

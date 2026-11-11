@@ -48,11 +48,13 @@ export async function POST(req: NextRequest) {
   const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const user = await User.findOne({
     email: new RegExp(`^${escaped}$`, "i"),
-  }).select("+password email recruiter admin tokenVersion");
+  }).select("+password email recruiter admin tokenVersion disabled");
   if (!user) return fail();
 
   const isValid = await bcrypt.compare(password, user.password);
   if (!isValid) return fail();
+  // An account an admin disabled: the password is right, the door is closed.
+  if (user.disabled) return NextResponse.json({ message: "החשבון הושבת. כתבו לנו אם זו טעות.", messageEn: "This account has been disabled. Write to us if that is a mistake.", disabled: true }, { status: 403 });
 
   const recruiter = !!user.recruiter;
   const admin = !!user.admin;
