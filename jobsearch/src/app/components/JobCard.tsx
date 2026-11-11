@@ -121,7 +121,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       {/* Two lines: why it fits (reranked) or the posting's own words */}
       {why ? (
         /* The verdict sentence, wrapping onto a second line when needed, never cut with an ellipsis (it is short by prompt); the tooltip on the badge has the full verdict. */
-        <p className="mt-3 min-h-[2.75rem] max-h-[2.75rem] text-sm text-ink leading-[1.375rem] overflow-hidden [overflow-wrap:anywhere]">{why}</p>
+        <p className="mt-3 min-h-[2.75rem] text-sm text-ink leading-[1.375rem] [overflow-wrap:anywhere]">{why}</p>
       ) : job.description ? (
         <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
           {job.description}
