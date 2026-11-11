@@ -74,7 +74,8 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
   };
 
   const scoreColor = (s: number) => (s >= 75 ? "text-teal" : s >= 50 ? "text-amber-500" : "text-red-500");
-  const gaps = result ? [...result.missingSkills, ...result.keywordGaps] : [];
+  // The model lists a skill under both headings now and then ("LangGraph" as a missing skill and as a keyword): show it once.
+  const gaps = result ? Array.from(new Set([...result.missingSkills, ...result.keywordGaps].map((s) => s.trim()).filter(Boolean))) : [];
 
   return (
     <section className="jm-card p-5" dir={dir}>
@@ -146,8 +147,8 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.missing")}</div>
               <div className="flex flex-wrap gap-2">
-                {gaps.length ? gaps.map((s) => (
-                  <span key={s} dir="auto" className="jm-chip">{s}</span>
+                {gaps.length ? gaps.map((s, i) => (
+                  <span key={`${i}-${s}`} dir="auto" className="jm-chip">{s}</span>
                 )) : <span className="jm-muted">{t("widgets.tailor.noGaps")}</span>}
               </div>
             </div>
