@@ -194,7 +194,8 @@ RULES
 - Output MUST be valid JSON. No markdown, no commentary.
 - All resume content MUST be in ENGLISH.
 - NEVER invent employers, titles, dates, degrees, companies, numbers or links. If something is unknown, omit the field or the whole item — a short, true résumé beats a padded one. No placeholders like "[Your Name]" or "City, Country".
-- Contact entries are plain values (no "Email:"/"Phone:" prefixes), max 4, in this order: phone, email, LinkedIn, GitHub/portfolio.
+- Contact entries are plain values (no "Email:"/"Phone:" prefixes), max 5, in this order: phone, email, LinkedIn, GitHub, portfolio/website.
+- LINKS: every URL, domain or e-mail that appears in the input (LinkedIn, GitHub, portfolio, a "Links:" line, a project repo) MUST be kept verbatim as a full address — in "contact" for personal links, inside the project's bullet or subtitle for a repo/demo link. Never drop, shorten or replace a link with a label like "LinkedIn".
 - Bullets: start with a strong past/present-tense verb, state what + how + impact, mark 1–3 key technologies/metrics per bullet with **double asterisks**, ≤ 2 lines each, 2–4 per role. Never start a bullet with "Responsible for".
 - Experience newest first. "Present" for current roles. Date format "2021 – 2023" (en dash).
 - Projects: only real projects from the input; the strongest 1–2, with stack and ownership.

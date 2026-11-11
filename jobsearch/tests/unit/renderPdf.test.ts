@@ -28,6 +28,25 @@ describe("renderResumePdf", () => {
     expect(text.indexOf("SKILLS")).toBeLessThan(text.indexOf("LANGUAGES"));
   });
 
+  it("makes links clickable: contact URLs, e-mail and a repo link in a bullet become URI annotations", async () => {
+    const { PDFDocument, PDFName, PDFArray, PDFDict, PDFString } = await import("pdf-lib");
+    const withRepo: StructuredResume = [...CV, { heading: "Projects", items: [{ title: "JobMatch", bullets: ["Open source at github.com/maorho/JobMatch, live demo https://job-match-six.vercel.app/."] }] }];
+    const doc = await PDFDocument.load(await renderResumePdf(withRepo));
+    const hrefs: string[] = [];
+    for (const page of doc.getPages()) {
+      const annots = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+      for (let i = 0; annots && i < annots.size(); i++) {
+        const a = doc.context.lookup(annots.get(i), PDFDict);
+        const action = a.lookup(PDFName.of("A"), PDFDict);
+        hrefs.push(action.lookup(PDFName.of("URI"), PDFString).decodeText());
+      }
+    }
+    expect(hrefs).toEqual(expect.arrayContaining(["mailto:maorhomri1@gmail.com", "https://linkedin.com/in/maor-homri", "https://github.com/maorho", "https://github.com/maorho/JobMatch", "https://job-match-six.vercel.app/"]));
+    expect(hrefs).not.toEqual(expect.arrayContaining(["https://054-9139326"])); // a phone number is not a link
+    // The punctuation after a link stays text, not part of the address.
+    expect(hrefs.some((h) => h.endsWith(","))).toBe(false);
+  });
+
   it("falls back to the Unicode font for Hebrew content and still renders", async () => {
     const he: StructuredResume = [
       { heading: "Header", items: [{ title: "דנה כהן", contact: ["dana@test.dev"], summary: "מפתחת פרונט ג'וניור עם React." }] },

@@ -1,4 +1,5 @@
-import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
+import { PDFArray, PDFDocument, PDFFont, PDFName, PDFPage, PDFString, StandardFonts, rgb } from "pdf-lib";
+import { linkOf } from "./links";
 import fs from "fs";
 import path from "path";
 import type { StructuredResume, ResumeSection, ResumeItem } from "./structuredToText";
@@ -20,6 +21,7 @@ const MARGIN_BOTTOM = 46;
 const BLUE = rgb(0.16, 0.42, 0.69);
 const GREY = rgb(0.45, 0.45, 0.45);
 const INK = rgb(0.1, 0.1, 0.1);
+const LINK = rgb(0.1, 0.3, 0.62);
 
 const SIZE = { name: 21, contact: 9.5, body: 10, heading: 10.5, item: 10.5, bullet: 9.8 };
 const LEAD = { body: 13.5, bullet: 13, item: 14, contact: 13 };
@@ -106,8 +108,31 @@ class Canvas {
   text(x: number, t: string, size: number, bold = false, color = INK) {
     const s = this.safe(t);
     if (!s) return 0;
-    this.page.drawText(s, { x, y: this.y, size, font: this.font(bold), color });
-    return this.font(bold).widthOfTextAtSize(s, size);
+    // A URL, a bare domain or an e-mail address is drawn as a link: blue, underlined, clickable (a URI link annotation).
+    const link = linkOf(s);
+    this.page.drawText(s, { x, y: this.y, size, font: this.font(bold), color: link ? LINK : color });
+    const w = this.font(bold).widthOfTextAtSize(s, size);
+    if (link) {
+      const lead = this.measure(s.slice(0, s.indexOf(link.text)), size, bold);
+      const lw = this.measure(link.text, size, bold);
+      this.page.drawLine({ start: { x: x + lead, y: this.y - 1.5 }, end: { x: x + lead + lw, y: this.y - 1.5 }, thickness: 0.6, color: LINK });
+      this.annotateLink(x + lead, this.y - 2, lw, size + 2, link.href);
+    }
+    return w;
+  }
+  /** Register a URI link annotation on the current page over the given box. */
+  annotateLink(x: number, y: number, w: number, h: number, href: string) {
+    const annot = this.doc.context.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: [x, y, x + w, y + h],
+      Border: [0, 0, 0],
+      A: { Type: "Action", S: "URI", URI: PDFString.of(href) },
+    });
+    const ref = this.doc.context.register(annot);
+    const existing = this.page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+    if (existing) existing.push(ref);
+    else this.page.node.set(PDFName.of("Annots"), this.doc.context.obj([ref]));
   }
   measure(t: string, size: number, bold = false) {
     return this.font(bold).widthOfTextAtSize(this.safe(t), size);

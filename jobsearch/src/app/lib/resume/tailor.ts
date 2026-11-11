@@ -71,6 +71,7 @@ HARD RULES
 - You may reorder sections and bullets, rephrase bullets with the job's vocabulary, pick which achievements to foreground, and rewrite the summary for this role.
 - Every skill the job needs that the candidate lacks goes into "missingSkills" (or "keywordGaps" for ATS terms) — NOT into the résumé.
 - Keep the résumé content in English. Write "suggestions" and "changes" in ${lang}.
+- Keep every link of the input résumé (contact URLs, e-mail, project repos/demos) verbatim, in the same place; never drop or shorten one.
 - Keep the exact section JSON shape of the input résumé: an array of { "heading", "items": [{ "title", "subtitle", "location", "dateRange", "contact", "summary", "bullets" }] }. Header first.
 - fitScore: 0-100 honest estimate of how well the candidate fits the posting as it stands (not after tailoring).
 
