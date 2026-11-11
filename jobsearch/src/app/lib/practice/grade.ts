@@ -7,6 +7,7 @@ import { extractJson } from "@/app/lib/resume/tailor";
 import { ROLE_INFO, LEVEL_HE } from "./roles";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * Grading for the practice agents: the Examiner grades code against the
@@ -49,9 +50,9 @@ export function buildGradePrompt(task: any, attempt: any): { system: string; use
   const system =
     task.kind === "coding"
       ? `You are the Examiner at an Israeli tech company grading a timed coding question for a ${LEVEL_HE[task.level as keyof typeof LEVEL_HE]} ${info.en} candidate. Be rigorous and fair: judge correctness by reasoning through the examples and edge cases, state complexity, and point at concrete lines. Do not reward length. If the code does not solve the problem, correctness is below 30 regardless of style.
-Write "feedback", "comment", "strengths" and "improvements" in HEBREW (code and identifiers in English). Keep feedback under 200 words.`
+Write "feedback", "comment", "strengths" and "improvements" in HEBREW (code and identifiers in English). Keep feedback under 200 words.${hebrewRule("he")}`
       : `You are the Assigner (a hiring manager) at an Israeli tech company reviewing a take-home assignment handed in by a ${LEVEL_HE[task.level as keyof typeof LEVEL_HE]} ${info.en} candidate. You see their write-up and, if given, a repository URL (you cannot open it: judge what they describe, and say what you would verify in the repo). Check every deliverable, the design decisions and how they explain them. Be concrete and kind but honest.
-Write "feedback", "comment", "strengths" and "improvements" in HEBREW (technical terms in English). Keep feedback under 250 words.`;
+Write "feedback", "comment", "strengths" and "improvements" in HEBREW (technical terms in English). Keep feedback under 250 words.${hebrewRule("he")}`;
   const user = `TASK: ${task.title}
 ${task.prompt}
 ${task.examples?.length ? `\nExamples:\n${task.examples.map((e: any) => `- in: ${e.input} → out: ${e.output}`).join("\n")}` : ""}${task.constraints?.length ? `\nConstraints: ${task.constraints.join("; ")}` : ""}${task.deliverables?.length ? `\nDeliverables:\n${task.deliverables.map((d: string) => `- ${d}`).join("\n")}` : ""}

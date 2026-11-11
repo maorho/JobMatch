@@ -47,11 +47,11 @@ export default function FitCard({ jobId }: { jobId: string }) {
           <span className="jm-muted"> · {lk.basis === "prior" ? t("widgets.fit.prior") : lk.basis === "blended" ? t("widgets.fit.blended", { n: lk.samples }) : t("widgets.fit.learned", { n: lk.samples })}</span>
         </p>
       )}
-      {fit.why && <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{fit.why}</p>}
+      {fit.why && <p className="text-sm text-ink-600 leading-relaxed" dir={dir}>{fit.why}</p>}
       {fit.gaps.length > 0 && (
         <div>
           <div className="text-xs font-semibold text-ink-400 mb-1">{t("widgets.fit.missing")}</div>
-          <ul className="list-disc ps-5 text-sm text-ink-600 space-y-0.5">{fit.gaps.map((g, i) => <li key={i} dir="auto">{g}</li>)}</ul>
+          <ul className="list-disc ps-5 text-sm text-ink-600 space-y-0.5">{fit.gaps.map((g, i) => <li key={i} dir={dir}>{g}</li>)}</ul>
         </div>
       )}
       {!fit.reranked && <p className="text-[11px] text-ink-400">{t("widgets.fit.notReranked")}</p>}

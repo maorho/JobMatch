@@ -68,7 +68,7 @@ export default function SuggestedAnswer({ company, question, stage, topic }: { c
       <div className="flex items-center gap-1.5 text-xs font-semibold text-teal mb-1.5">
         <Sparkles className="h-3.5 w-3.5" /> {t("widgets.sa.title")}
       </div>
-      <p className="text-ink whitespace-pre-line" dir="auto">
+      <p className="text-ink whitespace-pre-line" dir={dir}>
         {state.answer}
       </p>
       {state.placeholders > 0 && (
@@ -79,7 +79,7 @@ export default function SuggestedAnswer({ company, question, stage, topic }: { c
       {state.tips.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-ink-600 list-disc list-inside px-1">
           {state.tips.map((tip, i) => (
-            <li key={i} dir="auto">
+            <li key={i} dir={dir}>
               {tip}
             </li>
           ))}

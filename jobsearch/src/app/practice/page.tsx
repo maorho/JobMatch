@@ -24,7 +24,7 @@ type History = { attempts: { _id: string; kind: string; status: string; score: n
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
 function Difficulty({ n }: { n: number }) {
-  const { t } = useT();
+  const { t, dir } = useT();
   return <span className="inline-flex gap-0.5" title={t("practice.difficulty", { n })}>{[1, 2, 3, 4, 5].map((i) => <span key={i} className={`h-1.5 w-1.5 rounded-full ${i <= n ? "bg-teal" : "bg-line"}`} />)}</span>;
 }
 
@@ -85,13 +85,13 @@ export default function PracticePage() {
   const Card = ({ task }: { task: TaskCard }) => (
     <div className={`jm-card jm-card-hover jm-reveal p-5 flex flex-col gap-3 ${task.done ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold text-navy leading-snug" dir="auto">{task.title}</h3>
+        <h3 className="font-semibold text-navy leading-snug" dir={dir}>{task.title}</h3>
         <div className="flex items-center gap-2 shrink-0">
           {task.done && <span className="jm-chip jm-chip-teal">{t("practice.answered")}</span>}
           <Difficulty n={task.difficulty} />
         </div>
       </div>
-      <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir="auto">{task.excerpt}</p>
+      <p className="text-sm text-ink-600 leading-relaxed line-clamp-3" dir={dir}>{task.excerpt}</p>
       <div className="flex flex-wrap gap-1.5">
         <span className="jm-chip jm-chip-teal inline-flex items-center gap-1">
           <Timer className="h-3.5 w-3.5" /> {task.kind === "coding" ? t("practice.minutesOnClock", { n: task.timeLimitMin }) : t("practice.hoursApprox", { n: task.estimatedHours })}
@@ -175,7 +175,7 @@ export default function PracticePage() {
             {history.attempts.slice(0, 20).map((a) => (
               <Link key={a._id} href={`/practice/${a._id}`} className="flex items-center justify-between gap-3 p-3 hover:bg-canvas transition-colors">
                 <div className="min-w-0">
-                  <div className="font-medium text-navy truncate" dir="auto">{a.task?.title || t("practice.task")}</div>
+                  <div className="font-medium text-navy truncate" dir={dir}>{a.task?.title || t("practice.task")}</div>
                   <div className="jm-muted">{a.kind === "coding" ? t("practice.codingQuestion") : t("practice.assignment")} · {new Date(a.createdAt).toLocaleDateString(lang === "he" ? "he-IL" : "en-GB")}{a.timedOut ? t("practice.lateSuffix") : ""}</div>
                 </div>
                 <div className="text-end shrink-0">

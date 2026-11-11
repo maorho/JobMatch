@@ -5,6 +5,7 @@ import MatchCache from "@/app/models/MatchCache";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * Second-stage ranking of a candidate's top matches. Embeddings find the
@@ -35,7 +36,7 @@ Calibration anchors — follow them:
 - Hard eligibility constraints stated in the posting are binding: "student position" / "must be a current student" (a graduate is NOT eligible), a specific degree, citizenship/clearance, on-site in a city the candidate doesn't live in, a language they don't have → cap at 40 no matter how good the skills are.
 Weigh: required level vs the candidate's, the 2–3 core skills the posting actually needs, domain, constraints. Ignore nice-to-haves.
 "why": ONE short sentence in ${lang} addressed to the candidate (what makes it a fit). "gaps": up to 3 short items in ${lang} (what's missing), empty if none.
-Return STRICT JSON: {"results":[{"id","fit","why","gaps":[...]}]} with every id exactly once. Nothing else.`;
+Return STRICT JSON: {"results":[{"id","fit","why","gaps":[...]}]} with every id exactly once. Nothing else.${hebrewRule(language)}`;
   const user = `CANDIDATE (${level}):\n${resumeSummary.slice(0, 3500)}\n\nPOSTINGS:\n${jobs
     .map((j) => `[id=${j._id}] ${j.job} @ ${j.company}${j.city || j.country ? ` (${[j.city, j.country].filter(Boolean).join(", ")})` : ""}\n${(j.description || "").replace(/\s+/g, " ").slice(0, 900)}`)
     .join("\n\n")}`;

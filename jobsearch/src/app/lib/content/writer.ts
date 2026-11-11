@@ -8,6 +8,7 @@ import { mineTechSignals } from "@/app/lib/interview/companyContext";
 import { ARTICLES } from "@/app/content/articles";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * The Writer agent's brain: grounds every article in live catalog numbers
@@ -104,7 +105,7 @@ Standards:
 - Structure: a short opening paragraph (no heading), then 4–8 sections with clear headings; use bullets for lists; end with a short "מה לעשות השבוע" action section.
 - Mention JobMatch features only where genuinely useful (ResumeAI, התאמה אוטומטית, הכנה לראיון, הפניות), at most twice, never salesy.
 - SEO: a title people would search for (≤ 60 chars), a meta description (≤ 160 chars), 3–10 keywords in Hebrew/English, an ASCII kebab-case English slug (not in: ${input.existingSlugs.join(", ") || "none"}).
-Return STRICT JSON: {"title","slug","excerpt","tags":[...],"seo":{"title","description","keywords":[...]},"sections":[{"heading","paragraphs":[...],"bullets":[...]}]}. Nothing else.`;
+Return STRICT JSON: {"title","slug","excerpt","tags":[...],"seo":{"title","description","keywords":[...]},"sections":[{"heading","paragraphs":[...],"bullets":[...]}]}. Nothing else.${hebrewRule("he")}`;
   const user = `TOPIC: ${input.topic}\nANGLE: ${input.angle || "(your call)"}\nCATALOG FACTS (${input.facts.asOf}): ${JSON.stringify(input.facts)}`;
   return { system, user };
 }

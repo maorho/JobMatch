@@ -28,7 +28,7 @@ export default function ReportedQuestionsCard({ company, stage }: { company: str
         {data.questions.slice(0, 6).map((q, i) => {
           const stageKey = STAGE_KEY[q.stage];
           return (
-            <li key={i} className="text-sm text-ink" dir="auto">
+            <li key={i} className="text-sm text-ink" dir={dir}>
               <span className="text-ink-400 text-xs">{stageKey ? `[${t(stageKey)}] ` : ""}</span>{q.question}
               {q.count > 1 && <span className="jm-muted text-xs"> ×{q.count}</span>}
               {q.count === 0 && <span className="jm-muted text-xs">{t("widgets.rq.fromTheWeb")}{q.sources[0]?.name ? ` (${q.sources[0].name})` : ""}</span>}

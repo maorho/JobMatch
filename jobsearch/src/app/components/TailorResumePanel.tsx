@@ -140,7 +140,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
               <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.have")}</div>
               <div className="flex flex-wrap gap-2">
                 {result.matchedSkills.length ? result.matchedSkills.map((s) => (
-                  <span key={s} dir="auto" className="jm-chip jm-chip-teal">{s}</span>
+                  <span key={s} dir={dir} className="jm-chip jm-chip-teal">{s}</span>
                 )) : <span className="jm-muted">—</span>}
               </div>
             </div>
@@ -148,7 +148,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
               <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.missing")}</div>
               <div className="flex flex-wrap gap-2">
                 {gaps.length ? gaps.map((s, i) => (
-                  <span key={`${i}-${s}`} dir="auto" className="jm-chip">{s}</span>
+                  <span key={`${i}-${s}`} dir={dir} className="jm-chip">{s}</span>
                 )) : <span className="jm-muted">{t("widgets.tailor.noGaps")}</span>}
               </div>
             </div>
@@ -158,7 +158,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-ink-400 mb-2">{t("widgets.tailor.suggestions")}</div>
               <ul className="list-disc ps-5 space-y-1 text-sm text-ink-600 marker:text-teal">
-                {result.suggestions.map((s, i) => <li key={i} dir="auto">{s}</li>)}
+                {result.suggestions.map((s, i) => <li key={i} dir={dir}>{s}</li>)}
               </ul>
             </div>
           )}
@@ -167,7 +167,7 @@ export default function TailorResumePanel({ jobId, source }: { jobId: string; so
             <details className="text-sm rounded-control border border-line bg-canvas px-4 py-3">
               <summary className="cursor-pointer font-medium text-navy">{t("widgets.tailor.changes")}</summary>
               <ul className="list-disc ps-5 mt-2 space-y-1 text-ink-600 marker:text-teal">
-                {result.changes.map((c, i) => <li key={i} dir="auto">{c}</li>)}
+                {result.changes.map((c, i) => <li key={i} dir={dir}>{c}</li>)}
               </ul>
             </details>
           )}

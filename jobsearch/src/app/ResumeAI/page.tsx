@@ -429,7 +429,7 @@ export default function ResumeAIPage() {
                     <div className="jm-alert jm-alert-info mt-3">
                       <ul className="list-disc ps-5 space-y-1">
                         {issues.map((issue, idx) => (
-                          <li key={idx} dir="auto">{issue}</li>
+                          <li key={idx} dir={dir}>{issue}</li>
                         ))}
                       </ul>
                     </div>
@@ -475,7 +475,7 @@ export default function ResumeAIPage() {
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div
-                  dir="auto"
+                  dir={dir}
                   className={`max-w-[85%] px-4 py-2.5 text-sm sm:text-base whitespace-pre-line break-words ${
                     msg.role === "user"
                       ? "bg-navy text-white rounded-2xl rounded-ee-sm"

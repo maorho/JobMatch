@@ -67,7 +67,7 @@ export default function AdminArticlesPage() {
       <div className="jm-card p-5 mb-6 flex flex-col sm:flex-row gap-3 sm:items-end">
         <label className="flex-1">
           <span className="jm-label">{t("admin.articles.topicLabel")}</span>
-          <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t("admin.articles.topicPlaceholder")} className="jm-input" dir="auto" />
+          <input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={t("admin.articles.topicPlaceholder")} className="jm-input" dir={dir} />
         </label>
         <button type="button" disabled={busy} onClick={write} className="jm-btn jm-btn-primary">
           {busy ? t("admin.articles.writing") : t("admin.articles.write")}
@@ -90,10 +90,10 @@ export default function AdminArticlesPage() {
                     <span className="jm-chip">{a.source === "static" ? t("admin.articles.manual") : t("admin.articles.agent")}</span>
                     <span className="jm-muted"><span dir="ltr">{dayjs(a.publishedAt || a.createdAt).format("DD/MM/YYYY")}</span> · {t("admin.articles.minutes", { n: a.readMinutes })}</span>
                   </div>
-                  <h2 className="jm-h2 mt-2 leading-snug" dir="auto">{a.title}</h2>
-                  <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{a.excerpt}</p>
+                  <h2 className="jm-h2 mt-2 leading-snug" dir={dir}>{a.title}</h2>
+                  <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir={dir}>{a.excerpt}</p>
                   {a.seo && (
-                    <p className="text-xs text-ink-400 mt-2" dir="auto">
+                    <p className="text-xs text-ink-400 mt-2" dir={dir}>
                       SEO: <span className="font-medium text-ink-600">{a.seo.title}</span> — {a.seo.description}
                     </p>
                   )}
@@ -108,7 +108,7 @@ export default function AdminArticlesPage() {
                 </div>
               </div>
               {open === a._id && (
-                <div dir="auto" className="mt-4 border-t border-line pt-4 space-y-4 text-[15px] [&_h3]:font-semibold [&_h3]:text-navy [&_h3]:mt-4 [&_p]:text-ink-600 [&_p]:leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ul]:text-ink-600">
+                <div dir={dir} className="mt-4 border-t border-line pt-4 space-y-4 text-[15px] [&_h3]:font-semibold [&_h3]:text-navy [&_h3]:mt-4 [&_p]:text-ink-600 [&_p]:leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:ps-5 [&_ul]:text-ink-600">
                   {a.sections.map((s, i) => (
                     <section key={i}>
                       {s.heading && <h3>{s.heading}</h3>}

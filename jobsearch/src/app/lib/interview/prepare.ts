@@ -5,6 +5,7 @@ import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import type { CompanyContext } from "./companyContext";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * Interview-prep agent: turns everything we know (posting, company context,
@@ -65,7 +66,7 @@ const RULES = (input: PrepInput) => {
 RULES
 - Write all explanatory text in ${lang}; keep technical terms, tool names and code in English.
 - Ground everything in the provided posting, company context and résumé. Do not invent facts about the company; when unsure, say what to verify.
-- Tailor to the level: ${level}. For junior roles emphasise fundamentals, a possible home assignment / online test, and how to present projects.`;
+- Tailor to the level: ${level}. For junior roles emphasise fundamentals, a possible home assignment / online test, and how to present projects.${hebrewRule(input.language || "he")}`;
 };
 
 /** Everything the coach knows: the posting, the company, the research brief, reported questions, the résumé. Shared by every call. */
@@ -217,7 +218,7 @@ You are running a mock "${stage.title}" interview for the role ${opts.job.title}
 Behave like a real interviewer at this stage: ask ONE question at a time (draw from these likely questions but adapt: ${stage.likelyQuestions.map((q) => q.question).slice(0, 8).join(" | ")}).
 After each candidate answer: give brief, honest feedback (what was good, what to improve, a stronger version in 2-3 lines), then ask the next question. Keep each reply under 180 words.
 Candidate résumé (for personalised follow-ups): """${(opts.resumeText || "").slice(0, 3000)}"""
-If the transcript is empty, open with a one-line intro and the first question.`.trim();
+If the transcript is empty, open with a one-line intro and the first question.${hebrewRule(opts.language || "he")}`.trim();
   const msgs = [new SystemMessage(system), ...opts.transcript.slice(-20).map((t) => (t.role === "user" ? new HumanMessage(t.content) : new AIMessage(t.content)))];
   if (opts.transcript.length === 0) msgs.push(new HumanMessage("Let's start."));
   const res = await chatModel("interviewer", { temperature: 0.5 }).invoke(msgs);

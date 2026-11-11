@@ -322,7 +322,7 @@ export default function InterviewPrepPage() {
                 <button onClick={() => generate(true)} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.regenerate")}</button>
               </div>
             </div>
-            {prep.plan.company.summary && <p className="mt-4 text-ink-600 leading-relaxed" dir="auto">{prep.plan.company.summary}</p>}
+            {prep.plan.company.summary && <p className="mt-4 text-ink-600 leading-relaxed" dir={dir}>{prep.plan.company.summary}</p>}
             {prep.plan.company.techStack.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">{prep.plan.company.techStack.map((t) => <span key={t} className="jm-chip">{t}</span>)}</div>
             )}
@@ -347,18 +347,18 @@ export default function InterviewPrepPage() {
               <section className="jm-card p-5 sm:p-6 space-y-5">
                 <div>
                   <h2 className="jm-h2">{stage.title}</h2>
-                  <p className="text-sm text-ink-600 mt-1" dir="auto">{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
+                  <p className="text-sm text-ink-600 mt-1" dir={dir}>{stage.description}{stage.durationHint ? ` · ${stage.durationHint}` : ""}</p>
                 </div>
                 <ol className="space-y-3">
                   {stage.likelyQuestions.map((q, i) => (
                     <li key={i} className="rounded-control border border-line p-4">
-                      <div className="font-semibold text-navy" dir="auto">{i + 1}. {q.question}</div>
-                      {q.whyAsked && <p className="text-xs text-ink-400 mt-1" dir="auto">{t("interview.whyAsked")}{q.whyAsked}</p>}
-                      {q.howToAnswer && <p className="text-sm text-ink-600 mt-2 leading-relaxed" dir="auto">{q.howToAnswer}</p>}
+                      <div className="font-semibold text-navy" dir={dir}>{i + 1}. {q.question}</div>
+                      {q.whyAsked && <p className="text-xs text-ink-400 mt-1" dir={dir}>{t("interview.whyAsked")}{q.whyAsked}</p>}
+                      {q.howToAnswer && <p className="text-sm text-ink-600 mt-2 leading-relaxed" dir={dir}>{q.howToAnswer}</p>}
                       {q.sampleAnswer && (
                         <details className="mt-2">
                           <summary className="text-sm text-teal cursor-pointer">{t("interview.sampleAnswer")}</summary>
-                          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{q.sampleAnswer}</p>
+                          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir={dir}>{q.sampleAnswer}</p>
                         </details>
                       )}
                     </li>
@@ -367,7 +367,7 @@ export default function InterviewPrepPage() {
                 {stage.tips.length > 0 && (
                   <div>
                     <h3 className="font-semibold text-navy mb-2">{t("interview.stageTips")}</h3>
-                    <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir="auto">{t}</li>)}</ul>
+                    <ul className={bulletList}>{stage.tips.map((t, i) => <li key={i} dir={dir}>{t}</li>)}</ul>
                   </div>
                 )}
               </section>
@@ -377,7 +377,7 @@ export default function InterviewPrepPage() {
                     <h3 className="jm-h2 mb-2">{t("interview.gaps")}</h3>
                     <ul className="space-y-2">
                       {prep.plan.gaps.map((g, i) => (
-                        <li key={i} className="text-sm" dir="auto">
+                        <li key={i} className="text-sm" dir={dir}>
                           <span className="font-medium text-navy">{g.topic}</span>
                           {g.whyItMatters && <span className="text-ink-600"> — {g.whyItMatters}</span>}
                           {g.studyPlan && <p className="text-xs text-ink-400 mt-0.5">{g.studyPlan}</p>}
@@ -389,13 +389,13 @@ export default function InterviewPrepPage() {
                 {prep.plan.questionsToAsk.length > 0 && (
                   <section className="jm-card p-5">
                     <h3 className="jm-h2 mb-2">{t("interview.questionsToAsk")}</h3>
-                    <ul className={bulletList + " text-sm"}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir="auto">{q}</li>)}</ul>
+                    <ul className={bulletList + " text-sm"}>{prep.plan.questionsToAsk.map((q, i) => <li key={i} dir={dir}>{q}</li>)}</ul>
                   </section>
                 )}
                 {prep.plan.checklist.length > 0 && (
                   <section className="jm-card p-5">
                     <h3 className="jm-h2 mb-2">{t("interview.checklist")}</h3>
-                    <ul className="space-y-1.5 text-sm">{prep.plan.checklist.map((c, i) => <li key={i} className="flex items-start gap-2" dir="auto"><input type="checkbox" className="mt-1 accent-teal" />{c}</li>)}</ul>
+                    <ul className="space-y-1.5 text-sm">{prep.plan.checklist.map((c, i) => <li key={i} className="flex items-start gap-2" dir={dir}><input type="checkbox" className="mt-1 accent-teal" />{c}</li>)}</ul>
                   </section>
                 )}
               </aside>
@@ -478,7 +478,7 @@ export default function InterviewPrepPage() {
                     <div className="jm-scroll flex-1 overflow-y-auto p-4 space-y-3 min-h-[260px] max-h-[60vh]">
                       {session.transcript.map((t, i) => (
                         <div key={i} className={`flex ${t.role === "candidate" ? "justify-end" : "justify-start"}`}>
-                          <div dir="auto" className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-line ${t.role === "candidate" ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line rounded-2xl rounded-es-sm"}`}>
+                          <div dir={dir} className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed whitespace-pre-line ${t.role === "candidate" ? "bg-navy text-white rounded-2xl rounded-ee-sm" : "bg-canvas border border-line rounded-2xl rounded-es-sm"}`}>
                             {t.content}
                           </div>
                         </div>
@@ -489,7 +489,7 @@ export default function InterviewPrepPage() {
                             <span className="font-semibold text-navy">💻 {t("interview.code.title")}</span>
                             <span className="jm-chip">{session.codeTask.status === "done" ? t("interview.code.submitted", { score: session.codeTask.score ?? "–" }) : session.codeTask.timeLimitMin ? t("interview.code.minutes", { n: session.codeTask.timeLimitMin }) : ""}</span>
                           </div>
-                          <div className="text-sm text-ink" dir="auto">{session.codeTask.title}</div>
+                          <div className="text-sm text-ink" dir={dir}>{session.codeTask.title}</div>
                           {session.codeTask.status === "open" && (
                             <>
                               <p className="text-sm text-ink-600 leading-relaxed">{t("interview.code.text")}</p>
@@ -510,7 +510,7 @@ export default function InterviewPrepPage() {
                     </div>
                     {!session.wrappedUp && (
                       <form onSubmit={(e) => { e.preventDefault(); send(); }} className="p-3 border-t border-line flex flex-col sm:flex-row gap-2">
-                        <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} rows={2} placeholder={t("interview.answerPlaceholder")} className="jm-input flex-1" dir="auto" disabled={busy !== ""} />
+                        <textarea value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send(); }} rows={2} placeholder={t("interview.answerPlaceholder")} className="jm-input flex-1" dir={dir} disabled={busy !== ""} />
                         <button type="submit" disabled={busy !== "" || !answer.trim()} className="jm-btn jm-btn-primary">{t("interview.send")}</button>
                       </form>
                     )}
@@ -545,7 +545,7 @@ export default function InterviewPrepPage() {
 }
 
 function PeerBlock({ fb, stageTitle }: { fb: Feedback; stageTitle: string }) {
-  const { t } = useT();
+  const { t, dir } = useT();
   const p = fb.peerComparison;
   const c = fb.calibration;
   if (!p && !c) return null;
@@ -573,7 +573,7 @@ function PeerBlock({ fb, stageTitle }: { fb: Feedback; stageTitle: string }) {
 }
 
 function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; delivery?: Delivery | null; onNew: () => void; stageTitle: string }) {
-  const { t } = useT();
+  const { t, dir } = useT();
   const tone = delivery?.tone;
   const imp = delivery?.impression;
   const stars = (n: number) => "★".repeat(Math.round(n)) + "☆".repeat(5 - Math.round(n));
@@ -585,8 +585,8 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
         <div className={`h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold text-white ${scoreColor(fb.overallScore)}`}>{fb.overallScore}</div>
         <div className="min-w-0 flex-1">
           <h2 className="jm-h2">{t("interview.feedbackTitle", { stage: stageTitle })}</h2>
-          {fb.verdict && <div className="text-sm font-medium text-navy mt-0.5" dir="auto">{fb.verdict}</div>}
-          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir="auto">{fb.summary}</p>
+          {fb.verdict && <div className="text-sm font-medium text-navy mt-0.5" dir={dir}>{fb.verdict}</div>}
+          <p className="text-sm text-ink-600 mt-1 leading-relaxed" dir={dir}>{fb.summary}</p>
         </div>
         <button onClick={onNew} className="jm-btn jm-btn-secondary jm-btn-sm">{t("interview.newInterview")}</button>
       </div>
@@ -596,7 +596,7 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
       {fb.progress?.note && (
         <div className="rounded-control border border-teal/30 bg-teal-50 p-4 space-y-2">
           <h3 className="font-semibold text-teal-600">{t("interview.progress")}</h3>
-          <p className="text-sm text-ink-600 leading-relaxed" dir="auto">{fb.progress.note}</p>
+          <p className="text-sm text-ink-600 leading-relaxed" dir={dir}>{fb.progress.note}</p>
           <div className="flex flex-wrap gap-1.5">
             {fb.progress.improved.map((x, i) => <span key={`i${i}`} className="jm-chip jm-chip-teal">↑ {x}</span>)}
             {fb.progress.stillOpen.map((x, i) => <span key={`o${i}`} className="jm-chip jm-chip-sky">{t("interview.stillOpen", { t: x })}</span>)}
@@ -610,7 +610,7 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
             <h3 className="font-semibold text-navy">{t("interview.voiceTone")}</h3>
             {fb.delivery && <span className={`jm-chip ${fb.delivery.score >= 7 ? "jm-chip-teal" : fb.delivery.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{fb.delivery.score}/10</span>}
           </div>
-          {fb.delivery?.notes && <p className="text-sm text-ink-600 leading-relaxed whitespace-pre-line" dir="auto">{fb.delivery.notes}</p>}
+          {fb.delivery?.notes && <p className="text-sm text-ink-600 leading-relaxed whitespace-pre-line" dir={dir}>{fb.delivery.notes}</p>}
           {delivery && (
             <div className="flex flex-wrap gap-1.5 text-xs">
               {delivery.wordsPerMinute !== null && <span className="jm-chip">{t("interview.wpm", { n: delivery.wordsPerMinute })}</span>}
@@ -628,7 +628,7 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
               <div><span className="jm-muted">{t("interview.energy")}</span><span className="text-teal">{stars(imp.energy)}</span></div>
               <div><span className="jm-muted">{t("interview.clarity")}</span><span className="text-teal">{stars(imp.clarity)}</span></div>
               <div><span className="jm-muted">{t("interview.warmth")}</span><span className="text-teal">{stars(imp.warmth)}</span></div>
-              <div className="sm:col-span-2 text-ink-600" dir="auto"><span className="jm-muted">{t("interview.heard")}</span>{imp.notes}{imp.pace && imp.pace !== "good" ? t("interview.pace", { pace: imp.pace }) : ""}</div>
+              <div className="sm:col-span-2 text-ink-600" dir={dir}><span className="jm-muted">{t("interview.heard")}</span>{imp.notes}{imp.pace && imp.pace !== "good" ? t("interview.pace", { pace: imp.pace }) : ""}</div>
             </div>
           )}
         </div>
@@ -638,9 +638,9 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
         <div className="grid sm:grid-cols-2 gap-3">
           {fb.dimensions.map((d, i) => (
             <div key={i} className="rounded-control border border-line p-3">
-              <div className="flex items-center justify-between text-sm"><span className="font-medium text-navy" dir="auto">{d.name}</span><span className="jm-muted">{d.score}/10</span></div>
+              <div className="flex items-center justify-between text-sm"><span className="font-medium text-navy" dir={dir}>{d.name}</span><span className="jm-muted">{d.score}/10</span></div>
               <div className="h-2 rounded-full bg-line mt-2 overflow-hidden"><div className={`h-full ${scoreColor(d.score, 10)}`} style={{ width: `${d.score * 10}%` }} /></div>
-              {d.notes && <p className="text-xs text-ink-600 mt-2 leading-relaxed" dir="auto">{d.notes}</p>}
+              {d.notes && <p className="text-xs text-ink-600 mt-2 leading-relaxed" dir={dir}>{d.notes}</p>}
             </div>
           ))}
         </div>
@@ -649,11 +649,11 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-control bg-teal-50 border border-teal/20 p-4">
           <h3 className="font-semibold text-teal-600 mb-2">{t("interview.whatWorked")}</h3>
-          <ul className={bulletList + " text-sm"}>{fb.strengths.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
+          <ul className={bulletList + " text-sm"}>{fb.strengths.map((s, i) => <li key={i} dir={dir}>{s}</li>)}</ul>
         </div>
         <div className="rounded-control bg-sky-50 border border-sky/20 p-4">
           <h3 className="font-semibold text-sky-600 mb-2">{t("interview.toImprove")}</h3>
-          <ul className={bulletList + " text-sm"}>{fb.improvements.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
+          <ul className={bulletList + " text-sm"}>{fb.improvements.map((s, i) => <li key={i} dir={dir}>{s}</li>)}</ul>
         </div>
       </div>
 
@@ -664,15 +664,15 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
             {fb.answerReviews.map((r, i) => (
               <li key={i} className="rounded-control border border-line p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="font-semibold text-navy" dir="auto">{i + 1}. {r.question}</div>
+                  <div className="font-semibold text-navy" dir={dir}>{i + 1}. {r.question}</div>
                   <span className={`jm-chip shrink-0 ${r.score >= 7 ? "jm-chip-teal" : r.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{r.score}/10</span>
                 </div>
-                {r.answerSummary && <p className="text-xs text-ink-400 mt-1" dir="auto">{t("interview.youAnswered")}{r.answerSummary}</p>}
-                {r.whatWorked && <p className="text-sm text-ink-600 mt-2" dir="auto">{r.whatWorked}</p>}
+                {r.answerSummary && <p className="text-xs text-ink-400 mt-1" dir={dir}>{t("interview.youAnswered")}{r.answerSummary}</p>}
+                {r.whatWorked && <p className="text-sm text-ink-600 mt-2" dir={dir}>{r.whatWorked}</p>}
                 {r.betterAnswer && (
                   <details className="mt-2">
                     <summary className="text-sm text-teal cursor-pointer">{t("interview.betterAnswer")}</summary>
-                    <p className="text-sm text-ink-600 mt-1 leading-relaxed whitespace-pre-line" dir="auto">{r.betterAnswer}</p>
+                    <p className="text-sm text-ink-600 mt-1 leading-relaxed whitespace-pre-line" dir={dir}>{r.betterAnswer}</p>
                   </details>
                 )}
               </li>
@@ -684,7 +684,7 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
       {fb.nextSteps.length > 0 && (
         <div>
           <h3 className="jm-h2 mb-2">{t("interview.nextSteps")}</h3>
-          <ul className={bulletList + " text-sm"}>{fb.nextSteps.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul>
+          <ul className={bulletList + " text-sm"}>{fb.nextSteps.map((s, i) => <li key={i} dir={dir}>{s}</li>)}</ul>
         </div>
       )}
     </div>

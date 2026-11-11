@@ -2,6 +2,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { structuredToText, isStructuredResume, type StructuredResume } from "./structuredToText";
 import { chatModel } from "@/app/lib/llm/chat";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * The "tailor my résumé to this job" agent.
@@ -84,7 +85,7 @@ OUTPUT: strict JSON only, no markdown:
   "keywordGaps": ["ATS keywords from the posting absent from the résumé"],
   "suggestions": ["concrete, actionable advice for THIS application (3-6 items)"],
   "changes": ["what you changed and why (3-6 items)"]
-}`.trim();
+}${hebrewRule(input.language)}`.trim();
 
   const profile = input.profile
     ? `CANDIDATE PROFILE: ${JSON.stringify({ name: input.profile.fullname, email: input.profile.email, phone: input.profile.phone, currentJob: input.profile.currentJob })}\n\n`

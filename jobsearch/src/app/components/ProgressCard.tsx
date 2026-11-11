@@ -44,7 +44,7 @@ export default function ProgressCard({ refreshKey = 0 }: { refreshKey?: number }
       {m.themes.length > 0 && (
         <ul className="space-y-1">
           {m.themes.slice(0, 5).map((th, i) => (
-            <li key={i} className="flex items-center gap-2 text-sm" dir="auto">
+            <li key={i} className="flex items-center gap-2 text-sm" dir={dir}>
               <span className={STATUS[th.status]?.cls ?? "jm-chip"}>{STATUS[th.status] ? t(STATUS[th.status].key) : th.status}</span>
               <span className="text-ink-600 truncate">{th.theme}</span>
               <span className="jm-muted ms-auto">{th.count}×</span>

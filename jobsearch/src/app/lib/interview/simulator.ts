@@ -5,6 +5,7 @@ import type { InterviewPlan, StageKey } from "./prepare";
 import type { CompanyContext } from "./companyContext";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 /**
  * The mock-interview agent. Unlike the old "practice" chat it behaves like a
@@ -149,7 +150,7 @@ export function buildInterviewerPrompt(input: SimInput): string {
     : "";
   return `
 You are ${who} at ${input.job.company}, interviewing a candidate for "${input.job.title}". This is the "${stage.title}" stage${stage.description ? ` — ${stage.description}` : ""}.
-Speak ${lang}. You ARE the interviewer, not a coach.
+Speak ${lang}. You ARE the interviewer, not a coach.${hebrewRule(input.language)}
 ${STYLE_RULES[input.style || "warm"]}
 
 WHAT YOU KNOW ABOUT YOUR COMPANY (use it naturally — mention real products, stack and context when relevant; never invent facts beyond this):
@@ -227,7 +228,7 @@ export type AnswerReview = z.infer<typeof answerReviewSchema>;
 export async function reviewAnswer(input: { question: string; answer: string; job: { title: string; company: string }; stage: string; resumeText?: string; language: "he" | "en" }): Promise<AnswerReview> {
   const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
   const system = `You are an interviewer at ${input.job.company} reviewing one answer from a "${input.stage}" interview for ${input.job.title}. Write in ${lang}. Be specific and fair; quote what they said. Score 0–10 (7+ = solid). "betterAnswer": a stronger version in the candidate's own voice, 3–5 sentences, using ONLY their real experience from the résumé — never invent. The answer is a speech transcript: ignore small transcription slips.
-Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.`;
+Return STRICT JSON: {"question","answerSummary","score","whatWorked","betterAnswer"}.${hebrewRule(input.language)}`;
   const user = `RÉSUMÉ:\n${(input.resumeText || "").slice(0, 2500)}\n\nQUESTION: ${input.question}\n\nANSWER: ${input.answer}`;
   const res = await chatModel("quality", { temperature: 0.2, maxTokens: 1500, json: true }).invoke([new SystemMessage(system), new HumanMessage(user)]); // a Hebrew review with a better answer is ~1k tokens
   const parsed = answerReviewSchema.safeParse(extractJson(contentOf(res)));
@@ -249,7 +250,7 @@ Be specific and fair: quote what the candidate actually said; do not reward flue
 Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.${input.calibrationNote ? `\n${input.calibrationNote}` : ""}${input.codeTask?.done ? `\nThe interview included a timed coding exercise ("${input.codeTask.title || "exercise"}") graded automatically ${input.codeTask.score ?? "n/a"}/100; its turn starts with "${CODE_SUBMITTED_PREFIX}". Weigh it as one main question and review the follow-up discussion about the code like any other answer.` : ""}
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
 ${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); base the rest on them and return "answerReviews": [] (they are attached afterwards, do not repeat them).` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${input.compact ? "\nKeep it tight: summary ≤ 120 words, ≤ 4 strengths, ≤ 4 improvements, ≤ 4 next steps, each note ≤ 40 words, betterAnswer ≤ 3 sentences." : ""}${voice}${memory}
-Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.`;
+Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.${hebrewRule(input.language)}`;
   const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}${input.priorReviews?.length ? `\n\nPER-QUESTION REVIEWS (already done):\n${JSON.stringify(input.priorReviews)}` : ""}`;
   return { system, user };
 }

@@ -118,7 +118,7 @@ export default function OutcomesCard() {
                     placeholder={t("dashboard.outcomes.placeholder")}
                     rows={4}
                     className="jm-input"
-                    dir="auto"
+                    dir={dir}
                   />
                   <label className="flex items-center gap-2 text-xs text-ink-600">
                     <input type="checkbox" checked={share[q.outcomeId] !== false} onChange={(e) => setShare((s) => ({ ...s, [q.outcomeId]: e.target.checked }))} />

@@ -16,7 +16,8 @@ const VERDICT: Record<string, { key: "practice.verdictYou.pass" | "practice.verd
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60).toString().padStart(2, "0")}:${(Math.max(0, s) % 60).toString().padStart(2, "0")}`;
 
 function Paragraphs({ text }: { text: string }) {
-  return <div className="space-y-3 text-ink leading-relaxed" dir="auto">{text.split(/\n{2,}/).map((p, i) => <p key={i} className="whitespace-pre-wrap">{p}</p>)}</div>;
+  const { dir } = useT();
+  return <div className="space-y-3 text-ink leading-relaxed" dir={dir}>{text.split(/\n{2,}/).map((p, i) => <p key={i} className="whitespace-pre-wrap">{p}</p>)}</div>;
 }
 
 /** One attempt: the statement, the clock, the editor, and after submission the agent's verdict. */
@@ -123,7 +124,7 @@ export default function AttemptPage() {
             <span className="jm-chip jm-chip-sky">{task.role} · {task.level}</span>
             {task.tags.slice(0, 3).map((g) => <span key={g} className="jm-chip">{g}</span>)}
           </div>
-          <h1 className="jm-title" dir="auto">{task.title}</h1>
+          <h1 className="jm-title" dir={dir}>{task.title}</h1>
         </div>
         {open ? (
           <div className={`jm-card px-4 py-3 text-center min-w-[9rem] ${urgent ? "border-red-400" : ""}`}>
@@ -158,7 +159,7 @@ export default function AttemptPage() {
                     <div key={i} className="rounded-control bg-canvas border border-line p-3 text-sm font-mono" dir="ltr">
                       <div><span className="text-ink-400">in: </span>{e.input}</div>
                       <div><span className="text-ink-400">out: </span>{e.output}</div>
-                      {e.explanation && <div className="text-ink-600 font-sans mt-1" dir="auto">{e.explanation}</div>}
+                      {e.explanation && <div className="text-ink-600 font-sans mt-1" dir={dir}>{e.explanation}</div>}
                     </div>
                   ))}
                 </div>
@@ -167,23 +168,23 @@ export default function AttemptPage() {
             {task.constraints.length > 0 && (
               <div>
                 <h3 className="font-semibold text-navy mb-1">{t("practice.constraints")}</h3>
-                <ul className="list-disc ps-5 text-sm text-ink-600 space-y-0.5">{task.constraints.map((c, i) => <li key={i} dir="auto">{c}</li>)}</ul>
+                <ul className="list-disc ps-5 text-sm text-ink-600 space-y-0.5">{task.constraints.map((c, i) => <li key={i} dir={dir}>{c}</li>)}</ul>
               </div>
             )}
             {task.deliverables.length > 0 && (
               <div>
                 <h3 className="font-semibold text-navy mb-1">{t("practice.whatToSubmit")}</h3>
-                <ul className="space-y-1 text-sm text-ink">{task.deliverables.map((d, i) => <li key={i} className="flex gap-2" dir="auto"><CheckCircle2 className="h-4 w-4 text-teal shrink-0 mt-0.5" />{d}</li>)}</ul>
+                <ul className="space-y-1 text-sm text-ink">{task.deliverables.map((d, i) => <li key={i} className="flex gap-2" dir={dir}><CheckCircle2 className="h-4 w-4 text-teal shrink-0 mt-0.5" />{d}</li>)}</ul>
               </div>
             )}
             <div>
               <h3 className="font-semibold text-navy mb-1">{t("practice.howGraded")}</h3>
-              <ul className="text-sm text-ink-600 space-y-0.5">{task.rubric.map((r, i) => <li key={i} dir="auto"><span className="font-medium text-ink">{r.criterion}</span> <span className="text-ink-400">×{r.weight}</span>{r.description ? ` — ${r.description}` : ""}</li>)}</ul>
+              <ul className="text-sm text-ink-600 space-y-0.5">{task.rubric.map((r, i) => <li key={i} dir={dir}><span className="font-medium text-ink">{r.criterion}</span> <span className="text-ink-400">×{r.weight}</span>{r.description ? ` — ${r.description}` : ""}</li>)}</ul>
             </div>
             {!open && task.hints.length > 0 && (
               <div className="rounded-control bg-canvas border border-line p-3 text-sm">
                 <div className="font-semibold text-navy inline-flex items-center gap-1 mb-1"><Lightbulb className="h-4 w-4 text-amber-500" /> {t("practice.hints")}</div>
-                <ul className="list-disc ps-5 text-ink-600">{task.hints.map((h, i) => <li key={i} dir="auto">{h}</li>)}</ul>
+                <ul className="list-disc ps-5 text-ink-600">{task.hints.map((h, i) => <li key={i} dir={dir}>{h}</li>)}</ul>
               </div>
             )}
           </div>
@@ -237,9 +238,9 @@ export default function AttemptPage() {
                     <div className="space-y-2">
                       {attempt.breakdown.map((b, i) => (
                         <div key={i}>
-                          <div className="flex items-center justify-between text-sm"><span className="font-medium text-ink" dir="auto">{b.criterion} <span className="text-ink-400">×{b.weight}</span></span><span className="tabular-nums">{b.score}</span></div>
+                          <div className="flex items-center justify-between text-sm"><span className="font-medium text-ink" dir={dir}>{b.criterion} <span className="text-ink-400">×{b.weight}</span></span><span className="tabular-nums">{b.score}</span></div>
                           <div className="h-1.5 rounded-full bg-line overflow-hidden"><div className={`h-full ${b.score >= 70 ? "bg-teal" : b.score >= 45 ? "bg-amber-400" : "bg-red-400"}`} style={{ width: `${b.score}%` }} /></div>
-                          {b.comment && <p className="jm-muted mt-0.5" dir="auto">{b.comment}</p>}
+                          {b.comment && <p className="jm-muted mt-0.5" dir={dir}>{b.comment}</p>}
                         </div>
                       ))}
                     </div>
@@ -248,8 +249,8 @@ export default function AttemptPage() {
                     <h3 className="font-semibold text-navy mb-1">{t("practice.feedbackFrom", { who: attempt.gradedBy === "examiner" ? t("practice.examiner") : t("practice.assigner") })}</h3>
                     <Paragraphs text={attempt.feedback} />
                   </div>
-                  {attempt.strengths.length > 0 && <div><h4 className="font-medium text-teal mb-1">{t("practice.strengths")}</h4><ul className="list-disc ps-5 text-sm text-ink space-y-0.5">{attempt.strengths.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul></div>}
-                  {attempt.improvements.length > 0 && <div><h4 className="font-medium text-amber-700 mb-1">{t("practice.improvements")}</h4><ul className="list-disc ps-5 text-sm text-ink space-y-0.5">{attempt.improvements.map((s, i) => <li key={i} dir="auto">{s}</li>)}</ul></div>}
+                  {attempt.strengths.length > 0 && <div><h4 className="font-medium text-teal mb-1">{t("practice.strengths")}</h4><ul className="list-disc ps-5 text-sm text-ink space-y-0.5">{attempt.strengths.map((s, i) => <li key={i} dir={dir}>{s}</li>)}</ul></div>}
+                  {attempt.improvements.length > 0 && <div><h4 className="font-medium text-amber-700 mb-1">{t("practice.improvements")}</h4><ul className="list-disc ps-5 text-sm text-ink space-y-0.5">{attempt.improvements.map((s, i) => <li key={i} dir={dir}>{s}</li>)}</ul></div>}
                   {attempt.model === "heuristic" && <p className="jm-muted">{t("practice.heuristic")}</p>}
                   <div className="flex gap-2 pt-1">
                     <Link href="/practice" className="jm-btn jm-btn-primary">{t("practice.nextTask")}</Link>

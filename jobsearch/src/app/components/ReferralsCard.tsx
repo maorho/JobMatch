@@ -127,7 +127,7 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
               value={relationship}
               onChange={(e) => setRelationship(e.target.value)}
               maxLength={300}
-              dir="auto"
+              dir={dir}
               placeholder={t("widgets.ref.relPlaceholder")}
               className="jm-input text-sm flex-1"
               aria-label={t("widgets.ref.relAria")}
@@ -138,17 +138,17 @@ export default function ReferralsCard({ company, jobId, source, jobUrl }: { comp
           {err && <p className="jm-alert jm-alert-err">{err}</p>}
           {draft && (
             <>
-              {draft.subject && <p className="text-sm font-semibold" dir="auto">{draft.subject}</p>}
-              <textarea readOnly value={draft.message} rows={7} dir="auto" className="jm-input text-sm leading-relaxed" />
+              {draft.subject && <p className="text-sm font-semibold" dir={dir}>{draft.subject}</p>}
+              <textarea readOnly value={draft.message} rows={7} dir={dir} className="jm-input text-sm leading-relaxed" />
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" onClick={copy} className="jm-btn jm-btn-primary jm-btn-sm"><Copy className="h-4 w-4" /> {copied ? t("widgets.ref.copied") : t("widgets.ref.copy")}</button>
                 {active.url && <a href={active.url} target="_blank" rel="noreferrer" className="jm-btn jm-btn-secondary jm-btn-sm">{t("widgets.ref.openLinkedin")}</a>}
-                {draft.angle && <span className="jm-muted" dir="auto">{draft.angle}</span>}
+                {draft.angle && <span className="jm-muted" dir={dir}>{draft.angle}</span>}
               </div>
               {draft.forwardNote && (
                 <div className="rounded-control bg-canvas border border-line p-3 space-y-2">
                   <p className="text-xs font-semibold text-navy">{t("widgets.ref.forwardTitle")}</p>
-                  <textarea readOnly value={draft.forwardNote} rows={3} dir="auto" className="jm-input text-sm leading-relaxed" />
+                  <textarea readOnly value={draft.forwardNote} rows={3} dir={dir} className="jm-input text-sm leading-relaxed" />
                   <button type="button" onClick={copyNote} className="jm-btn jm-btn-secondary jm-btn-sm"><Copy className="h-4 w-4" /> {copiedNote ? t("widgets.ref.copied") : t("widgets.ref.copyForward")}</button>
                 </div>
               )}

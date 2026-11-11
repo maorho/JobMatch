@@ -8,6 +8,7 @@ import { gatherCompanyContext } from "@/app/lib/interview/companyContext";
 import { extractJson } from "@/app/lib/resume/tailor";
 import { chatModel } from "@/app/lib/llm/chat";
 import { modelFor } from "@/app/lib/llm/models";
+import { hebrewRule } from "@/app/lib/llm/hebrew";
 
 export const ANSWER_MODEL = modelFor("coach");
 
@@ -60,7 +61,7 @@ Rules that matter more than fluency:
 - Behavioural questions follow Situation → Task → Action → Result, in prose, 90–150 words. Technical questions: a direct answer first, then one concrete example from the résumé, 80–140 words.
 - Match the company: reference its products/stack from the brief only when it is genuinely relevant.
 - No preamble, no headings, no bullet lists inside the answer. Then give up to 2 one-line tips (what the interviewer at this company is probably listening for).
-Return JSON: {"answer": string, "tips": string[]}.`;
+Return JSON: {"answer": string, "tips": string[]}.${lang.startsWith("Hebrew") ? hebrewRule("he") : ""}`;
   const userMsg = `COMPANY: ${opts.company}${opts.stage ? `\nSTAGE: ${opts.stage}` : ""}${opts.topic ? `\nTOPIC: ${opts.topic}` : ""}
 COMPANY BRIEF:
 """${brief || "(none)"}"""
