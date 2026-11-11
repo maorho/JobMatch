@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { ProsodyMeter } from "@/app/lib/interview/prosodyClient";
-import type { Prosody, VocalImpression } from "@/app/lib/interview/voice";
+import { FaceMeter } from "@/app/lib/interview/faceClient";
+import type { Prosody, Presence, VocalImpression } from "@/app/lib/interview/voice";
 import { useT } from "@/app/lib/i18n/LanguageProvider";
 
 /**
@@ -12,7 +13,7 @@ import { useT } from "@/app/lib/i18n/LanguageProvider";
  * profile, push it to the server as we go, and end the call when the
  * interviewer calls the end_interview tool (or the candidate hangs up).
  */
-export type VoiceTurn = { role: "interviewer" | "candidate"; content: string; seconds?: number; prosody?: Prosody };
+export type VoiceTurn = { role: "interviewer" | "candidate"; content: string; seconds?: number; prosody?: Prosody; presence?: Presence };
 
 type Props = {
   sessionId: string;
@@ -52,6 +53,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
   const micRef = useRef<MediaStream | null>(null);
   const camRef = useRef<MediaStream | null>(null);
   const meterRef = useRef<ProsodyMeter | null>(null);
+  const faceRef = useRef<FaceMeter | null>(null);
+  const [faceOn, setFaceOn] = useState(false);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
   const turnsRef = useRef<VoiceTurn[]>([]);
@@ -160,6 +163,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
       try { dcRef.current?.close(); } catch {}
       try { pcRef.current?.close(); } catch {}
       meterRef.current?.dispose();
+      faceRef.current?.dispose();
       micRef.current?.getTracks().forEach((t) => t.stop());
       camRef.current?.getTracks().forEach((t) => t.stop());
       await sync(reason === "interviewer");
@@ -177,6 +181,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         if (!speechStartRef.current) armLongAnswer(); // the clock runs from the first word of the answer, across its pauses
         speechStartRef.current = speechStartRef.current || Date.now();
         meterRef.current?.start();
+        faceRef.current?.start();
         setSpeaking("candidate");
         break;
       case "input_audio_buffer.speech_stopped":
@@ -194,7 +199,8 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
           disarmLongAnswer();
           const prosody = pendingProsodyRef.current ?? meterRef.current?.stop() ?? undefined;
           pendingProsodyRef.current = null;
-          pushTurn({ role: "candidate", content: text, seconds, prosody: prosody || undefined });
+          const presence = faceRef.current?.stop() ?? undefined;
+          pushTurn({ role: "candidate", content: text, seconds, prosody: prosody || undefined, presence: presence || undefined });
           sync(); // every answer → the server reviews it while the interview goes on
         }
         break;
@@ -258,7 +264,13 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
         try {
           const cam = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
           camRef.current = cam;
-          if (videoElRef.current) videoElRef.current.srcObject = cam;
+          if (videoElRef.current) {
+            videoElRef.current.srcObject = cam;
+            // Face analysis runs on the device only (eye contact, expression, stillness); it never uploads a frame.
+            const fm = new FaceMeter(videoElRef.current);
+            faceRef.current = fm;
+            fm.init().then((ok) => setFaceOn(ok)).catch(() => setFaceOn(false));
+          }
         } catch {
           setCamOn(false); // no camera is fine — it's only a self-view
         }
@@ -372,6 +384,7 @@ export default function VoiceInterview({ sessionId, clientSecret, model, endpoin
           <div className="absolute bottom-2 inset-x-2 flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-white/20 overflow-hidden"><div className="h-full bg-teal transition-all" style={{ width: `${Math.round(level * 100)}%` }} /></div>
             <span className="text-[10px] text-white/70">{muted ? t("interview.voice.muted") : t("interview.voice.mic")}</span>
+            {camOn && faceOn && <span className="text-[10px] text-white/70" title={t("interview.voice.faceHint")}>· {t("interview.voice.faceOn")}</span>}
           </div>
         </div>
       </div>

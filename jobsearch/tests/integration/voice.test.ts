@@ -140,7 +140,7 @@ describe("voice session routes", () => {
       { role: "interviewer", content: "היי, אני מגייסת ב-Acme. ספר/י על עצמך." },
       { role: "candidate", content: "אממ אני מפתח ריאקט, בניתי שלושה פרויקטים", seconds: 18, prosody: monotone },
       { role: "interviewer", content: "למה אצלנו?" },
-      { role: "candidate", content: "כי אתם עובדים על אבטחת ענן וזה מעניין אותי מאוד", seconds: 12, prosody: monotone },
+      { role: "candidate", content: "כי אתם עובדים על אבטחת ענן וזה מעניין אותי מאוד", seconds: 12, prosody: monotone, presence: { frames: 40, faceVisibleRatio: 1, eyeContactRatio: 0.3, smileRatio: 0.1, furrowRatio: 0.5, headMovementDeg: 9.5, avgYawDeg: 25, avgPitchDeg: -4, junk: 1 } },
       { role: "interviewer", content: "תודה, נחזור אליך." },
     ];
     const saved = await j(await voicePATCH(new NextRequest(`${O}/api/interview/voice`, { method: "PATCH", headers: await cookie(me), body: JSON.stringify({ sessionId, turns, wrappedUp: true, impression: { confidence: 2, energy: 2, clarity: 4, warmth: 3, pace: "too slow", notes: "hesitant start, trailing off", junk: 1 } }) })));
@@ -148,6 +148,12 @@ describe("voice session routes", () => {
     expect(saved.body.delivery.tone.expressiveness).toBe("monotone");
     expect(saved.body.delivery.impression).toMatchObject({ confidence: 2, pace: "too slow" });
     expect(saved.body.delivery.impression.junk).toBeUndefined();
+    // The camera numbers are summarised (one answer measured), sanitised, and read as "turned away".
+    expect(saved.body.delivery.presence).toMatchObject({ measuredAnswers: 1, eyeContact: 0.3, headMovementDeg: 9.5, framing: "turned away" });
+    const storedTurn: any = ((await InterviewSession.findById(sessionId).lean()) as any).transcript[3];
+    expect(storedTurn.presence.junk).toBeUndefined();
+    expect(describeDelivery(saved.body.delivery, "he")).toMatch(/CAMERA \(measured[^;]*looking at the camera 30% of the time/);
+    expect(buildFeedbackPrompt({ plan: PLAN as any, stage: "hr", job: { title: "Dev", company: "Acme" }, companyBrief: "", language: "he", transcript: [], deliveryNote: describeDelivery(saved.body.delivery, "he") }).system).toMatch(/"presence": \{"score": number, "notes": string\}/);
 
     // Live reviews: every answered question gets its review while the call is on; the intro-length answer is skipped.
     expect(pairQuestions(turns as any).map((p) => p.index)).toEqual([1, 3]);

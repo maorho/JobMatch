@@ -17,7 +17,8 @@ const isDev = process.env.NODE_ENV !== "production";
  */
 const csp = [
   "default-src 'self'",
-  `script-src 'self'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ""}`,
+  // 'wasm-unsafe-eval': MediaPipe's face landmarker (voice interview) runs as wasm served from /mediapipe.
+  `script-src 'self' 'wasm-unsafe-eval'${isDev ? " 'unsafe-inline' 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://icons.duckduckgo.com https://www.google.com https:",
   "font-src 'self' data:",

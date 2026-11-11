@@ -48,6 +48,56 @@ export function pickStyle(stage: string, seed = Math.random()): InterviewerStyle
   return pool[Math.floor(seed * pool.length) % pool.length];
 }
 
+/**
+ * How each stage really runs (the common Israeli tech interview funnel; the
+ * question bank and the plan fill the slots). The opening is shared: the
+ * interviewer presents the company, then the role, then asks the candidate
+ * to introduce themselves. Phases are an order, not a checklist read aloud.
+ */
+export const STAGE_SCRIPT: Record<string, string[]> = {
+  hr: [
+    "Résumé walk-through: their path so far, the last two roles, why they left or want to leave.",
+    "REQUIREMENT GAPS: compare the posting's requirements with the résumé and ask, neutrally, about each material gap (a technology they don't list, fewer years than asked, a different domain) — 'the role asks for X, I don't see it in your CV; how close are you?'.",
+    "Motivation: why this role, why this company specifically (expect them to know what the company does), what they look for in the next job.",
+    "Expectations and logistics: salary expectations (ask for a number or a range), availability / notice period, on-site vs hybrid, location, any constraints (studies, reserve duty, other processes).",
+    "Their questions about the role and the process.",
+  ],
+  technical: [
+    "Warm-up: 2 fundamentals questions from the role's stack (the REAL QUESTIONS list first, then the question bank).",
+    "Deep-dive on one project from the résumé: their own part, the hardest decision, what broke, what they'd change.",
+    "Hands-on task: the coding exercise (hand it out with the token when allowed; in a voice call, give a small problem to reason through aloud). GUIDANCE IS ALLOWED HERE: if they are stuck, give one small hint at a time ('what if you used a map?'), never the solution; note that they needed hints.",
+    "Follow-ups on the solution: complexity, edge cases, tests, what they'd do with more time.",
+    "Their questions about the team's stack and practices.",
+  ],
+  system_design: [
+    "Problem statement and requirements clarification: expect them to ask about scale, users, latency, consistency before designing.",
+    "High-level design: components, data flow, API surface; ask them to think aloud.",
+    "Deep-dive on one component they chose (storage, queue, cache): schema, trade-offs.",
+    "Scale and failure: what breaks at 10×, single points of failure, monitoring; one hint when stuck is fine.",
+    "Their questions.",
+  ],
+  home_assignment: [
+    "Walk-through: ask them to present the solution in 3–4 minutes — structure, main decisions.",
+    "Decisions and trade-offs: why this architecture / library / data model; what they considered and rejected.",
+    "Quality: tests, error handling, edge cases, how they'd deploy it; point at a specific weak spot and ask about it.",
+    "Extension: 'if we now needed X, what changes?' (a realistic new requirement).",
+    "Their questions.",
+  ],
+  behavioral: [
+    "Teamwork and conflict: a disagreement with a teammate or manager — what happened, what they did, how it ended (STAR: situation, task, action, result).",
+    "Ownership and failure: something that went wrong on their watch, what they learned.",
+    "Learning and feedback: a time they got hard feedback; how they learn a new technology.",
+    "Working under pressure / priorities: a deadline story, how they chose what to drop.",
+    "Their questions about the team.",
+  ],
+  final: [
+    "Career story and motivation in their own words: where they want to be in two or three years and why this company fits that.",
+    "Culture and values: how they work with product and other teams, what environment they do their best work in.",
+    "Expectations: salary, start date, other offers in play — straight questions.",
+    "Closing sell: tell them briefly why people stay at the company, then their questions.",
+  ],
+};
+
 /** How deep an interviewer may dig into one subject at each stage (follow-ups after a main question). */
 export const FOLLOWUP_BUDGET: Record<string, number> = { hr: 1, behavioral: 2, technical: 3, system_design: 3, home_assignment: 2, final: 1 };
 
@@ -101,6 +151,10 @@ export type SimInput = {
   codeTask?: { allowed: boolean; done: boolean; title?: string; score?: number | null };
   /** Questions the company really asks (lib/interview/realQuestions.ts): the interviewer must use them. */
   realQuestions?: { text: string; count: number; stageCount: number };
+  /** The posting's stated requirements and technologies (for the HR gap questions). */
+  jobRequirements?: string[];
+  /** The posting text (excerpt), so the interviewer can present the role in its own words. */
+  jobDescription?: string;
 };
 
 /** A compact, factual brief the interviewer can quote from. */
@@ -159,6 +213,10 @@ ${input.companyBrief || "(no brief)"}
 """
 ROLE SUMMARY: ${input.plan.roleSummary || "(see title)"}
 CANDIDATE'S RÉSUMÉ (ask about specifics from it): """${(input.resumeText || "").slice(0, 3000)}"""
+THE ROLE AS POSTED: """${(input.jobDescription || "").slice(0, 1800) || "(see role summary)"}"""
+${input.jobRequirements?.length ? `REQUIREMENTS STATED IN THE POSTING: ${input.jobRequirements.slice(0, 12).join(" | ")}` : ""}
+INTERVIEW SCRIPT for this stage, in order (the opening comes first; the REAL QUESTIONS and the question bank fill the slots; do not announce the phases):
+${(STAGE_SCRIPT[input.stage] || STAGE_SCRIPT.hr).map((s, i) => `${i + 1}. ${s}`).join("\n")}
 RÉSUMÉ GAPS: read the résumé like a real interviewer and, if you notice a MATERIAL gap, ask about it once as one of your main questions, neutrally and without accusation — e.g. an unexplained break of months or more between roles or after studies, a very short stint, overlapping jobs, studies with no dates or no degree, a listed skill or title with nothing in the experience to back it, or a switch of field. Phrase it as curiosity ("I see about a year between X and Y — what were you doing then?"), listen, and move on; do not probe it more than once unless the answer was evasive. If nothing in the résumé is genuinely surprising, do not invent a gap.
 ${input.coachMemory ? `WHAT THE COACH REMEMBERS FROM THEIR PREVIOUS MOCK INTERVIEWS (use it to probe the weak spots again — naturally, never mention that you know): ${input.coachMemory}` : ""}
 ${input.realQuestions?.text ? `${input.realQuestions.text}\n` : ""}QUESTION BANK FOR THIS STAGE (adapt, don't read verbatim; you may add your own): ${stage.likelyQuestions.map((q) => q.question).slice(0, 10).join(" | ")}
@@ -169,11 +227,12 @@ HOW TO BEHAVE:
 - FOLLOW-UP BUDGET for this stage: up to ${budget} follow-up${budget === 1 ? "" : "s"} on the same subject after a main question. Spend them when an answer was thin, vague or evasive (ask for the example, the number, their own part in it) OR when it was strong and invites depth (a trade-off, what breaks at scale, what they'd do differently). A complete, concrete answer to an easy question needs no follow-up — acknowledge and move to the NEXT main question on a different subject. Never exceed the budget; never stay on one subject for more than ${budget + 1} questions in a row.
 ${realRule}${alreadyAsked}${overBudget}
 - COMPANY-ANCHORED QUESTIONS: at least two of your main questions must be anchored in a specific item from what you know — a product, a recent news item, their stack, a signal from their open roles, or a sentence from the role summary ("we use X for Y — how would you approach Z?"). Only from the brief above, never invented; when the brief is thin, anchor in the role summary and the posting's title.${live}${retest}${code}
-- Do NOT evaluate, grade, coach, hint at the "right answer" or say how the candidate is doing. Feedback comes only after the interview.
+- CLARIFY WHEN NEEDED: if an answer is unclear, incomplete or you did not understand it, ask a short clarifying follow-up ("do you mean…?", "can you give the concrete example?") — that does not count against the budget. Never pretend you understood.
+- Do NOT evaluate, grade, coach or say how the candidate is doing. Feedback comes only after the interview. The one exception is the hands-on task in a technical stage: a small hint when they are stuck is allowed (the script says so), the solution is not.
 - Stay in character even if the candidate asks for feedback: politely say you'll share impressions at the end.
 - If the candidate asks YOU something (about the company, the team, the role, the process, salary range you don't know…), answer it briefly and honestly from what you know — say "I don't have that information" when you don't — then give them room to react before moving on. Candidates are expected to ask questions; it's a good sign.
 - Plan for ${input.targetQuestions} main questions (your opening and the candidate's self-introduction do NOT count). Interviewer turns so far: ${asked}. When you have asked all of them and received the last answer — or when the candidate asks to stop — close the interview in 1–2 sentences (thank them, say what happens next) and append the exact token ${END_MARK} at the very end of that message.
-- OPENING (when the transcript is empty): introduce yourself by name and role, say one or two sentences about ${input.job.company} and the "${input.job.title}" role and what this stage is about, then invite the candidate to introduce themselves briefly — and STOP there. Your first real question comes only after they have introduced themselves.`.trim();
+- OPENING (when the transcript is empty), in this order and in one message: (1) introduce yourself by name and role; (2) tell them about ${input.job.company} — what it does, for whom, size/stage, from the brief, 2–3 sentences; (3) present the "${input.job.title}" role — what the person will do, the team, the stack, from the posting, 2–3 sentences — and what this stage is about; (4) ask them to tell you about themselves — and STOP there. Your first real question comes only after they have introduced themselves.`.trim();
 }
 
 const contentOf = (res: any): string => (typeof res.content === "string" ? res.content : (res.content as any[]).map((p) => p?.text ?? "").join(""));
@@ -192,6 +251,8 @@ export const feedbackSchema = z.object({
   overallScore: z.number().min(0).max(100),
   /** Voice interviews only: how it sounded. */
   delivery: z.object({ score: z.number().min(0).max(10), notes: z.string().default("") }).optional(),
+  /** Voice interviews with the camera on: how it looked (eye contact, expression, stillness). */
+  presence: z.object({ score: z.number().min(0).max(10), notes: z.string().default("") }).optional(),
   /** When there were previous interviews: what changed since. */
   progress: z.object({ note: z.string().default(""), improved: z.array(z.string()).default([]), stillOpen: z.array(z.string()).default([]) }).optional(),
   verdict: z.string().default(""), // e.g. "strong hire / lean hire / lean no-hire"
@@ -242,15 +303,16 @@ export function buildFeedbackPrompt(input: Omit<SimInput, "targetQuestions"> & {
     : "";
   const stage = input.plan.stages.find((s) => s.key === input.stage) || input.plan.stages[0];
   const lang = input.language === "en" ? "English" : "Hebrew (technical terms in English)";
+  const hasCamera = !!input.deliveryNote && /CAMERA \(measured/.test(input.deliveryNote);
   const voice = input.deliveryNote
-    ? `\nThis was a SPOKEN interview (transcribed). Also score "delivery" 0–10 with notes on VOICE and TONE: pace, filler words, pauses, answer length, pitch variation (monotone vs expressive), volume, trailing off, and the confidence/energy/clarity the interviewer heard — based on these measurements and impressions: ${input.deliveryNote}. Give 2–3 concrete, practical voice tips (e.g. "end sentences with a downward tone", "slow down on numbers"). Transcription may contain small errors; don't penalise typos.`
+    ? `\nThis was a SPOKEN interview (transcribed). Also score "delivery" 0–10 with notes on VOICE and TONE: pace, filler words, pauses, answer length, pitch variation (monotone vs expressive), volume, trailing off, and the confidence/energy/clarity the interviewer heard — based on these measurements and impressions: ${input.deliveryNote}. Give 2–3 concrete, practical voice tips (e.g. "end sentences with a downward tone", "slow down on numbers"). Transcription may contain small errors; don't penalise typos.${hasCamera ? ` The candidate also had the camera on: score "presence" 0–10 with notes on what the camera showed — eye contact (looking at the camera vs. away or down), facial expression (smile, furrowed brow, tension), stillness vs. restlessness, framing — and 2 practical tips (e.g. "look at the lens when you finish a sentence", "sit a bit further from the screen"). Base it only on the CAMERA measurements above; be kind and specific.` : ""}`
     : "";
   const system = `You are the interviewer who just finished a "${stage.title}" interview for ${input.job.title} at ${input.job.company}, now writing the hiring-committee debrief AND an honest, useful debrief for the candidate. Write in ${lang}.
 Be specific and fair: quote what the candidate actually said; do not reward fluent nonsense; do not punish brevity when the content was right. Score the whole interview 0–100 (70+ = would advance; 50–69 = borderline; below 50 = would not advance), each dimension 0–10, each answer 0–10.
 Calibration: an answer with no concrete example, number, decision or trade-off ("I'm a fast learner", "it's a great company", "it wasn't hard") scores at most 4/10; an interview where most answers are like that scores below 50 overall, however pleasant the tone. "I don't know" is honest and scores above a confident wrong answer, but still low.${input.calibrationNote ? `\n${input.calibrationNote}` : ""}${input.codeTask?.done ? `\nThe interview included a timed coding exercise ("${input.codeTask.title || "exercise"}") graded automatically ${input.codeTask.score ?? "n/a"}/100; its turn starts with "${CODE_SUBMITTED_PREFIX}". Weigh it as one main question and review the follow-up discussion about the code like any other answer.` : ""}
 Dimensions to score for this stage: ${input.stage === "technical" || input.stage === "system_design" ? "technical depth, problem solving, communication, trade-off thinking, role fit" : input.stage === "hr" ? "motivation & fit, communication, clarity about experience, expectations alignment, professionalism" : "communication, concrete examples, ownership, collaboration, role fit"}.
 ${input.priorReviews?.length ? `The per-question reviews were already written during the interview (below); base the rest on them and return "answerReviews": [] (they are attached afterwards, do not repeat them).` : "For every main question give: a one-line summary of the answer, a score, what worked, and a stronger answer in the candidate's own voice (3–5 sentences, using THEIR real experience from the résumé — never invent experience)."}${input.compact ? "\nKeep it tight: summary ≤ 120 words, ≤ 4 strengths, ≤ 4 improvements, ≤ 4 next steps, each note ≤ 40 words, betterAnswer ≤ 3 sentences." : ""}${voice}${memory}
-Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.${hebrewRule(input.language)}`;
+Return STRICT JSON: {"overallScore": number, "verdict": string, "summary": string, "dimensions": [{"name","score","notes"}], "strengths": [string], "improvements": [string], "answerReviews": [{"question","answerSummary","score","whatWorked","betterAnswer"}], "nextSteps": [string]${input.deliveryNote ? ', "delivery": {"score": number, "notes": string}' : ""}${hasCamera ? ', "presence": {"score": number, "notes": string}' : ""}${input.coachMemory ? ', "progress": {"note": string, "improved": [string], "stillOpen": [string]}' : ""}}. Nothing else.${hebrewRule(input.language)}`;
   const user = `COMPANY BRIEF:\n${input.companyBrief}\n\nCANDIDATE RÉSUMÉ:\n${(input.resumeText || "").slice(0, 3000)}\n\nTRANSCRIPT:\n${input.transcript.map((t) => `${t.role === "interviewer" ? "INTERVIEWER" : "CANDIDATE"}: ${t.content}`).join("\n\n")}${input.priorReviews?.length ? `\n\nPER-QUESTION REVIEWS (already done):\n${JSON.stringify(input.priorReviews)}` : ""}`;
   return { system, user };
 }

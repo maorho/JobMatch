@@ -105,6 +105,16 @@ describe("interviewer prompt", () => {
     expect(hr).toMatch(/up to 1 follow-up /);
     expect(hr).toMatch(/STEP UP/);
     expect(hr).not.toContain(CODE_MARK);
+    // The structure: company → role → "tell me about yourself", then the stage's script, with the posting's requirements to probe.
+    const hrScript = buildInterviewerPrompt({ ...base, stage: "hr", jobRequirements: ["3+ years with React", "GraphQL"], jobDescription: "We build cloud security for banks." });
+    expect(hrScript).toMatch(/OPENING .*\(1\) introduce yourself by name and role; \(2\) tell them about Acme[\s\S]*\(3\) present the "Dev" role[\s\S]*\(4\) ask them to tell you about themselves/);
+    expect(hrScript).toMatch(/INTERVIEW SCRIPT for this stage[\s\S]*1\. Résumé walk-through[\s\S]*2\. REQUIREMENT GAPS[\s\S]*salary expectations/);
+    expect(hrScript).toMatch(/REQUIREMENTS STATED IN THE POSTING: 3\+ years with React \| GraphQL/);
+    expect(hrScript).toMatch(/THE ROLE AS POSTED: """We build cloud security for banks\."""/);
+    expect(hrScript).toMatch(/CLARIFY WHEN NEEDED/);
+    expect(tech).toMatch(/3\. Hands-on task[\s\S]*GUIDANCE IS ALLOWED HERE/);
+    expect(buildInterviewerPrompt({ ...base, stage: "system_design" })).toMatch(/requirements clarification[\s\S]*what breaks at 10×/);
+    expect(buildInterviewerPrompt({ ...base, stage: "behavioral" })).toMatch(/STAR: situation, task, action, result/);
     const done = buildInterviewerPrompt({ ...base, stage: "technical", codeTask: { allowed: true, done: true, title: "Two sum", score: 80 } });
     expect(done).toMatch(/CODING EXERCISE: done \("Two sum", automatic grade 80\/100\)/);
     const mid = buildInterviewerPrompt({ ...base, stage: "hr", targetQuestions: 2, transcript: [{ role: "interviewer", content: "opening" }, { role: "candidate", content: "hi" }, { role: "interviewer", content: "Tell me about a conflict you handled" }, { role: "candidate", content: "…" }, { role: "interviewer", content: "Why us?" }, { role: "candidate", content: "…" }] });

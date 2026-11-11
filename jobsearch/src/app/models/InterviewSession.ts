@@ -15,6 +15,8 @@ const TurnSchema = new mongoose.Schema(
     /** Voice mode: how long this turn was spoken, and the measured voice profile. */
     seconds: { type: Number },
     prosody: { type: mongoose.Schema.Types.Mixed },
+    /** Voice mode with the camera on: eye contact / expression / stillness numbers measured on the device. */
+    presence: { type: mongoose.Schema.Types.Mixed },
   },
   { _id: false }
 );

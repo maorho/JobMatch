@@ -21,10 +21,12 @@ type Plan = {
 };
 type Prep = { prepId: string; job: { title: string; company: string }; plan: Plan; cached: boolean };
 type Turn = { role: "interviewer" | "candidate"; content: string };
-type Delivery = { answers: number; totalSpeakingSeconds: number; avgAnswerSeconds: number; wordsPerMinute: number | null; fillerWords: number; fillersPerMinute: number | null; shortAnswers: number; tone: { pitchVarSemitones: number | null; expressiveness: string | null; loudnessDb: number | null; volume: string | null; pauseRatio: number | null; trailingOffAnswers: number; measuredAnswers: number }; impression?: { confidence: number; energy: number; clarity: number; warmth: number; pace: string; notes: string } };
+type PresenceSummary = { measuredAnswers: number; faceVisible: number | null; eyeContact: number | null; smile: number | null; furrow: number | null; headMovementDeg: number | null; framing: "centred" | "turned away" | "looking down" | "looking up" | null };
+type Delivery = { answers: number; totalSpeakingSeconds: number; avgAnswerSeconds: number; wordsPerMinute: number | null; fillerWords: number; fillersPerMinute: number | null; shortAnswers: number; tone: { pitchVarSemitones: number | null; expressiveness: string | null; loudnessDb: number | null; volume: string | null; pauseRatio: number | null; trailingOffAnswers: number; measuredAnswers: number }; impression?: { confidence: number; energy: number; clarity: number; warmth: number; pace: string; notes: string }; presence?: PresenceSummary | null };
 type Feedback = {
   overallScore: number;
   delivery?: { score: number; notes: string };
+  presence?: { score: number; notes: string };
   progress?: { note: string; improved: string[]; stillOpen: string[] };
   verdict: string;
   summary: string;
@@ -631,6 +633,26 @@ function FeedbackView({ fb, delivery, onNew, stageTitle }: { fb: Feedback; deliv
               <div className="sm:col-span-2 text-ink-600" dir={dir}><span className="jm-muted">{t("interview.heard")}</span>{imp.notes}{imp.pace && imp.pace !== "good" ? t("interview.pace", { pace: imp.pace }) : ""}</div>
             </div>
           )}
+        </div>
+      )}
+
+      {(fb.presence || (delivery?.presence && delivery.presence.measuredAnswers > 0)) && (
+        <div className="rounded-control border border-line p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-navy">{t("interview.presence")}</h3>
+            {fb.presence && <span className={`jm-chip ${fb.presence.score >= 7 ? "jm-chip-teal" : fb.presence.score >= 5 ? "jm-chip-sky" : "bg-red-50 text-red-700 border-red-200"}`}>{fb.presence.score}/10</span>}
+          </div>
+          {fb.presence?.notes && <p className="text-sm text-ink-600 leading-relaxed whitespace-pre-line">{fb.presence.notes}</p>}
+          {delivery?.presence && delivery.presence.measuredAnswers > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {delivery.presence.eyeContact !== null && <span className={`jm-chip ${delivery.presence.eyeContact >= 0.7 ? "jm-chip-teal" : delivery.presence.eyeContact < 0.4 ? "jm-chip-sky" : ""}`}>{t("interview.presence.eye", { pct: Math.round(delivery.presence.eyeContact * 100) })}</span>}
+              {delivery.presence.smile !== null && <span className="jm-chip">{t("interview.presence.smile", { pct: Math.round(delivery.presence.smile * 100) })}</span>}
+              {delivery.presence.furrow !== null && <span className="jm-chip">{t("interview.presence.furrow", { pct: Math.round(delivery.presence.furrow * 100) })}</span>}
+              {delivery.presence.headMovementDeg !== null && <span className={`jm-chip ${delivery.presence.headMovementDeg > 8 ? "jm-chip-sky" : ""}`}>{t("interview.presence.move", { deg: delivery.presence.headMovementDeg })}</span>}
+              {delivery.presence.framing && <span className="jm-chip">{t(`interview.presence.framing.${delivery.presence.framing}`)}</span>}
+            </div>
+          )}
+          <p className="text-xs text-ink-400">{t("interview.presence.onDevice")}</p>
         </div>
       )}
 

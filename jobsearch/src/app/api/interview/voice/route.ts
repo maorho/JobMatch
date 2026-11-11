@@ -27,6 +27,7 @@ function background(fn: () => Promise<unknown>) {
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/coachMemory";
 import { realQuestionsForInterview } from "@/app/lib/interview/realQuestions";
+import { loadJob } from "@/app/lib/jobs/loadJob";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,7 +71,9 @@ export async function POST(req: NextRequest) {
     const who = pickVoice();
     const memory = await loadCoachMemory(userId);
     const style = pickStyle(stage);
-    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, realQuestions: real });
+    const posting: any = await loadJob(prep.source, String(prep.jobId)).catch(() => null);
+    const jobRequirements = posting ? [...new Set([...(posting.requirements || []), ...(posting.tech || [])].map(String).filter(Boolean))].slice(0, 14) : undefined;
+    const instructions = buildVoiceInstructions({ plan: prep.plan, stage, job: { title: prep.jobTitle, company: prep.company }, companyBrief, resumeText, language, targetQuestions, transcript: [], interviewer: { name: who.name, gender: who.gender }, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, realQuestions: real, jobDescription: posting ? String(posting.description || posting.qualifications || "").replace(/\s+/g, " ").slice(0, 1800) : undefined, jobRequirements });
     const secret = await createRealtimeClientSecret({ instructions, language, voice: who.voice, transcriptionPrompt: transcriptionPrompt({ company: prep.company, jobTitle: prep.jobTitle, tech: [...(prep.plan?.company?.techStack || []), ...(ctx?.techSignals || []).map((t: any) => t.term)], candidateName: user?.fullname }) });
 
     const session = await InterviewSession.create({
@@ -121,6 +124,7 @@ export async function PATCH(req: NextRequest) {
           content: String(t.content).trim().slice(0, 6000),
           seconds: Number.isFinite(Number(t.seconds)) ? Math.max(0, Math.min(600, Number(t.seconds))) : undefined,
           prosody: t.prosody && typeof t.prosody === "object" ? cleanProsody(t.prosody) : undefined,
+          presence: t.presence && typeof t.presence === "object" ? cleanPresence(t.presence) : undefined,
         }))
     : [];
   const impression = body?.impression && typeof body.impression === "object" ? cleanImpression(body.impression) : undefined;
@@ -153,6 +157,18 @@ function cleanProsody(p: any) {
     pauseRatio: num(p.pauseRatio, 0, 1),
     endTrendDb: num(p.endTrendDb, -60, 60),
     voicedFrames: num(p.voicedFrames, 0, 100000),
+  };
+}
+function cleanPresence(p: any) {
+  return {
+    frames: num(p.frames, 0, 100000),
+    faceVisibleRatio: num(p.faceVisibleRatio, 0, 1),
+    eyeContactRatio: num(p.eyeContactRatio, 0, 1),
+    smileRatio: num(p.smileRatio, 0, 1),
+    furrowRatio: num(p.furrowRatio, 0, 1),
+    headMovementDeg: num(p.headMovementDeg, 0, 90),
+    avgYawDeg: num(p.avgYawDeg, -90, 90),
+    avgPitchDeg: num(p.avgPitchDeg, -90, 90),
   };
 }
 function cleanImpression(i: any) {

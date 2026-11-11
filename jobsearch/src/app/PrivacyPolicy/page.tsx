@@ -115,7 +115,8 @@ export default function PrivacyPolicyPage() {
                     חלקים מרכזיים בשירות מבוססים על מודלי שפה. כדי לייצר התאמה, תוכנית הכנה, ראיון דמה או ניסוח, אנחנו שולחים
                     לספקי המודלים את הטקסט הרלוונטי: קורות החיים שלך, תיאור המשרה, והשיחה. הספקים כיום הם OpenAI ו-Anthropic. לפי
                     תנאי ה-API שלהם, מידע שנשלח דרך ה-API אינו משמש לאימון המודלים שלהם. בראיון קולי, הדיבור שלך מועבר לספק
-                    לתמלול ולניתוח בזמן אמת ואינו נשמר אצלנו כקובץ שמע.
+                    לתמלול ולניתוח בזמן אמת ואינו נשמר אצלנו כקובץ שמע. אם הפעלת מצלמה בראיון קולי, ניתוח ההבעה (קשר עין, חיוך,
+                    תנועת ראש) מתבצע בדפדפן שלך בלבד; אף תמונה או וידאו אינם נשלחים או נשמרים, רק מספרים מסכמים לכל תשובה.
                   </p>
                   <p>
                     שאר הספקים שמחזיקים או מעבדים מידע בשבילנו: MongoDB Atlas (מסד הנתונים), Amazon Web Services (אחסון קבצים,
@@ -370,7 +371,9 @@ export default function PrivacyPolicyPage() {
                     or a piece of writing, we send the relevant text to the model providers: your résumé, the job description, and the
                     conversation. The providers today are OpenAI and Anthropic. Under their API terms, data sent through the API is not
                     used to train their models. In a voice interview, your speech is streamed to the provider for transcription and
-                    analysis in real time and is not stored with us as an audio file.
+                    analysis in real time and is not stored with us as an audio file. If you turn the camera on in a voice interview,
+                    the expression analysis (eye contact, smiling, head movement) runs in your browser only; no image or video is
+                    sent or stored, only summary numbers per answer.
                   </p>
                   <p>
                     The other providers that hold or process information for us: MongoDB Atlas (the database), Amazon Web Services (file

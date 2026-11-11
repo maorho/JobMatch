@@ -160,7 +160,34 @@ export type Prosody = {
 
 export type VocalImpression = { confidence: number; energy: number; clarity: number; pace: string; warmth: number; notes: string };
 
-export type VoiceTurn = SessionTurn & { seconds?: number; prosody?: Prosody };
+/** Measured in the browser for one spoken answer from the camera (lib/interview/faceClient.ts); numbers only, no images. */
+export type Presence = {
+  frames: number;
+  /** Share of the answer the face was in frame (0–1). */
+  faceVisibleRatio: number;
+  /** Share of the in-frame time the candidate looked at the camera (0–1). */
+  eyeContactRatio: number;
+  smileRatio: number;
+  /** Brow furrowed (concentration / tension). */
+  furrowRatio: number;
+  /** Head movement (std of yaw+pitch, degrees): fidgeting vs. still. */
+  headMovementDeg: number;
+  avgYawDeg: number;
+  avgPitchDeg: number;
+};
+
+export type PresenceSummary = {
+  measuredAnswers: number;
+  faceVisible: number | null;
+  eyeContact: number | null;
+  smile: number | null;
+  furrow: number | null;
+  headMovementDeg: number | null;
+  /** How the camera was framed on average: "centred" or where the head pointed. */
+  framing: "centred" | "turned away" | "looking down" | "looking up" | null;
+};
+
+export type VoiceTurn = SessionTurn & { seconds?: number; prosody?: Prosody; presence?: Presence };
 
 export type ToneSummary = {
   pitchVarSemitones: number | null;
@@ -186,6 +213,8 @@ export type DeliveryMetrics = {
   longAnswerLimitSec: number;
   tone: ToneSummary;
   impression?: VocalImpression;
+  /** Camera: eye contact, expression, stillness (when the candidate had the camera on). */
+  presence?: PresenceSummary;
 };
 
 const FILLERS_HE = ["אממ", "אמ", "אה", "אהה", "כאילו", "יעני", "בעצם", "נו", "אוקיי אז", "זאת אומרת"];
@@ -214,6 +243,23 @@ export function summarizeTone(turns: VoiceTurn[]): ToneSummary {
   };
 }
 
+export function summarizePresence(turns: VoiceTurn[]): PresenceSummary {
+  const p = turns.filter((t) => t.role === "candidate" && t.presence && t.presence.frames >= 3).map((t) => t.presence!);
+  const r2 = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+  const yaw = avg(p.map((x) => x.avgYawDeg));
+  const pitch = avg(p.map((x) => x.avgPitchDeg));
+  const framing: PresenceSummary["framing"] = yaw === null || pitch === null ? null : Math.abs(yaw) > 20 ? "turned away" : pitch > 18 ? "looking up" : pitch < -18 ? "looking down" : "centred";
+  return {
+    measuredAnswers: p.length,
+    faceVisible: r2(avg(p.map((x) => x.faceVisibleRatio))),
+    eyeContact: r2(avg(p.map((x) => x.eyeContactRatio))),
+    smile: r2(avg(p.map((x) => x.smileRatio))),
+    furrow: r2(avg(p.map((x) => x.furrowRatio))),
+    headMovementDeg: r2(avg(p.map((x) => x.headMovementDeg))),
+    framing,
+  };
+}
+
 export function computeDelivery(turns: VoiceTurn[], impression?: VocalImpression, stage = "hr"): DeliveryMetrics {
   const answers = turns.filter((t) => t.role === "candidate");
   const words = answers.reduce((n, t) => n + t.content.split(/\s+/).filter(Boolean).length, 0);
@@ -233,6 +279,7 @@ export function computeDelivery(turns: VoiceTurn[], impression?: VocalImpression
     longAnswerLimitSec: longAnswerLimit(stage),
     tone: summarizeTone(turns),
     ...(impression ? { impression } : {}),
+    ...(turns.some((t) => t.presence) ? { presence: summarizePresence(turns) } : {}),
   };
 }
 
@@ -254,6 +301,12 @@ export function describeDelivery(m: DeliveryMetrics, language: "he" | "en"): str
   if (m.impression) {
     const i = m.impression;
     parts.push(`the interviewer's own impression of the voice (1–5): confidence ${i.confidence}, energy ${i.energy}, clarity ${i.clarity}, warmth ${i.warmth}, pace "${i.pace}" — "${i.notes}"`);
+  }
+  const p = m.presence;
+  if (p && p.measuredAnswers > 0) {
+    parts.push(
+      `CAMERA (measured on the candidate's device during ${p.measuredAnswers} answers, no images kept): face in frame ${Math.round((p.faceVisible || 0) * 100)}% of the time, looking at the camera ${Math.round((p.eyeContact || 0) * 100)}% of the time (70%+ reads as good eye contact, under 40% as avoiding the camera), smiling ${Math.round((p.smile || 0) * 100)}%, brow furrowed ${Math.round((p.furrow || 0) * 100)}%, head movement ${p.headMovementDeg}° (under 3° = very still, over 8° = restless), framing: ${p.framing}`
+    );
   }
   return parts.join("; ");
 }

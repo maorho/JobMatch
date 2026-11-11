@@ -15,6 +15,15 @@ import { structuredToText, isStructuredResume } from "@/app/lib/resume/structure
 import { loadCoachMemory, memoryToText, retestItems } from "@/app/lib/interview/coachMemory";
 import { reviewPendingAnswers, generateAndStoreFeedback } from "@/app/lib/interview/feedbackJob";
 import { realQuestionsForInterview } from "@/app/lib/interview/realQuestions";
+import { loadJob } from "@/app/lib/jobs/loadJob";
+
+/** What the interviewer presents and probes: the posting's text and its stated requirements/technologies. */
+async function postingFor(source: string, jobId: unknown): Promise<{ jobDescription?: string; jobRequirements?: string[] }> {
+  const j: any = await loadJob(source, String(jobId)).catch(() => null);
+  if (!j) return {};
+  const reqs = [...(Array.isArray(j.requirements) ? j.requirements : []), ...(Array.isArray(j.tech) ? j.tech : [])].map(String).filter(Boolean);
+  return { jobDescription: String(j.description || j.qualifications || "").replace(/\s+/g, " ").slice(0, 1800), jobRequirements: [...new Set(reqs)].slice(0, 14) };
+}
 import { tasksFor, startAttempt } from "@/app/lib/practice/attempts";
 import { inferRole, type PracticeLevel } from "@/app/lib/practice/roles";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
@@ -155,7 +164,8 @@ export async function POST(req: NextRequest) {
     const job = { title: prep.jobTitle, company: prep.company };
     const memory = await loadCoachMemory(userId);
     const style = pickStyle(stage);
-    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [], coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, codeTask: { allowed: CODE_STAGES.has(stage), done: false }, realQuestions: real });
+    const posting = await postingFor(prep.source, prep.jobId);
+    const first = await interviewerTurn({ plan: prep.plan, stage, job, companyBrief, resumeText, language, targetQuestions, transcript: [], coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, stage), style, codeTask: { allowed: CODE_STAGES.has(stage), done: false }, realQuestions: real, ...posting });
     const session = await InterviewSession.create({
       userId, prepId, jobId: prep.jobId, source: prep.source, jobTitle: prep.jobTitle, company: prep.company, stage, language, targetQuestions, companyBrief, persona: style,
       realQuestions: { text: real.text, count: real.count, stageCount: real.stageCount, harvest: real.harvest },
@@ -216,7 +226,8 @@ export async function PATCH(req: NextRequest) {
     // Adaptive difficulty: the live per-answer reviews (written in the background after each turn).
     const liveScores = [...(session.reviews || [])].sort((a: any, b: any) => a.index - b.index).map((r: any) => Number(r.score)).filter((n) => Number.isFinite(n));
     const codeTask = { allowed: CODE_STAGES.has(session.stage) && (session.mode || "chat") === "chat", done: session.codeTask?.status === "done", title: session.codeTask?.title, score: session.codeTask?.score ?? null };
-    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, session.stage), style: isStyle(session.persona) ? session.persona : undefined, liveScores, codeTask, realQuestions: session.realQuestions?.text ? { text: session.realQuestions.text, count: session.realQuestions.count, stageCount: session.realQuestions.stageCount } : undefined });
+    const posting = await postingFor(session.source, session.jobId);
+    const turn = await interviewerTurn({ plan: prep.plan, stage: session.stage, job: { title: session.jobTitle, company: session.company }, companyBrief: session.companyBrief, resumeText, language: session.language, targetQuestions: session.targetQuestions, transcript, coachMemory: memoryToText(memory) || undefined, retest: retestItems(memory, session.stage), style: isStyle(session.persona) ? session.persona : undefined, liveScores, codeTask, realQuestions: session.realQuestions?.text ? { text: session.realQuestions.text, count: session.realQuestions.count, stageCount: session.realQuestions.stageCount } : undefined, ...posting });
     let message = turn.message;
     if (turn.codeTask && !session.codeTask?.status) {
       const handed = await handOutCodeTask(session, userId, prep.plan?.roleSummary || "").catch((e) => {
