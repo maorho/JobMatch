@@ -5,7 +5,7 @@ import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
 import { vectorSearch, textSearch, type VectorFilter } from "./atlas";
 import { toMatchScore } from "./cosine";
-import { inferCandidateLevel, levelFit, freshnessBoost, type CandidateLevel } from "./level";
+import { applyLevel, inferCandidateLevel, levelFit, freshnessBoost, type CandidateLevel } from "./level";
 import { rerankForUser } from "./rerank";
 import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
@@ -110,8 +110,10 @@ const RANK_TTL_MS = 2 * 60_000;
 /** The plain feed: a stored list this old is shown at once while a fresh one is computed in the background (stale-while-revalidate). */
 const STALE_FEED_MAX_AGE_MS = 60 * 60_000;
 
+/** Bumped when the scoring changes, so persisted lists computed by the old formula are not served. */
+const RANK_VERSION = 2;
 const rankKey = (profile: CandidateProfile, opts: RankOptions, wantRerank: boolean, minScore: number) =>
-  `rank:${profile.userId}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
+  `rank:${profile.userId}:v${RANK_VERSION}:${profile.resumeVersion}:${profile.searchVersion || 0}:${wantRerank ? 1 : 0}:${minScore}:${opts.language || ""}:${opts.query || ""}:${JSON.stringify(opts.filter || {})}`;
 
 /** True when the only things asked beyond the plain feed are the cheap view filters (posted within / experience / tech). */
 function isDateOnlyView(opts: RankOptions, minScore: number): boolean {
@@ -239,14 +241,14 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       if ((opts.filter?.tech?.length || opts.filter?.experienceBuckets?.length) && !matchesStructured(d, { tech: opts.filter.tech, experienceBuckets: opts.filter.experienceBuckets })) return null;
       const cosine = cosineOf.get(id);
       const textual = textOf.get(id);
-      const lf = levelFit(profile.level, d.job, d.seniority);
+      const lf = levelFit(profile.level, d.job, d.seniority, d.experienceMin);
       // Base relevance 0–100: semantic similarity (and lexical relevance when there is a query).
       const semantic = cosine !== undefined ? toMatchScore(cosine) : undefined;
       const lexical = textual !== undefined ? 50 + 50 * textual : undefined;
       const base = semantic !== undefined && lexical !== undefined ? 0.6 * semantic + 0.4 * lexical : semantic ?? lexical ?? 0;
-      // Level is decisive: a senior role for a junior loses up to ~45 points; freshness adds a few.
+      // Level is decisive: a senior role (by title or by the years it asks for) loses up to half its relevance for a junior; freshness adds a few points.
       // A repost is as old as its first listing: the freshness boost goes to new postings, not re-listed ones.
-      const matchScore = Math.max(0, Math.min(100, Math.round(base * (0.55 + 0.45 * lf) + freshnessBoost(d.originalFirstSeenAt || d.firstSeenAt) * 100)));
+      const matchScore = Math.max(0, Math.min(100, Math.round(applyLevel(base, lf) + freshnessBoost(d.originalFirstSeenAt || d.firstSeenAt) * 100)));
       return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority, experienceMin: d.experienceMin ?? null, experienceMax: d.experienceMax ?? null, tech: d.tech || [], repostCount: d.repostCount || 0, originalFirstSeenAt: d.originalFirstSeenAt } as RankedJob;
     })
     .filter(Boolean) as RankedJob[];
@@ -274,7 +276,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       level: profile.level,
       language: opts.language,
       ...(opts.rerankCachedOnly ? { useLLM: false } : {}), // otherwise rerankForUser's own default (off under test, env-gated)
-      jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t.seniority })),
+      jobs: top.map((t) => ({ _id: t._id, job: t.job, company: t.company, description: t._description || "", city: t.city, country: t.country, seniority: t.seniority, experienceMin: t.experienceMin, experienceMax: t.experienceMax })),
     });
     for (const t of top) {
       const v = verdicts.get(t._id);

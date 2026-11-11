@@ -9,7 +9,7 @@ import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
-import { levelFit } from "@/app/lib/matcher/level";
+import { applyLevel, levelFit } from "@/app/lib/matcher/level";
 import User from "@/app/models/User";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { memo, snippet, ttl, PUBLIC_CACHE, PRIVATE_CACHE } from "@/app/lib/cache";
@@ -253,7 +253,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       const { embedding, ...rest } = d;
       const matchScore =
         vector && Array.isArray(embedding) && embedding.length
-          ? Math.round(toMatchScore(cosineSimilarity(vector, embedding)) * (0.55 + 0.45 * levelFit(level, d.job, d.seniority)))
+          ? Math.round(applyLevel(toMatchScore(cosineSimilarity(vector, embedding)), levelFit(level, d.job, d.seniority, d.experienceMin)))
           : undefined;
       return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
     });

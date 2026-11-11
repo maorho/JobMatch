@@ -16,9 +16,9 @@ export type WorkMode = (typeof WORK_MODES)[number];
 // Precedence when several match: Intern → Junior → Senior → Mid (default).
 export const INTERN_RE = /\b(intern|internship)\b/i;
 export const JUNIOR_RE =
-  /\b(junior|jr\.?|entry[- ]?level|graduate|new.?grad|associate|student)\b/i;
+  /\b(junior|jr\.?|entry[- ]?level|graduate|new.?(?:college.?)?grad|associate|student)\b/i;
 export const SENIOR_RE =
-  /\b(senior|sr\.?|staff|principal|lead|director|head|vp|architect|manager|management)\b/i;
+  /\b(senior|sr\.?|staff|principal|lead|leader|expert|director|head|vp|architect|manager|management)\b/i;
 
 export const REMOTE_RE = /remote/i;
 export const HYBRID_RE = /hybrid/i;

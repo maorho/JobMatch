@@ -9,7 +9,7 @@ import MatchCache from "@/app/models/MatchCache";
 import User from "@/app/models/User";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
-import { inferCandidateLevel, levelFit, type CandidateLevel } from "@/app/lib/matcher/level";
+import { applyLevel, inferCandidateLevel, levelFit, type CandidateLevel } from "@/app/lib/matcher/level";
 import { hasInsiderReferral } from "@/app/lib/referrals/hasReferral";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
@@ -56,7 +56,7 @@ export const isPositive = (reached: StageReached) => RANK[reached] >= RANK.scree
 
 async function loadJobLite(jobId: string, jobModel: string): Promise<any | null> {
   if (!mongoose.isValidObjectId(jobId)) return null;
-  if (jobModel === "ExternalJobs") return ExternalJobs.findById(jobId).select("job company seniority remote postedAt firstSeenAt +embedding").lean();
+  if (jobModel === "ExternalJobs") return ExternalJobs.findById(jobId).select("job company seniority experienceMin remote postedAt firstSeenAt +embedding").lean();
   return Job.findById(jobId).populate("company", "companyName").select("job company seniority type createdAt").lean();
 }
 
@@ -68,9 +68,9 @@ export async function snapshotFeatures(userId: string, jobId: string, jobModel: 
   const title = job?.job || "";
   const level: CandidateLevel = user?.level || inferCandidateLevel(user?.resumeText || "", user?.currentJob || "");
   const cosine = vec && Array.isArray(job?.embedding) && job.embedding.length ? cosineSimilarity(vec, job.embedding) : null;
-  const lf = job ? levelFit(level, title, job.seniority) : null;
+  const lf = job ? levelFit(level, title, job.seniority, job.experienceMin) : null;
   const cached: any = user ? await MatchCache.findOne({ userId, jobId, resumeVersion: user.resumeUpdatedAt ? new Date(user.resumeUpdatedAt).getTime() : 0 }).select("fit").lean() : null;
-  const blended = cosine !== null && lf !== null ? Math.round(toMatchScore(cosine) * (0.55 + 0.45 * lf)) : null;
+  const blended = cosine !== null && lf !== null ? Math.round(applyLevel(toMatchScore(cosine), lf)) : null;
   const posted = job?.postedAt || job?.firstSeenAt || job?.createdAt;
   const hasReferral = company ? (await hasInsiderReferral(userId, company).catch(() => false)) || (await contactsAtCompany(userId, company, 1).catch(() => [])).length > 0 : false;
   const seniority = Array.isArray(job?.seniority) ? job.seniority[0] || "" : job?.seniority || "";

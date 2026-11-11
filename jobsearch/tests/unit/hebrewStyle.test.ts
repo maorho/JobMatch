@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { HEBREW_STYLE, hebrewRule } from "@/app/lib/llm/hebrew";
-import { buildRerankPrompt } from "@/app/lib/matcher/rerank";
+import { buildRerankPrompt, applyYearsCap } from "@/app/lib/matcher/rerank";
 import { buildInterviewerPrompt, buildFeedbackPrompt } from "@/app/lib/interview/simulator";
 import { buildTailorPrompt } from "@/app/lib/resume/tailor";
 import { buildGradePrompt } from "@/app/lib/practice/grade";
@@ -25,5 +25,25 @@ describe("Hebrew style rule in prompts", () => {
     expect(buildTailorPrompt({ job: { title: "Dev", company: "Acme", description: "x" }, resumeText: "r", language: "he" } as any).system).toContain("HEBREW STYLE");
     expect(buildTailorPrompt({ job: { title: "Dev", company: "Acme", description: "x" }, resumeText: "r", language: "en" } as any).system).not.toContain("HEBREW STYLE");
     expect(buildGradePrompt({ kind: "coding", role: "backend", level: "junior", title: "t", prompt: "p", rubric: [] }, { answer: "x" }).system).toContain("HEBREW STYLE");
+  });
+});
+
+describe("rerank: the years a posting asks for", () => {
+  const dev = { _id: "1", job: "Full Stack Engineer", company: "Acme", description: "x" };
+  it("tells the model the stated years and the candidate's band", () => {
+    const { system, user } = buildRerankPrompt("junior react dev", "junior", [{ ...dev, experienceMin: 8 }, { ...dev, _id: "2", experienceMin: 2, experienceMax: 4 }, { ...dev, _id: "3" }], "en");
+    expect(user).toContain("CANDIDATE (junior, 0–2 years of experience)");
+    expect(user).toContain("Full Stack Engineer @ Acme — REQUIRES 8+ years");
+    expect(user).toContain("Full Stack Engineer @ Acme — REQUIRES 2–4 years");
+    expect(user.match(/REQUIRES/g)).toHaveLength(2);
+    expect(system).toContain("hard requirement");
+  });
+  it("caps the verdict and lists the years as the first gap when the posting is out of reach", () => {
+    expect(applyYearsCap("junior", { experienceMin: 8 }, { fit: 82, gaps: ["Kubernetes"] })).toEqual({ fit: 30, gaps: ["8+ years", "Kubernetes"] });
+    expect(applyYearsCap("junior", { experienceMin: 8 }, { fit: 82, gaps: ["8+ years of experience", "Go", "AWS"] })).toEqual({ fit: 30, gaps: ["8+ years of experience", "Go", "AWS"] });
+    expect(applyYearsCap("junior", { experienceMin: 3 }, { fit: 82, gaps: [] })).toEqual({ fit: 65, gaps: ["3+ years"] });
+    expect(applyYearsCap("junior", { experienceMin: 3 }, { fit: 40, gaps: [] })).toEqual({ fit: 40, gaps: [] });
+    expect(applyYearsCap("junior", { experienceMin: null }, { fit: 90, gaps: [] })).toEqual({ fit: 90, gaps: [] });
+    expect(applyYearsCap("senior", { experienceMin: 8 }, { fit: 90, gaps: [] })).toEqual({ fit: 90, gaps: [] });
   });
 });

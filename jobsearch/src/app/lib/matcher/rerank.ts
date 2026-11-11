@@ -1,4 +1,5 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { CANDIDATE_YEARS, yearsCap, type CandidateLevel } from "./level";
 import { z } from "zod";
 import { connectToDatabase } from "@/app/lib/db";
 import MatchCache from "@/app/models/MatchCache";
@@ -16,12 +17,29 @@ import { hebrewRule } from "@/app/lib/llm/hebrew";
 export const RERANK_MODEL = modelFor("fast");
 export const RERANK_BATCH = 12;
 
-export type RerankCandidate = { _id: string; job: string; company: string; description: string; city?: string; country?: string; seniority?: string[] | string };
+export type RerankCandidate = { _id: string; job: string; company: string; description: string; city?: string; country?: string; seniority?: string[] | string; /** Years of experience the posting states (from enrichment), when it does. */ experienceMin?: number | null; experienceMax?: number | null };
 export type RerankVerdict = { _id: string; fit: number; why: string; matched: string[]; gaps: string[]; cached: boolean };
 
 const verdictSchema = z.object({
   results: z.array(z.object({ id: z.string(), fit: z.number().min(0).max(100), why: z.string().default(""), matched: z.array(z.string()).default([]), gaps: z.array(z.string()).default([]) })),
 });
+
+/** "REQUIRES 8+ years" / "REQUIRES 2–4 years": the stated years, so the model cannot miss them in a 900-char excerpt. */
+const yearsLine = (j: RerankCandidate) => (j.experienceMin != null ? ` — REQUIRES ${j.experienceMax != null && j.experienceMax > j.experienceMin ? `${j.experienceMin}–${j.experienceMax}` : `${j.experienceMin}+`} years` : "");
+
+/**
+ * The verdict the stated years allow: the model's fit, capped when the posting
+ * asks for years the candidate does not have, with the years listed as the first
+ * gap. Deterministic, so an over-generous model turn cannot put an "8+ years"
+ * posting at the top of a junior's feed.
+ */
+export function applyYearsCap(level: string, job: Pick<RerankCandidate, "experienceMin" | "experienceMax">, v: { fit: number; gaps: string[] }): { fit: number; gaps: string[] } {
+  const cap = yearsCap(level as CandidateLevel, job.experienceMin);
+  if (cap == null || v.fit <= cap) return v;
+  const years = `${job.experienceMin}+ years`;
+  const gaps = v.gaps.some((g) => /\d\s*\+?\s*(years?|yrs?|שנ)/i.test(g)) ? v.gaps : [years, ...v.gaps].slice(0, 3);
+  return { fit: cap, gaps };
+}
 
 export function buildRerankPrompt(resumeSummary: string, level: string, jobs: RerankCandidate[], language: "he" | "en"): { system: string; user: string } {
   const lang = language === "he" ? "Hebrew (technical terms in English)" : "English";
@@ -29,6 +47,7 @@ export function buildRerankPrompt(resumeSummary: string, level: string, jobs: Re
 Scoring guide (0–100): 85+ = strong fit, apply now; 70–84 = good fit with a small gap; 50–69 = stretch (level or one core skill missing); 30–49 = unlikely (wrong level or adjacent domain); 10–29 = not realistic; use 0–9 only for a different profession entirely.
 Calibration anchors — follow them:
 - Levels by hands-on experience: 0–2 years (incl. internships, bootcamp, fresh graduates) = junior; 2–5 = mid; 5+ or lead/architect = senior. A posting asking "2–4 years" is mid; "0–2 years" or "junior" is junior; "5+ years"/"senior" is senior.
+- The years a posting states are a hard requirement, whatever its title says. "REQUIRES N+ years" below the title is what the posting asks: a junior against 5+ years, or a mid against 8+ years → 10–30 at most, and the years ("8+ years") must be the first gap; one band above the candidate (junior against 3–4 years, mid against 5–7) → 65 at most.
 - Same domain, same level, core stack matches → 85–95.
 - Same domain, candidate one level BELOW the posting (junior → mid, mid → senior) → 55–70; two levels below (junior → senior/lead) → 15–30.
 - Candidate ABOVE the posting's level (senior → mid/junior): they would likely get the interview but be overqualified → 45–65, never below 30.
@@ -40,8 +59,8 @@ For each posting return three things the card shows separately — keep them sep
 - "matched": 2–4 skills or requirements of the posting the candidate clearly has (for any fit of 50 or more, at least 2 — a good score with no reason is not acceptable). Each is a TERM of 1–3 words in English, the technology or requirement name only, as the posting names it ("LangChain", "RAG", "Python", "3+ years", "Node.js") — never a phrase or a sentence, never Hebrew. Empty if none.
 - "gaps": up to 3 requirements of the posting the candidate lacks, same rule: 1–3 English words each ("Kubernetes", "5+ years", "security clearance", "team lead"). Empty if none.
 Return STRICT JSON: {"results":[{"id","fit","why","matched":[...],"gaps":[...]}]} with every id exactly once. Nothing else.${hebrewRule(language)}`;
-  const user = `CANDIDATE (${level}):\n${resumeSummary.slice(0, 3500)}\n\nPOSTINGS:\n${jobs
-    .map((j) => `[id=${j._id}] ${j.job} @ ${j.company}${j.city || j.country ? ` (${[j.city, j.country].filter(Boolean).join(", ")})` : ""}\n${(j.description || "").replace(/\s+/g, " ").slice(0, 900)}`)
+  const user = `CANDIDATE (${level}, ${CANDIDATE_YEARS[level as CandidateLevel] || level}):\n${resumeSummary.slice(0, 3500)}\n\nPOSTINGS:\n${jobs
+    .map((j) => `[id=${j._id}] ${j.job} @ ${j.company}${j.city || j.country ? ` (${[j.city, j.country].filter(Boolean).join(", ")})` : ""}${yearsLine(j)}\n${(j.description || "").replace(/\s+/g, " ").slice(0, 900)}`)
     .join("\n\n")}`;
   return { system, user };
 }
@@ -74,7 +93,9 @@ export async function rerankForUser(opts: { userId: string; resumeVersion: numbe
       const ops = [];
       for (const r of parsed.data.results) {
         if (!batch.some((b) => b._id === r.id)) continue;
-        const v = { _id: r.id, fit: Math.round(r.fit), why: r.why.slice(0, 400), matched: r.matched.slice(0, 4).map((m) => m.slice(0, 60)), gaps: r.gaps.slice(0, 3).map((g) => g.slice(0, 120)), cached: false };
+        const job = batch.find((b) => b._id === r.id)!;
+        const capped = applyYearsCap(opts.level, job, { fit: Math.round(r.fit), gaps: r.gaps.slice(0, 3).map((g) => g.slice(0, 120)) });
+        const v = { _id: r.id, fit: capped.fit, why: r.why.slice(0, 400), matched: r.matched.slice(0, 4).map((m) => m.slice(0, 60)), gaps: capped.gaps, cached: false };
         out.set(r.id, v);
         ops.push({ updateOne: { filter: { userId: opts.userId, resumeVersion: opts.resumeVersion, jobId: r.id }, update: { $set: { fit: v.fit, why: v.why, matched: v.matched, gaps: v.gaps, model: RERANK_MODEL, createdAt: new Date() } }, upsert: true } });
       }

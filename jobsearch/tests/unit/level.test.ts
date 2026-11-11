@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inferCandidateLevel, levelFit, freshnessBoost } from "@/app/lib/matcher/level";
+import { inferCandidateLevel, levelFit, freshnessBoost, yearsLevel, yearsCap, applyLevel } from "@/app/lib/matcher/level";
 import { rrf } from "@/app/lib/matcher/hybrid";
 
 describe("candidate level", () => {
@@ -19,6 +19,37 @@ describe("candidate level", () => {
     expect(levelFit("senior", "Junior QA")).toBeLessThan(0.4);
     expect(levelFit("senior", "Staff Engineer")).toBe(1);
     expect(levelFit("mid", "Intern")).toBeLessThan(0.5);
+  });
+
+  it("reads the level off the years a posting asks for, not only its title", () => {
+    // "Full Stack Engineer · 8+ years" is a senior role for a junior even though the title says nothing.
+    expect(levelFit("junior", "Full Stack Engineer", undefined, 8)).toBeLessThan(0.1);
+    expect(levelFit("junior", "Software Engineer", undefined, 5)).toBe(levelFit("junior", "Senior Software Engineer"));
+    expect(levelFit("junior", "Software Engineer", undefined, 3)).toBe(0.55);
+    expect(levelFit("junior", "Software Engineer", undefined, 1)).toBe(1);
+    expect(levelFit("junior", "Software Engineer", undefined, null)).toBe(0.55);
+    // The stricter signal wins: a "Junior" title with 5 years asked is still out of reach; a "Senior" title with 2 years asked is still senior.
+    expect(levelFit("junior", "Junior Developer", undefined, 5)).toBe(0.15);
+    expect(levelFit("junior", "Senior Developer", undefined, 2)).toBe(0.15);
+    // Interns are interns whatever the years field says; seniors are not below an "8+" posting.
+    expect(levelFit("junior", "Software Intern", undefined, 8)).toBe(0.9);
+    expect(levelFit("senior", "Software Engineer", undefined, 8)).toBeGreaterThanOrEqual(0.8);
+    expect(levelFit("mid", "Software Engineer", undefined, 8)).toBeLessThan(0.4);
+    expect(yearsLevel(null)).toBeNull();
+    expect(yearsLevel(8)).toBe("Lead");
+  });
+
+  it("caps a verdict by the years the posting asks for", () => {
+    expect(yearsCap("junior", 8)).toBe(30);
+    expect(yearsCap("junior", 5)).toBe(30);
+    expect(yearsCap("junior", 3)).toBe(65);
+    expect(yearsCap("junior", 2)).toBeNull();
+    expect(yearsCap("junior", null)).toBeNull();
+    expect(yearsCap("mid", 8)).toBe(30);
+    expect(yearsCap("mid", 5)).toBe(65);
+    expect(yearsCap("senior", 8)).toBeNull();
+    expect(applyLevel(80, 1)).toBe(80);
+    expect(applyLevel(80, 0.08)).toBeLessThan(45);
   });
 
   it("boosts fresh postings a little and old ones not at all", () => {
