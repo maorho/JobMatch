@@ -452,10 +452,14 @@ function JobTable() {
   return (
     <div className="jm-container pt-6 sm:pt-10">
       {/* Hero: one soft band — centred editorial headline + search, and a live ticker of this person's top matches underneath */}
-      <section className="relative jm-band overflow-hidden px-5 pt-10 pb-8 sm:px-10 sm:pt-16 lg:pt-20">
-        <div className="pointer-events-none absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" aria-hidden="true" />
-        <div className="pointer-events-none absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" aria-hidden="true" />
-        <div className="relative max-w-3xl mx-auto text-center animate-rise">
+      {/* No overflow-hidden on the band itself: the open location list must be able to hang below it. The glow blobs are clipped by their own wrapper. */}
+      <section className="relative jm-band px-5 pt-10 pb-8 sm:px-10 sm:pt-16 lg:pt-20">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]" aria-hidden="true">
+          <div className="absolute -top-24 -end-24 h-72 w-72 rounded-full bg-sky/15 blur-3xl" />
+          <div className="absolute -bottom-32 -start-16 h-80 w-80 rounded-full bg-teal/10 blur-3xl" />
+        </div>
+        {/* z-20: the open location list must sit above the chips and the logo ticker that follow it in the band. */}
+        <div className="relative z-20 max-w-3xl mx-auto text-center animate-rise">
           <span className="jm-eyebrow" dir={dir}>
             {stats
               ? t("home.eyebrowStats", { jobs: (stats.jobs || catalogTotal || jobCount).toLocaleString(), companies: stats.companies.toLocaleString(), updated: polledAgo !== null && polledAgo < 90 ? (polledAgo <= 1 ? t("home.updatedNow") : t("home.updatedAgo", { min: polledAgo })) : t("home.updatedEvery") })

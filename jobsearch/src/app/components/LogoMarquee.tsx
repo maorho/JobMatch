@@ -37,7 +37,7 @@ export default function LogoMarquee({ label, onPick }: { label?: string; onPick?
   const rows = (data?.companies || []).filter((c) => c.logoUrl).slice(0, 24);
   if (rows.length < 8) return null;
   return (
-    <section className="mt-10 sm:mt-14 jm-reveal">
+    <section className="relative z-0 mt-10 sm:mt-14 jm-reveal">
       <p className="text-center jm-muted mb-4">{label ?? t("home.hiringNow")}</p>
       <div className="jm-marquee overflow-hidden">
         <div className="jm-marquee-track flex w-max animate-marquee">

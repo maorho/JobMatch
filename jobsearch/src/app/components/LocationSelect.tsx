@@ -63,7 +63,7 @@ export default function LocationSelect({ jobs, cities, selectedCities, setSelect
       </button>
 
       {isOpen && (
-        <div className="absolute top-full start-0 mt-2 w-full min-w-[260px] jm-card p-2 z-50 text-start">
+        <div className="absolute top-full start-0 mt-2 w-full min-w-[260px] jm-card !bg-surface shadow-card-hover p-2 z-50 text-start">
           <input
             autoFocus
             value={q}
