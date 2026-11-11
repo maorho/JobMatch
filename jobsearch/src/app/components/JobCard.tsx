@@ -12,6 +12,17 @@ import relativeTime from "dayjs/plugin/relativeTime.js";
 import { useT } from "../lib/i18n/LanguageProvider";
 import "dayjs/locale/he.js";
 
+/** The first ~120 characters of a posting, cut at the end of a sentence (or the last word), so the card never shows "…". */
+function teaser(text: string, max = 120): string {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const head = t.slice(0, max);
+  const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), head.lastIndexOf(".\n"));
+  if (sentence >= 50) return head.slice(0, sentence + 1);
+  const word = head.lastIndexOf(" ");
+  return (word > 40 ? head.slice(0, word) : head).replace(/[,;:\-–]+$/, "");
+}
+
 dayjs.extend(relativeTime);
 
 interface JobCardProps {
@@ -123,8 +134,9 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         /* The verdict sentence, wrapping onto a second line when needed, never cut with an ellipsis (it is short by prompt); the tooltip on the badge has the full verdict. */
         <p className="mt-3 min-h-[2.75rem] text-sm text-ink leading-[1.375rem] [overflow-wrap:anywhere]">{why}</p>
       ) : job.description ? (
-        <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
-          {job.description}
+        /* Without a verdict: the posting's first sentence, ended at a sentence or word boundary — never an ellipsis. */
+        <p className="mt-3 text-sm text-ink-600 leading-relaxed min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
+          {teaser(job.description)}
         </p>
       ) : null}
 
