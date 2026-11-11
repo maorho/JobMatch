@@ -545,8 +545,8 @@ function JobTable() {
         </div>
       )}
 
-      {/* Filters + results */}
-      <section className="mt-8 lg:mt-10">
+      {/* Filters + results: follows the interface direction (heading on the start side, the filter button on the end side). */}
+      <section className="mt-8 lg:mt-10" dir={dir}>
         <div className="min-w-0">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
