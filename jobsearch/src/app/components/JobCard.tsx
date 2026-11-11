@@ -119,7 +119,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       )}
 
       {/* Two lines: why it fits (reranked) or the posting's own words */}
-      {job.description ? (
+      {why ? (
+        /* The verdict sentence on one line, as written (short by prompt); no ellipsis — the tooltip on the badge has it in full. */
+        <p className="mt-3 min-h-[2.75rem] flex items-center text-sm text-ink leading-relaxed whitespace-nowrap overflow-hidden">{why}</p>
+      ) : job.description ? (
         <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
           {job.description}
         </p>
