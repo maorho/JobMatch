@@ -39,6 +39,7 @@ export type RankedJob = {
   cosine: number;
   levelFit: number;
   why?: string;
+  matched?: string[];
   gaps?: string[];
   reranked: boolean;
   seniority?: string;
@@ -280,6 +281,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       if (!v) continue;
       t.matchScore = v.fit;
       t.why = v.why;
+      t.matched = v.matched;
       t.gaps = v.gaps;
       t.reranked = true;
     }

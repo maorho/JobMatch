@@ -5,7 +5,7 @@ import { Target } from "lucide-react";
 import { useT } from "../lib/i18n/LanguageProvider";
 import type { Key } from "../lib/i18n/dict";
 
-type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; gaps: string[]; reranked: boolean; likelihood?: { pct: number; basis: "prior" | "blended" | "learned"; samples: number } };
+type Fit = { ready: boolean; reason?: string; level?: string; fit: number | null; why: string; matched?: string[]; gaps: string[]; reranked: boolean; likelihood?: { pct: number; basis: "prior" | "blended" | "learned"; samples: number } };
 const LEVEL_KEY: Record<string, Key> = { junior: "widgets.fit.level.junior", mid: "widgets.fit.level.mid", senior: "widgets.fit.level.senior" };
 
 /** Job page sidebar: the reranker's verdict for this user — fit score, why, what's missing. */
@@ -48,10 +48,16 @@ export default function FitCard({ jobId }: { jobId: string }) {
         </p>
       )}
       {fit.why && <p className="text-sm text-ink-600 leading-relaxed" dir={dir}>{fit.why}</p>}
+      {(fit.matched?.length || 0) > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-ink-400 mb-1">{t("widgets.fit.have")}</div>
+          <div className="flex flex-wrap gap-1" dir="ltr">{fit.matched!.map((m) => <span key={m} className="jm-chip jm-chip-teal">✓ {m}</span>)}</div>
+        </div>
+      )}
       {fit.gaps.length > 0 && (
         <div>
           <div className="text-xs font-semibold text-ink-400 mb-1">{t("widgets.fit.missing")}</div>
-          <ul className="list-disc ps-5 text-sm text-ink-600 space-y-0.5">{fit.gaps.map((g, i) => <li key={i} dir={dir}>{g}</li>)}</ul>
+          <div className="flex flex-wrap gap-1" dir="ltr">{fit.gaps.map((g, i) => <span key={i} className="jm-chip bg-amber-50 text-amber-700 border-amber-200">− {g}</span>)}</div>
         </div>
       )}
       {!fit.reranked && <p className="text-[11px] text-ink-400">{t("widgets.fit.notReranked")}</p>}

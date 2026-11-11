@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { MapPin, Clock, Bookmark, X } from "lucide-react";
+import MatchTooltip from "./MatchTooltip";
 import { useJobSignals } from "../lib/hooks/useJobSignals";
 import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import CompanyLogo from "./CompanyLogo";
@@ -51,6 +52,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const time = posted ? t("card.posted", { ago: posted.locale(lang).fromNow() }) : "";
   const timeTitle = posted ? `${job.postedAt ? t("card.postedAt") : t("card.firstSeen")} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   const why = (job as any).why as string | undefined;
+  const matched = ((job as any).matched as string[] | undefined) || [];
+  const gaps = ((job as any).gaps as string[] | undefined) || [];
   const meta = [location + ((job as any).remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
   // Years of experience required, read from the description — more honest than the title.
   const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("card.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("card.years", { n: job.experienceMin })) : "";
@@ -116,25 +119,21 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       )}
 
       {/* Two lines: why it fits (reranked) or the posting's own words */}
-      {why ? (
-        <p className="mt-3 text-sm text-teal-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto" title={why}>
-          ✓ {why}
-        </p>
-      ) : job.description ? (
+      {job.description ? (
         <p className="mt-3 text-sm text-ink-600 leading-relaxed line-clamp-2 min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
           {job.description}
         </p>
-      ) : (
-        <div className="min-h-[2.75rem] mt-3" />
-      )}
+      ) : null}
 
       {/* Footer: the score on one side, the action on the other; always at the bottom */}
       <div className="mt-auto pt-4 flex items-center justify-between gap-3">
         {typeof job.matchScore === "number" ? (
-          <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5" title={job.likelihood ? t("card.matchFull", { score: job.matchScore, pct: job.likelihood.pct }) : t("card.matchTitle")}>
-            <span className="text-base font-semibold text-teal-600 leading-none">{job.matchScore}%</span>
-            <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : t("card.match")}</span>
-          </span>
+          <MatchTooltip why={why} matched={matched} gaps={gaps} label={t("card.why")}>
+            <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5 cursor-help" title={job.likelihood ? t("card.matchFull", { score: job.matchScore, pct: job.likelihood.pct }) : t("card.matchTitle")}>
+              <span className="text-base font-semibold text-teal-600 leading-none">{job.matchScore}%</span>
+              <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : t("card.match")}</span>
+            </span>
+          </MatchTooltip>
         ) : (
           <span />
         )}

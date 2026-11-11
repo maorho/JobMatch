@@ -122,6 +122,7 @@ export const he = {
   "widgets.fit.blended": "נלמד מ-{n} תוצאות",
   "widgets.fit.learned": "נלמד מ-{n} תוצאות אמיתיות",
   "widgets.fit.missing": "מה חסר",
+  "widgets.fit.have": "יש לך",
   "widgets.fit.notReranked": "הערכה ראשונית לפי דמיון סמנטי ורמה; ההסבר המלא מחושב בפיד האישי.",
   // ProgressCard.tsx
   "widgets.prog.improving": "משתפר",
@@ -369,6 +370,7 @@ export const en: Record<keyof typeof he, string> = {
   "widgets.fit.blended": "learned from {n} outcomes",
   "widgets.fit.learned": "learned from {n} real outcomes",
   "widgets.fit.missing": "What's missing",
+  "widgets.fit.have": "You have",
   "widgets.fit.notReranked": "An initial estimate from semantic similarity and level; the full explanation is computed in your personal feed.",
   "widgets.prog.improving": "Improving",
   "widgets.prog.persistent": "Recurring",

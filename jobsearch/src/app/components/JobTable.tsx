@@ -649,7 +649,7 @@ function JobTable() {
           transition-transform duration-300 ease-out ${showmodal ? "translate-x-0" : "translate-x-full"}`}
         >
           <div className="flex items-center justify-between px-6 h-[72px] border-b border-line shrink-0">
-            <span className="jm-h2 tracking-[0.08em] uppercase text-[15px]">Filter</span>
+            <span className="jm-h2 tracking-[0.08em] uppercase text-[15px]">{t("home.filter")}</span>
             <button type="button" onClick={closeSheet} className="jm-btn jm-btn-ghost jm-btn-icon" aria-label={t("home.closeFilters")}>
               <X className="h-5 w-5" />
             </button>

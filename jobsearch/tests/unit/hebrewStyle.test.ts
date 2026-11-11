@@ -16,6 +16,7 @@ describe("Hebrew style rule in prompts", () => {
     expect(HEBREW_STYLE).toMatch(/never "בConnecteam"/);
 
     expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "he").system).toContain("HEBREW STYLE");
+    expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "he").system).toMatch(/"matched": 2–4 skills[\s\S]*"gaps": up to 3 requirements[\s\S]*\{"id","fit","why","matched":\[\.\.\.\],"gaps":\[\.\.\.\]\}/);
     expect(buildRerankPrompt("junior react dev", "junior", [{ _id: "1", job: "Dev", company: "Acme", description: "x" }], "en").system).not.toContain("HEBREW STYLE");
     const base = { plan: PLAN, stage: "hr" as const, job: { title: "Dev", company: "Acme" }, companyBrief: "b", targetQuestions: 4, transcript: [] };
     expect(buildInterviewerPrompt({ ...base, language: "he" })).toContain("HEBREW STYLE");
