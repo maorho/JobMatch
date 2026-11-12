@@ -33,6 +33,8 @@ beforeAll(async () => {
     // A different role at the same company, and a different company with the same title: not grouped.
     ext({ job: "Backend Engineer", city: "Tel Aviv", country: "Israel", postedAt: new Date("2026-11-08"), sourceJobId: "be" }),
     ext({ company: "Acme", city: "Jerusalem", country: "Israel", postedAt: new Date("2026-11-07"), sourceJobId: "acme" }),
+    // Not a tech-industry role: out of the plain listing, in with ?all=1, a query or a company filter.
+    ext({ job: "Claims Specialist", company: "Acme", city: "Tel Aviv", country: "Israel", postedAt: new Date("2026-11-12"), sourceJobId: "claims", techRole: false, description: "Handle insurance claims" }),
   ]);
   dana = String((await User.create({ username: "dana", email: "dana@test.dev", password: "x", fullname: "Dana", phone: "0", level: "junior" } as any))._id);
   await embedPendingJobs();
@@ -59,6 +61,19 @@ describe("one card per role, locations as variants", () => {
     expect(d.jobs.map((j: any) => `${j.job}@${j.company}`)).toEqual(["Fullstack Engineer@GitLab", "Backend Engineer@GitLab", "Fullstack Engineer@Acme"]);
     expect(d.total).toBe(3);
     expect(d.pages).toBe(1);
+  });
+
+  it("non-tech roles stay out of the plain listing and come back with ?all=1, a query or a company filter", async () => {
+    expect((await call("limit=10")).jobs.map((j: any) => j.job)).not.toContain("Claims Specialist");
+    expect((await call("limit=10&all=1")).jobs[0].job).toBe("Claims Specialist"); // the newest, so first
+    expect((await call("limit=10&all=1")).total).toBe(4);
+    expect((await call("q=claims")).jobs.map((j: any) => j.job)).toEqual(["Claims Specialist"]);
+    expect((await call("company=Acme")).jobs.map((j: any) => j.job).sort()).toEqual(["Claims Specialist", "Fullstack Engineer"]);
+    // The catalogue stats count the same roles the listing shows.
+    const { GET: statsGET } = await import("@/app/api/catalog/stats/route");
+    const stats = await (await statsGET()).json();
+    expect(stats.jobs).toBe(3);
+    expect(stats.postings).toBe(6);
   });
 
   it("a city filter keeps only that city's listing", async () => {

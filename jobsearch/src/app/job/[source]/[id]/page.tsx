@@ -5,13 +5,13 @@ import { loadJob } from "@/app/lib/jobs/loadJob";
 import { jobPageJsonLd, jobPageRobots } from "@/app/lib/seo/jsonld";
 import { excerpt } from "@/app/lib/seo/site";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
-import { variantOf, type Variant } from "@/app/lib/jobs/variants";
+import { variantOf, dedupeVariants, type Variant } from "@/app/lib/jobs/variants";
 
 /** The same role at the company's other locations (open listings only), for the "also offered in" row. */
 async function siblingsOf(job: any): Promise<Variant[]> {
   if (job?.source !== "external" || !job?.titleKey) return [];
   const rows: any[] = await ExternalJobs.find({ ...OPEN_JOBS, company: job.company, titleKey: job.titleKey, _id: { $ne: job._id } }).select("city country remote").limit(40).lean().catch(() => []);
-  return rows.map(variantOf);
+  return dedupeVariants(rows.map(variantOf));
 }
 
 export const dynamic = "force-dynamic";

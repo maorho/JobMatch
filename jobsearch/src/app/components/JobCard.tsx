@@ -79,7 +79,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const why = (lang === "en" ? extra.whyEn || extra.why : extra.why) || undefined;
   const matched = extra.matched || [];
   const gaps = extra.gaps || [];
-  const meta = [pickedVariant ? location : location + (extra.remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
+  // "Remote · Remote" when the city is "Remote" and the work mode is too: each word once.
+  const metaParts: string[] = [];
+  for (const part of [location, !pickedVariant && extra.remote && job.city ? "Remote" : "", workMode]) {
+    for (const piece of part.split(" · ")) if (piece && !metaParts.some((m) => m.toLowerCase() === piece.toLowerCase())) metaParts.push(piece);
+  }
+  const meta = metaParts.join(" · ");
   // Years of experience required, read from the description — more honest than the title.
   const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("card.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("card.years", { n: job.experienceMin })) : "";
   const techChips = (job.tech || []).slice(0, 3);

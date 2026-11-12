@@ -1,7 +1,7 @@
 import { postedWithin } from "@/app/lib/jobs/posted";
 import { matchesStructured } from "@/app/lib/jobs/structured";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import ExternalJobs, { TECH_LISTING } from "@/app/models/ExternalJobs";
 import User from "@/app/models/User";
 import { vectorSearch, textSearch, type VectorFilter } from "./atlas";
 import { toMatchScore } from "./cosine";
@@ -236,7 +236,8 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
 
   // Light projection for the whole pool (descriptions are ~10KB each; only the rerank head needs them).
   // Soft-closed postings fall out here, whichever index (Atlas or the fallback) recalled them.
-  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority experienceMin experienceMax tech repostCount originalFirstSeenAt titleKey").lean();
+  // Open, tech-industry roles only (the catalogue listing's default): a nurse posting is never a junior developer's match.
+  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...TECH_LISTING }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority experienceMin experienceMax tech repostCount originalFirstSeenAt titleKey").lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
   const ranked: RankedJob[] = ids

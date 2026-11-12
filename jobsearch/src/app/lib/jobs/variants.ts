@@ -17,10 +17,21 @@ export const groupKeyOf = (r: Groupable): string => `${(r.company || "").trim().
 
 export const variantOf = (r: Groupable): Variant => ({ _id: String(r._id), ...(r.city ? { city: r.city } : {}), ...(r.country ? { country: r.country } : {}), ...(r.remote ? { remote: true } : {}) });
 
+/** Two listings at the same place are one choice: keep the first of each label. */
+export function dedupeVariants(list: Variant[]): Variant[] {
+  const seen = new Set<string>();
+  return list.filter((v) => {
+    const k = variantLabel(v).toLowerCase() || v._id;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /**
  * Collapse rows that share a group key, keeping the list's order. A row that
  * stands alone comes back untouched; a representative of several carries
- * `variants` (itself first).
+ * `variants` (itself first, one per distinct location).
  */
 export function groupVariants<T extends Groupable>(rows: T[]): (T & { variants?: Variant[] })[] {
   const byKey = new Map<string, T & { variants?: Variant[] }>();
@@ -36,6 +47,10 @@ export function groupVariants<T extends Groupable>(rows: T[]): (T & { variants?:
     }
     if (!head.variants) head.variants = [variantOf(head)];
     head.variants.push(variantOf(r));
+  }
+  for (const r of out) if (r.variants) {
+    r.variants = dedupeVariants(r.variants);
+    if (r.variants.length < 2) delete r.variants;
   }
   return out;
 }

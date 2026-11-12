@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractExperience, extractTech, extractRequirements, enrich, experienceBucket, titleKey } from "@/app/lib/jobs/enrich";
+import { extractExperience, extractTech, extractRequirements, enrich, experienceBucket, titleKey, isTechRole } from "@/app/lib/jobs/enrich";
 
 describe("years of experience", () => {
   it("reads the common English and Hebrew phrasings", () => {
@@ -97,5 +97,17 @@ describe("enrich + titleKey", () => {
     expect(e.requirements).toEqual(["2+ years of experience with Java and Kafka"]);
     expect(titleKey("Senior Backend Developer (Java) - 1987")).toBe("senior backend developer");
     expect(titleKey("Backend Developer  (m/f)")).toBe("backend developer");
+  });
+});
+
+describe("tech-industry roles", () => {
+  it("reads the title first, then falls back to the technologies the posting names", () => {
+    for (const t of ["Backend Engineer", "Junior Frontend Developer", "Data Analyst", "QA Automation", "DevOps", "Product Manager", "UX Designer", "IT Support Specialist", "Sales Engineer", "Chip Design Verification Engineer", "מפתח/ת Full Stack", "בודק/ת תוכנה", "אנליסט/ית נתונים"]) expect(isTechRole(t), t).toBe(true);
+    for (const t of ["Project Scheduler", "Claims Specialist", "אחות ביטוח", "Sales Development Representative", "Account Executive", "Payroll Manager", "Customer Success Manager", "Influencer and Social Media Lead", "Wholesale Manager", "עובד/ת לאגף אופרטיבי"]) expect(isTechRole(t), t).toBe(false);
+    // No signal in the title: the technologies decide.
+    expect(isTechRole("Team Member", ["React", "Node.js"])).toBe(true);
+    expect(isTechRole("Team Member", [])).toBe(false);
+    expect(enrich("Claims Specialist", "Handle claims. Excel.").techRole).toBe(false);
+    expect(enrich("Backend Engineer", "Go, Kubernetes").techRole).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import JobCard from "./JobCard";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import JobsFilters from "./FilterJobs";
@@ -113,6 +113,7 @@ function JobTable() {
   const [experience, setExperience] = useState<string[]>([]); // "0-2" | "3-5" | "5-10" | "10+"
   const [tech, setTech] = useState<string[]>([]);
   const [ids, setIds] = useState<string[]>([]); // a notification's postings (?ids=): exactly those, nothing else
+  const [allRoles, setAllRoles] = useState(false); // ?all=1: every role, not only tech-industry ones
   const [jobCount, setJobCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
@@ -149,7 +150,30 @@ function JobTable() {
     if (list("exp").length) setExperience(list("exp"));
     if (list("tech").length) setTech(list("tech"));
     if (list("ids").length) setIds(list("ids"));
+    if (sp.get("all") === "1") setAllRoles(true);
+    urlReady.current = true;
   }, []);
+
+  // The address follows the search and the filters (a shared or refreshed /jobs?… lands on the same list).
+  const urlReady = useRef(false);
+  useEffect(() => {
+    if (!urlReady.current) return;
+    const params = new URLSearchParams();
+    if (ids.length) params.set("ids", ids.join(","));
+    if (searchTerm.trim()) params.set("q", searchTerm.trim());
+    company.forEach((v) => params.append("company", v));
+    city.forEach((v) => params.append("city", v));
+    country.forEach((v) => params.append("country", v));
+    jobType.forEach((v) => params.append("jobType", v));
+    seniority.forEach((v) => params.append("seniority", v));
+    if (posted) params.set("posted", posted);
+    experience.forEach((v) => params.append("exp", v));
+    tech.forEach((v) => params.append("tech", v));
+    if (allRoles) params.set("all", "1");
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(window.history.state, "", next);
+  }, [ids, searchTerm, company, city, country, jobType, seniority, posted, experience, tech, allRoles]);
 
   // Filter options for the WHOLE catalog (every company/city in the DB).
   const [facets, setFacets] = useState<JobFacets | null>(null);
@@ -184,7 +208,7 @@ function JobTable() {
     seniority.length > 0 ||
     // "Posted within", experience and technologies alone keep a signed-in person on the personalised feed
     // (the feed takes them as view filters); for everyone else they are a catalogue search.
-    ((posted !== "" || experience.length > 0 || tech.length > 0) && !user);
+    ((posted !== "" || experience.length > 0 || tech.length > 0 || allRoles) && !user);
 
   // ✅ חיפוש בכל המאגר (פנימי + חיצוני) — לא רק במשרות שנטענו לדף
   const searchServer = async (pageNum: number) => {
@@ -202,6 +226,7 @@ function JobTable() {
       if (posted) params.set("posted", posted);
       experience.forEach((v) => params.append("exp", v));
       tech.forEach((v) => params.append("tech", v));
+      if (allRoles) params.set("all", "1");
       params.set("page", String(pageNum));
       params.set("limit", "48");
 
@@ -279,42 +304,9 @@ function JobTable() {
       }
       if (!req.isCurrent()) return;
 
-      const internalUrl = user
-        ? `/api/jobsDashboard/Candidate/allAnAplliedJobs?userId=${user._id ?? user.id}&page=${pageNum}&limit=50`
-        : `/api/jobsDashboard/Alljobs?page=${pageNum}&limit=50`;
-
-      const [resInternal, resExternal] = await Promise.all([
-        fetch(internalUrl, { signal: req.signal }),
-        fetch(`/api/external-jobs/fetch-all-external-jobs?page=${pageNum}&limit=48`, { signal: req.signal }),
-      ]);
-
-      const internalData = await resInternal.json();
-      const externalData = await resExternal.json();
-      if (!req.isCurrent()) return; // stale: a newer page/filter request superseded this one
-
-      const internalJobs = (internalData.jobs || []).map((j: Job) => ({
-        ...j,
-        source: "internal",
-      }));
-      const externalJobs = (externalData.jobs || []).map((j: Job) => ({
-        ...j,
-        source: "external",
-      }));
-
-      const merged = [...internalJobs, ...externalJobs];
-      if (pageNum === 1) {
-        setAllJobs(merged);
-        setJobs(merged);
-      } else {
-        setAllJobs((prev) => appendUnique(prev, merged));
-        setJobs((prev) => appendUnique(prev, merged));
-      }
-      // Catalog-wide count (what the DB holds), not the size of this page.
-      setJobCount(
-        (externalData.total ?? externalJobs.length) +
-          (internalData.total ?? internalJobs.length)
-      );
-      setTotalPages(Math.max(internalData.pages || 1, externalData.pages || 1));
+      // The catalogue listing: the search route lists roles (one card per role, locations as variants), in date
+      // order, tech-industry roles by default — the same list a filter or a query would narrow.
+      return searchServer(pageNum);
     } catch (err) {
       if ((err as Error)?.name !== "AbortError") console.error("❌ Failed to fetch jobs:", err);
     } finally {
@@ -326,6 +318,7 @@ function JobTable() {
   // so typing doesn't fire a request per keystroke); page changes load at once.
   const searchKey = JSON.stringify({
     q: searchTerm.trim(),
+    all: allRoles,
     company,
     country,
     city,
@@ -656,9 +649,15 @@ function JobTable() {
           </div>
           <div className="px-6 flex-1 overflow-y-auto jm-scroll">{filtersPanel}</div>
           <div className="px-6 py-4 border-t border-line flex items-center justify-between gap-3 shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <button type="button" onClick={clearAll} disabled={activeFilters.length === 0} className="text-sm text-ink-600 hover:text-navy underline-offset-4 hover:underline disabled:opacity-40 disabled:no-underline">
-              {activeFilters.length > 0 ? t("home.clearAllN", { n: activeFilters.length }) : t("home.clearAll")}
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button type="button" onClick={clearAll} disabled={activeFilters.length === 0} className="text-sm text-ink-600 hover:text-navy underline-offset-4 hover:underline disabled:opacity-40 disabled:no-underline text-start">
+                {activeFilters.length > 0 ? t("home.clearAllN", { n: activeFilters.length }) : t("home.clearAll")}
+              </button>
+              <label className="inline-flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+                <input type="checkbox" className="accent-teal" checked={allRoles} onChange={(e) => setAllRoles(e.target.checked)} />
+                {t("home.allRoles")}
+              </label>
+            </div>
             <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
               {t("home.viewJobs", { n: jobCount.toLocaleString() })}
             </button>

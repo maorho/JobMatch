@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { connectToDatabase } from "@/app/lib/db";
 import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
-import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import ExternalJobs, { OPEN_JOBS, TECH_LISTING } from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
 import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
@@ -13,7 +13,7 @@ import { applyLevel, levelFit } from "@/app/lib/matcher/level";
 import User from "@/app/models/User";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { memo, snippet, ttl, PUBLIC_CACHE, PRIVATE_CACHE } from "@/app/lib/cache";
-import { groupVariants, type Variant } from "@/app/lib/jobs/variants";
+import { groupVariants, dedupeVariants, type Variant } from "@/app/lib/jobs/variants";
 import {
   INTERN_RE,
   JUNIOR_RE,
@@ -118,6 +118,7 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
   const postedDays = parsePostedDays(sp.get("posted"));
   const exp = parseExperienceBuckets(list(sp, "exp"));
   const tech = list(sp, "tech").slice(0, 10);
+  const all = sp.get("all") === "1"; // every role, not only tech-industry ones
   const since = postedDays ? postedSince(postedDays) : null;
   const rawPage = parseInt(sp.get("page") || "1", 10);
   const rawLimit = parseInt(sp.get("limit") || "48", 10);
@@ -158,9 +159,11 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
 
     // ---------- external (ATS) postings: the bulk, paginated ----------
     // Closed postings never appear in search results or totals.
-    const extAnd: object[] = [OPEN_JOBS];
+    // The catalogue is "tech jobs in Israel": the plain listing shows tech-industry roles. A text query or a
+    // company filter means the person is looking for something specific, so every role is in play then.
+    const extAnd: object[] = [q || company.length || all ? OPEN_JOBS : TECH_LISTING];
     // Everything that shapes the external filter, for the shared count cache.
-    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays, exp, tech })}`;
+    const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays, exp, tech, all })}`;
     // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
     // falls back to the every-word regex when Atlas Search isn't available.
     let rankedIds: string[] | null = null;
@@ -270,7 +273,10 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
         ]),
       ]);
       externalTotal = groups[0];
-      for (const r of pageRows) if (r.variants.length > 1) variantsOf.set(String(r.id), r.variants.map((v: any) => ({ _id: String(v._id), ...(v.city ? { city: v.city } : {}), ...(v.country ? { country: v.country } : {}), ...(v.remote ? { remote: true } : {}) })));
+      for (const r of pageRows) {
+        const vs = dedupeVariants(r.variants.map((v: any) => ({ _id: String(v._id), ...(v.city ? { city: v.city } : {}), ...(v.country ? { country: v.country } : {}), ...(v.remote ? { remote: true } : {}) })));
+        if (vs.length > 1) variantsOf.set(String(r.id), vs);
+      }
       externalDocs = await loadPage(pageRows.map((r) => String(r.id)));
     }
 

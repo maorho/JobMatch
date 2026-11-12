@@ -127,6 +127,10 @@ const ExternalJobSchema = new mongoose.Schema({
         type: [String],
         default: undefined,
     },
+    /** A tech-industry role (lib/jobs/enrich.ts isTechRole); the default listing hides the others (TECH_LISTING). */
+    techRole:{
+        type: Boolean,
+    },
     enrichedAt:{
         type: Date,
     },
@@ -149,6 +153,8 @@ const ExternalJobSchema = new mongoose.Schema({
 
 /** Filter for everything a user may still apply to. `$ne:false` so legacy docs without the field stay open. */
 export const OPEN_JOBS = { active: { $ne: false } } as const;
+/** The default listing: open, and a tech-industry role (an unclassified posting counts as tech). A query, a company filter or ?all=1 lifts the role filter. */
+export const TECH_LISTING = { ...OPEN_JOBS, techRole: { $ne: false } } as const;
 
 // Stable per-company dedup for ATS-sourced jobs: two sources on the same ATS
 // with a colliding sourceJobId stay independent. CSV/manual docs (no sourceJobId)
@@ -166,6 +172,7 @@ ExternalJobSchema.index({ city: 1 });
 ExternalJobSchema.index({ active: 1 });
 // Open postings newest-first: the public feed, the sitemap and the search fallback.
 ExternalJobSchema.index({ active: 1, postedAt: -1 });
+ExternalJobSchema.index({ active: 1, techRole: 1, postedAt: -1 });
 // Embedding backfill ("open and not embedded yet") and the health counts.
 ExternalJobSchema.index({ embeddedAt: 1 });
 ExternalJobSchema.index({ active: 1, embeddedAt: 1 });
