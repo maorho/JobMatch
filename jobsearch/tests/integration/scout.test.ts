@@ -29,7 +29,8 @@ const gh = (id: number, title: string, location: string) => ({ id, title, locati
 beforeEach(async () => {
   await resetDb();
   board = {
-    acme: [gh(1, "Backend Engineer", "Tel Aviv, Israel"), gh(2, "Remote SRE", "Remote - USA"), gh(3, "Sales Rep", "New York, US")],
+    // "Remote - USA" is a job placed in the US (out); plain "Remote" has no country of its own (in).
+    acme: [gh(1, "Backend Engineer", "Tel Aviv, Israel"), gh(2, "Remote SRE", "Remote"), gh(3, "Sales Rep", "New York, US"), gh(4, "US Remote Dev", "Remote - USA")],
     globex: [gh(10, "Frontend Developer", "Haifa, Israel")],
   };
   stubGreenhouse();
@@ -45,7 +46,7 @@ describe("runScout ingestion", () => {
   it("ingests only Israel/remote postings, with company domain + logo, and dedups on re-run", async () => {
     const r1 = await runScout();
     expect(r1.sources).toBe(2); // disabled source skipped
-    expect(r1.created).toBe(3); // Tel Aviv + Remote + Haifa; New York dropped
+    expect(r1.created).toBe(3); // Tel Aviv + Remote + Haifa; New York and "Remote - USA" dropped
     const docs = await ExternalJobs.find({}).lean();
     expect(docs.map((d: any) => d.job).sort()).toEqual(["Backend Engineer", "Frontend Developer", "Remote SRE"]);
     const acme = docs.find((d: any) => d.job === "Backend Engineer") as any;
@@ -170,13 +171,13 @@ describe("runScout freshness (reconciliation)", () => {
     // The Locator (LLM stage) decided this is Tel Aviv-Yafo / Israel; the raw string is unchanged.
     await ExternalJobs.updateOne({ job: "Backend Engineer" }, { $set: { city: "Tel Aviv-Yafo", country: "Israel" } });
     board.acme.find((j) => j.id === 1)!.title = "Backend Engineer (Go)";
-    board.acme.find((j) => j.id === 2)!.location.name = "Remote - Canada"; // raw location changed
+    board.acme.find((j) => j.id === 2)!.location.name = "Remote - EMEA"; // raw location changed (still remote with no country of its own)
     await runScout({ refresh: true });
     const be: any = await ExternalJobs.findOne({ sourceJobId: "1" }).lean();
     expect(be.job).toBe("Backend Engineer (Go)");
     expect(be.city).toBe("Tel Aviv-Yafo"); // kept
     const sre: any = await ExternalJobs.findOne({ sourceJobId: "2" }).lean();
-    expect(sre.rawLocation).toMatch(/Canada/); // rewritten
+    expect(sre.rawLocation).toMatch(/EMEA/); // rewritten
   });
 });
 

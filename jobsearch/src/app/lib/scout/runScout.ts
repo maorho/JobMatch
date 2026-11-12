@@ -245,10 +245,12 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
       const closed = new Set(existing.filter((e: any) => e.active === false).map((e: any) => e.sourceJobId));
       const storedRaw = new Map(existing.map((e: any) => [e.sourceJobId, e.rawLocation || ""]));
 
-      // Relevance uses both the raw strings and the normalized remote flag, so
-      // "Remote - USA" (normalized to country United States) still qualifies.
-      const relevant = (p: NormalizedPosting) =>
-        isIsraelOrRemote({ ...p, remote: locationFields(p).remote });
+      // Relevance is judged on the NORMALIZED location: "Paris, France (Remote)" arrives with an empty
+      // country and a remote flag, and must still read as a job placed in France (out), not as remote.
+      const relevant = (p: NormalizedPosting) => {
+        const lf = locationFields(p);
+        return isIsraelOrRemote({ ...p, city: lf.city || p.city, country: lf.country === "Unknown" ? p.country : lf.country, remote: lf.remote });
+      };
 
       const fresh = postings.filter(
         (p) => p.sourceJobId && !seen.has(p.sourceJobId) && relevant(p)
