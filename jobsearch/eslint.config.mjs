@@ -4,7 +4,7 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
-  { ignores: [".next/**", "node_modules/**", "out/**", "coverage/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "node_modules/**", "out/**", "coverage/**", "next-env.d.ts", "public/**"] }, // public/ holds vendored browser bundles (MediaPipe wasm glue), not our code
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
