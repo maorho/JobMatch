@@ -15,7 +15,7 @@ const ChoiceRender: React.FC<{ title: string; options: { value: string; label: s
       <button type="button" onClick={() => setIsOpen((o) => !o)} aria-expanded={isOpen} aria-controls={id} className="w-full flex items-center justify-between gap-2 text-start py-4 min-h-[56px]">
         <span className="font-semibold text-navy text-[15px]">
           {title}
-          {current && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0">1</span>}
+          {current && <span className="ms-2 jm-chip jm-chip-teal px-2 py-0" aria-label={`1 ${title}`}>{"\u00a0"}1{"\u00a0"}</span>}
           {!isOpen && current && <span className="block mt-0.5 text-xs font-normal text-ink-400 truncate max-w-[260px]">{current.label}</span>}
         </span>
         <ChevronDown className={`h-4 w-4 text-ink-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />

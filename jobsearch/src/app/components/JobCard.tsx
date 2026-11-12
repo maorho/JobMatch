@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { MapPin, Clock, Bookmark, X } from "lucide-react";
 import MatchTooltip from "./MatchTooltip";
+import { variantLabel, type Variant } from "@/app/lib/jobs/variants";
 import { useJobSignals } from "../lib/hooks/useJobSignals";
 import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import CompanyLogo from "./CompanyLogo";
@@ -27,7 +28,7 @@ function teaser(text: string, max = 120): string {
 dayjs.extend(relativeTime);
 
 /** What the ranked feed adds to a posting beyond the catalogue row (lib/matcher/hybrid.ts RankedJob). */
-type RankedExtras = { remote?: boolean; why?: string; whyEn?: string; matched?: string[]; gaps?: string[] };
+type RankedExtras = { remote?: boolean; why?: string; whyEn?: string; matched?: string[]; gaps?: string[]; variants?: Variant[] };
 
 interface JobCardProps {
   job: Job;
@@ -41,11 +42,15 @@ interface JobCardProps {
  */
 const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
   const router = useRouter();
-  const href = isInternalJob(job) ? `/job/internal/${job._id}` : `/job/external/${job._id}`;
-  const open = () => router.push(href);
   const signals = useJobSignals();
   const { t, lang } = useT();
-  const id = String(job._id || job.id || "");
+  // The same role at several locations is one card: the person picks the location, and the card's link,
+  // save and apply all point at that location's own listing.
+  const variants = ((job as typeof job & RankedExtras).variants || []) as Variant[];
+  const [picked, setPicked] = useState<string>(String(job._id || job.id || ""));
+  const id = variants.length > 1 ? picked : String(job._id || job.id || "");
+  const href = isInternalJob(job) ? `/job/internal/${job._id}` : `/job/external/${id}`;
+  const open = () => router.push(href);
   const isSaved = signals.saved.has(id);
   const [hidden, setHidden] = useState(false);
   const act = async (e: React.MouseEvent, kind: "saved" | "dismissed") => {
@@ -59,19 +64,22 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
 
   const companyName = isInternalJob(job) ? job.company.companyName : job.company;
   const extra = job as typeof job & RankedExtras;
-  const location = [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ") || (extra.remote ? "Remote" : "");
+  const pickedVariant = variants.find((v) => v._id === id);
+  const location = pickedVariant ? variantLabel(pickedVariant) : [job.city, job.country].filter((v) => v && v !== "Unknown").join(", ") || (extra.remote ? "Remote" : "");
   const workMode = getJobType(job);
   const level = getSeniorityLevel(job);
   // When it was posted: the employer's date, else when we first saw it, else when it was added here.
   const postedRaw = job.postedAt || job.firstSeenAt || job.createdAt;
-  const posted = postedRaw && dayjs(postedRaw).isValid() && !dayjs(postedRaw).isAfter(dayjs().add(1, "day")) ? dayjs(postedRaw) : null;
+  // An ATS clock a few minutes ahead of ours must not read "in 20 minutes": a date in the future shows as now.
+  const postedD = postedRaw ? dayjs(postedRaw) : null;
+  const posted = postedD && postedD.isValid() && !postedD.isAfter(dayjs().add(1, "day")) ? (postedD.isAfter(dayjs()) ? dayjs() : postedD) : null;
   const time = posted ? t("card.posted", { ago: posted.locale(lang).fromNow() }) : "";
   const timeTitle = posted ? `${job.postedAt ? t("card.postedAt") : t("card.firstSeen")} ${posted.format("D MMM YYYY, HH:mm")}` : "";
   // The verdict sentence in the interface language (the reranker writes both; English falls back to Hebrew for old rows).
   const why = (lang === "en" ? extra.whyEn || extra.why : extra.why) || undefined;
   const matched = extra.matched || [];
   const gaps = extra.gaps || [];
-  const meta = [location + (extra.remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
+  const meta = [pickedVariant ? location : location + (extra.remote && job.city ? " · Remote" : ""), workMode].filter(Boolean).join(" · ");
   // Years of experience required, read from the description — more honest than the title.
   const years = job.experienceMin != null ? (job.experienceMax != null && job.experienceMax !== job.experienceMin ? t("card.yearsRange", { a: job.experienceMin, b: job.experienceMax }) : t("card.years", { n: job.experienceMin })) : "";
   const techChips = (job.tech || []).slice(0, 3);
@@ -110,12 +118,28 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
 
       {/* One meta line: where · how · level · when */}
       <div className="mt-3 flex items-center gap-2 text-xs text-ink-600 min-w-0">
-        {meta && (
+        {variants.length > 1 ? (
+          <span className="inline-flex items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />
+            <select
+              value={id}
+              onChange={(e) => setPicked(e.target.value)}
+              aria-label={t("card.chooseLocation")}
+              title={t("card.locations", { n: variants.length })}
+              className="h-6 max-w-[11rem] truncate rounded-md border border-line bg-surface px-1.5 text-xs text-ink-600 focus:outline-none focus:ring-2 focus:ring-sky/40"
+            >
+              {variants.map((v) => (
+                <option key={v._id} value={v._id}>{variantLabel(v) || t("job.otherLocation")}</option>
+              ))}
+            </select>
+            <span className="jm-chip jm-chip-sky shrink-0">{t("card.locations", { n: variants.length })}</span>
+          </span>
+        ) : meta ? (
           <span className="inline-flex items-center gap-1 truncate">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />
             <span className="truncate">{meta}</span>
           </span>
-        )}
+        ) : null}
         {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{t(`level.${level}` as Key)}</span>}
         {years && <span className="jm-chip shrink-0" title={t("card.yearsTitle")}>{years}</span>}
         {time && (

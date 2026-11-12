@@ -9,6 +9,14 @@ import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
 import { enrich, titleKey } from "@/app/lib/jobs/enrich";
 import { resetRendererBudget } from "@/app/lib/apply/server";
 
+/** An ATS clock a few minutes ahead of ours would read "posted in 20 minutes" on the card: clamp to now. */
+const notInTheFuture = (d: Date | string | null | undefined): Date | undefined => {
+  if (!d) return undefined;
+  const t = new Date(d);
+  if (Number.isNaN(t.getTime())) return undefined;
+  return t.getTime() > Date.now() ? new Date() : t;
+};
+
 /** A posting that closed this long ago and comes back under a new id is the same posting again (a repost). */
 const REPOST_WINDOW_MS = 180 * 24 * 3600_000;
 
@@ -292,7 +300,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
               sourceJobId: p.sourceJobId,
               companySource: src._id,
               applyUrl: p.applyUrl,
-              postedAt: p.postedAt,
+              postedAt: notInTheFuture(p.postedAt),
               active: true,
               companyDomain: domain,
               logoUrl: getLogoUrl(domain),
@@ -355,7 +363,7 @@ export async function runScout(opts: RunOptions = {}): Promise<ScoutResult> {
                       enrichedAt: new Date(),
                       titleKey: titleKey(p.title),
                       seniority: p.seniority || [],
-                      ...(p.postedAt ? { postedAt: p.postedAt } : {}),
+                      ...(p.postedAt ? { postedAt: notInTheFuture(p.postedAt) } : {}),
                       ...(p.applyUrl ? { applyUrl: p.applyUrl, url: p.applyUrl, finalUrl: p.applyUrl } : {}),
                       ...(sameRaw ? {} : loc),
                     },

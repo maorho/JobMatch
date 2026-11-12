@@ -660,7 +660,7 @@ function JobTable() {
               {activeFilters.length > 0 ? t("home.clearAllN", { n: activeFilters.length }) : t("home.clearAll")}
             </button>
             <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
-              View {jobCount.toLocaleString()} jobs
+              {t("home.viewJobs", { n: jobCount.toLocaleString() })}
             </button>
           </div>
         </div>

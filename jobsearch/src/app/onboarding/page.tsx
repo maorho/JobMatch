@@ -37,9 +37,15 @@ export default function OnboardingPage() {
   }, [user]);
 
   const post = (body: object) => fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const [finishing, setFinishing] = useState(false);
   const finish = async () => {
-    await post({ complete: true });
-    router.push("/");
+    if (finishing) return;
+    setFinishing(true);
+    try {
+      await post({ complete: true });
+    } finally {
+      router.push("/jobs"); // straight to the feed (the landing would only redirect a signed-in person there)
+    }
   };
 
   if (loading) return <Spinner label={t("common.loading")} />;
@@ -104,7 +110,7 @@ export default function OnboardingPage() {
           <h2 className="jm-h2">{t("settings.ob.s4Title")}</h2>
           <AutoApplyCard onChange={(s) => setState((st) => st && { ...st, autoApply: s.enabled })} />
           <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
-            <button type="button" onClick={finish} className="jm-btn jm-btn-primary">{t("settings.ob.finish")}</button>
+            <button type="button" onClick={finish} disabled={finishing} className="jm-btn jm-btn-primary">{t("settings.ob.finish")}</button>
             <button type="button" onClick={() => setStep(2)} className="jm-btn jm-btn-ghost">{t("settings.ob.back")}</button>
           </div>
         </section>

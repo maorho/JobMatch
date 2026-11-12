@@ -9,6 +9,7 @@ import { applyLevel, inferCandidateLevel, levelFit, freshnessBoost, type Candida
 import { rerankForUser } from "./rerank";
 import { loadModel, likelihoodFrom, type Likelihood } from "./likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
+import { groupVariants, type Variant } from "@/app/lib/jobs/variants";
 import { candidateSearchVector, profileReject, hasSearchProfile, type SearchProfile } from "./searchProfile";
 import { structuredToText, isStructuredResume } from "@/app/lib/resume/structuredToText";
 import { memo, ttl, invalidate } from "@/app/lib/cache";
@@ -54,6 +55,9 @@ export type RankedJob = {
   /** How many times this posting was re-listed after closing (0 = first listing). */
   repostCount?: number;
   originalFirstSeenAt?: Date;
+  titleKey?: string;
+  /** The same role at the company's other locations (lib/jobs/variants.ts); this row is the best-scoring one and comes first. */
+  variants?: Variant[];
 };
 
 export type RankOptions = {
@@ -232,7 +236,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
 
   // Light projection for the whole pool (descriptions are ~10KB each; only the rerank head needs them).
   // Soft-closed postings fall out here, whichever index (Atlas or the fallback) recalled them.
-  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority experienceMin experienceMax tech repostCount originalFirstSeenAt").lean();
+  const docs: any[] = await ExternalJobs.find({ _id: { $in: ids }, ...OPEN_JOBS }).select("job company city country remote logoUrl companyDomain applyUrl finalUrl url postedAt firstSeenAt seniority experienceMin experienceMax tech repostCount originalFirstSeenAt titleKey").lean();
   const byId = new Map(docs.map((d) => [String(d._id), d]));
 
   const ranked: RankedJob[] = ids
@@ -251,7 +255,7 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       // Level is decisive: a senior role (by title or by the years it asks for) loses up to half its relevance for a junior; freshness adds a few points.
       // A repost is as old as its first listing: the freshness boost goes to new postings, not re-listed ones.
       const matchScore = Math.max(0, Math.min(100, Math.round(applyLevel(base, lf) + freshnessBoost(d.originalFirstSeenAt || d.firstSeenAt) * 100)));
-      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority, experienceMin: d.experienceMin ?? null, experienceMax: d.experienceMax ?? null, tech: d.tech || [], repostCount: d.repostCount || 0, originalFirstSeenAt: d.originalFirstSeenAt } as RankedJob;
+      return { _id: id, job: d.job, company: d.company, city: d.city, country: d.country, remote: d.remote, logoUrl: d.logoUrl, companyDomain: d.companyDomain, applyUrl: d.applyUrl || d.finalUrl || d.url, postedAt: d.postedAt, firstSeenAt: d.firstSeenAt, matchScore, cosine: cosine ?? 0, levelFit: lf, reranked: false, seniority: d.seniority, experienceMin: d.experienceMin ?? null, experienceMax: d.experienceMax ?? null, tech: d.tech || [], repostCount: d.repostCount || 0, originalFirstSeenAt: d.originalFirstSeenAt, titleKey: d.titleKey } as RankedJob;
     })
     .filter(Boolean) as RankedJob[];
   // "What I'm looking for" is a contract, not a hint: wrong role family, wrong seniority band or wrong place → out.
@@ -263,6 +267,10 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
   }
   // Deterministic order (id as the last tiebreak) so page boundaries never move between requests.
   ranked.sort((a, b) => b.matchScore - a.matchScore || b.cosine - a.cosine || a._id.localeCompare(b._id));
+  // The same role at several locations is one row (its best-scoring listing), the rest as `variants`.
+  const grouped = groupVariants(ranked);
+  ranked.length = 0;
+  ranked.push(...grouped);
 
   // Rerank the head of the list with the LLM (cached per résumé version).
   if (opts.rerank && profile.userId && profile.resumeSummary) {

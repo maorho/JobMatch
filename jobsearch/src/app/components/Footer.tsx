@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { LogoMark } from "./Logo";
-import { Github, Linkedin, Facebook } from "lucide-react";
+import { Github, Linkedin } from "lucide-react";
 import { useT } from "../lib/i18n/LanguageProvider";
 import type { Key } from "../lib/i18n/dict";
 
@@ -9,7 +9,7 @@ const COLUMNS: { title: Key; links: { href: string; key: Key }[] }[] = [
   {
     title: "footer.product",
     links: [
-      { href: "/", key: "nav.jobs" },
+      { href: "/jobs", key: "nav.jobs" },
       { href: "/Companies", key: "nav.companies" },
       { href: "/ResumeAI", key: "nav.resumeAI" },
       { href: "/Articels", key: "nav.articles" },
@@ -43,7 +43,6 @@ const HUB_CITIES: [string, string, string][] = [["Tel%20Aviv", "תל אביב", 
 const SOCIAL = [
   { href: "https://www.linkedin.com/in/maor-homri-a78665229/", label: "LinkedIn", Icon: Linkedin },
   { href: "https://www.github.com/maorho/JobMatch", label: "GitHub", Icon: Github },
-  { href: "https://www.facebook.com/", label: "Facebook", Icon: Facebook },
 ];
 
 function Footer() {

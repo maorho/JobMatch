@@ -4,6 +4,7 @@ import React, { useMemo, useState } from "react";
 import Applybutton from "./Applybutton";
 import { isInternalJob, getJobType, getSeniorityLevel, type Job } from "./JobTable";
 import Link from "next/link";
+import { variantLabel, type Variant } from "@/app/lib/jobs/variants";
 import { usePathname } from "next/navigation";
 import { useCurrentUser } from "../lib/hooks/useCurrentUser";
 import { loginHref } from "../lib/hooks/nextPath";
@@ -174,6 +175,15 @@ const JobDescription: React.FC<JobDescriptionProps> = ({ job }) => {
               <span key={chip.label} className="jm-chip capitalize" title={chip.label}>
                 <span className="text-ink-400 font-normal">{chip.label}:</span> {chip.value}
               </span>
+            ))}
+          </div>
+        )}
+        {/* The same role at the company's other locations: each link is that location's own listing (its own apply link). */}
+        {Array.isArray(job?.siblings) && job.siblings.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="text-ink-400">{t("job.alsoIn")}:</span>
+            {(job.siblings as Variant[]).map((v) => (
+              <Link key={v._id} href={`/job/external/${v._id}`} className="jm-chip hover:border-sky hover:text-sky transition-colors">{variantLabel(v) || t("job.otherLocation")}</Link>
             ))}
           </div>
         )}

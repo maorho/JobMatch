@@ -98,6 +98,14 @@ describe("login: no enumeration, brute-force lock-out, 7-day sliding sessions", 
     expect((await attempt("approved@acme.com", "correct-horse-1")).status).toBe(429);
   });
 
+  it("signs in with the username as well as the e-mail (the form says either)", async () => {
+    // The "approved" account: its address was never locked by the brute-force test above.
+    const byName = await loginPOST(json("/api/auth/login", { email: "APPROVED", password: "correct-horse-1" }, { "x-forwarded-for": "10.9.9.9" }));
+    expect(byName.status).toBe(200);
+    const byMail = await loginPOST(json("/api/auth/login", { email: "Approved@Acme.com", password: "correct-horse-1" }, { "x-forwarded-for": "10.9.9.8" }));
+    expect(byMail.status).toBe(200);
+  });
+
   it("the password hash never leaves the DB unless asked for", async () => {
     const u: any = await User.findById(dana);
     expect(u.password).toBeUndefined();

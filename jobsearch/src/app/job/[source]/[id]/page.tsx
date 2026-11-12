@@ -4,6 +4,15 @@ import JobDescription from "@/app/components/JobDescription";
 import { loadJob } from "@/app/lib/jobs/loadJob";
 import { jobPageJsonLd, jobPageRobots } from "@/app/lib/seo/jsonld";
 import { excerpt } from "@/app/lib/seo/site";
+import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import { variantOf, type Variant } from "@/app/lib/jobs/variants";
+
+/** The same role at the company's other locations (open listings only), for the "also offered in" row. */
+async function siblingsOf(job: any): Promise<Variant[]> {
+  if (job?.source !== "external" || !job?.titleKey) return [];
+  const rows: any[] = await ExternalJobs.find({ ...OPEN_JOBS, company: job.company, titleKey: job.titleKey, _id: { $ne: job._id } }).select("city country remote").limit(40).lean().catch(() => []);
+  return rows.map(variantOf);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +45,13 @@ export default async function JobPage({ params }: { params: Params }) {
   const job = await loadJob(source, id);
   if (!job) notFound();
   const company = companyName(job);
+  const siblings = await siblingsOf(job);
   // No JobPosting for a closed job (active:false) — see jobPageJsonLd.
   const jsonLd = jobPageJsonLd({ ...job, _id: String(job._id), source: job.source, company });
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <JobDescription job={job} />
+      <JobDescription job={siblings.length ? { ...job, siblings } : job} />
     </>
   );
 }

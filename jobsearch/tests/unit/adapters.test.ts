@@ -359,7 +359,7 @@ describe("paginating adapters: partial lists are returned, not thrown", () => {
     const content = [
       { id: "il1", name: "Engineer TLV", location: { city: "Tel Aviv", country: "il" } },
       { id: "us1", name: "Engineer NYC", location: { city: "New York", country: "us" } },
-      { id: "rm1", name: "Remote Dev", location: { city: "Berlin", country: "de", remote: true } },
+      { id: "rm1", name: "Remote Dev", location: { city: "Remote", country: "", remote: true } },
     ];
     const { calls } = stubFetch({
       "postings?limit": { body: { totalFound: 3, content } },

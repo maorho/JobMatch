@@ -13,6 +13,7 @@ import { applyLevel, levelFit } from "@/app/lib/matcher/level";
 import User from "@/app/models/User";
 import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { memo, snippet, ttl, PUBLIC_CACHE, PRIVATE_CACHE } from "@/app/lib/cache";
+import { groupVariants, type Variant } from "@/app/lib/jobs/variants";
 import {
   INTERN_RE,
   JUNIOR_RE,
@@ -199,6 +200,8 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       if (jobType.length) intAnd.push({ type: { $in: jobType } });
       if (seniority.length) intAnd.push(seniorityFilter(seniority));
       if (since) intAnd.push({ createdAt: { $gte: since } });
+      // The plain feed is "what is open now": a recruiter's posting older than 90 days stays reachable by company or query only.
+      if (!q && !company.length) intAnd.push({ createdAt: { $gte: new Date(Date.now() - 90 * 86_400_000) } });
       internalJobs = await Job.find(intAnd.length ? { $and: intAnd } : {})
         .populate({ path: "company", model: "Company", select: "companyName" })
         .sort({ createdAt: -1 })
@@ -228,34 +231,57 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       if (u?.level) level = u.level;
     }
 
-    let pageQuery = ExternalJobs.find(extFilter);
-    if (vector) pageQuery = pageQuery.select("+embedding");
     const rankPos = rankedIds ? new Map(rankedIds.map((id, i) => [id, i])) : null;
     let externalTotal = 0;
     let externalDocs: any[] = [];
+    // The same role listed per location is one result with `variants` (lib/jobs/variants.ts): the
+    // page and the total count roles, not listings. A city filter keeps only the matching locations.
+    const variantsOf = new Map<string, Variant[]>();
+    const loadPage = async (ids: string[]) => {
+      const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: ids } }).select("+embedding") : ExternalJobs.find({ _id: { $in: ids } })).lean();
+      const pos = new Map(ids.map((id, i) => [id, i]));
+      return docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
+    };
     // The total always counts the whole catalog (every-word match); relevance
     // order covers the first 600 hits, deeper pages continue newest-first.
     if (rankPos) {
-      // Relevance order: the page's ids first (cheap, ids only, honouring the other filters), then just those documents.
-      const matchingIds: any[] = await ExternalJobs.find({ ...extFilter, _id: { $in: rankedIds } }).select("_id").lean();
-      const ordered = matchingIds.map((d) => String(d._id)).sort((a, b) => (rankPos.get(a) ?? 1e9) - (rankPos.get(b) ?? 1e9));
+      // Relevance order: the page's ids first (cheap, light rows, honouring the other filters), then just those documents.
+      const matching: any[] = await ExternalJobs.find({ ...extFilter, _id: { $in: rankedIds } }).select("company titleKey job city country remote").lean();
+      const ordered = groupVariants(matching.sort((a, b) => (rankPos.get(String(a._id)) ?? 1e9) - (rankPos.get(String(b._id)) ?? 1e9)));
+      for (const r of ordered) if (r.variants) variantsOf.set(String(r._id), r.variants);
       // Fewer hits than the recall depth → the hit list IS the whole result set; otherwise count the long way (shared, cached).
       externalTotal = rankedIds!.length < RECALL ? ordered.length : await memo(`${countKey}:text`, COUNT_TTL_MS, () => ExternalJobs.countDocuments({ $and: [...extAnd, textMatch(["job", "description", "company", "city", "country"])!] }));
-      const pageIds = ordered.slice(skip, skip + limit);
-      const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: pageIds } }).select("+embedding") : ExternalJobs.find({ _id: { $in: pageIds } })).lean();
-      const pos = new Map(pageIds.map((id, i) => [id, i]));
-      externalDocs = docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0));
+      externalDocs = await loadPage(ordered.slice(skip, skip + limit).map((r) => String(r._id)));
     } else {
-      [externalTotal, externalDocs] = await Promise.all([memo(countKey, COUNT_TTL_MS, () => ExternalJobs.countDocuments(extFilter)), pageQuery.sort({ postedAt: -1, createdAt: -1, _id: -1 }).skip(skip).limit(limit).lean()]);
+      // Newest first, one row per (company, titleKey): the group keeps its newest listing as the representative.
+      const key = { company: { $toLower: "$company" }, titleKey: { $ifNull: ["$titleKey", { $toString: "$_id" }] } };
+      const [groups, pageRows]: [any[], any[]] = await Promise.all([
+        memo(countKey, COUNT_TTL_MS, async () => {
+          const r: any[] = await ExternalJobs.aggregate([{ $match: extFilter }, { $group: { _id: key } }, { $count: "n" }]);
+          return r[0]?.n || 0;
+        }).then((n) => [n]),
+        ExternalJobs.aggregate([
+          { $match: extFilter },
+          { $sort: { postedAt: -1, createdAt: -1, _id: -1 } },
+          { $group: { _id: key, id: { $first: "$_id" }, postedAt: { $first: "$postedAt" }, createdAt: { $first: "$createdAt" }, variants: { $push: { _id: "$_id", city: "$city", country: "$country", remote: "$remote" } } } },
+          { $sort: { postedAt: -1, createdAt: -1, id: -1 } },
+          { $skip: skip },
+          { $limit: limit },
+        ]),
+      ]);
+      externalTotal = groups[0];
+      for (const r of pageRows) if (r.variants.length > 1) variantsOf.set(String(r.id), r.variants.map((v: any) => ({ _id: String(v._id), ...(v.city ? { city: v.city } : {}), ...(v.country ? { country: v.country } : {}), ...(v.remote ? { remote: true } : {}) })));
+      externalDocs = await loadPage(pageRows.map((r) => String(r.id)));
     }
 
     let external = externalDocs.map((d: any) => {
       const { embedding, ...rest } = d;
+      const variants = variantsOf.get(String(d._id));
       const matchScore =
         vector && Array.isArray(embedding) && embedding.length
           ? Math.round(applyLevel(toMatchScore(cosineSimilarity(vector, embedding)), levelFit(level, d.job, d.seniority, d.experienceMin)))
           : undefined;
-      return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
+      return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), ...(variants ? { variants } : {}), source: "external" };
     });
     if (vector && !rankPos) {
       external = external.sort(
@@ -269,7 +295,8 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     return {
       status: 200,
       payload: {
-        jobs: [...internal, ...external],
+        // One list in date order (an internal posting is not pinned above newer external ones); relevance order stays as is.
+        jobs: rankPos || vector ? [...internal, ...external] : [...internal, ...external].sort((a: any, b: any) => new Date(b.postedAt || b.createdAt || 0).getTime() - new Date(a.postedAt || a.createdAt || 0).getTime()),
         total: externalTotal + internalTotal,
         externalTotal,
         internalTotal,

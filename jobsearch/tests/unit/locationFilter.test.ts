@@ -10,10 +10,17 @@ describe("isIsraelOrRemote", () => {
     expect(isIsraelOrRemote({ city: "ירושלים", country: "ישראל" })).toBe(true);
   });
 
-  it("keeps remote postings anywhere", () => {
-    expect(isIsraelOrRemote({ city: "Remote", country: "United States" })).toBe(true);
-    expect(isIsraelOrRemote({ city: "London", country: "UK", title: "Engineer (Remote)" })).toBe(true);
-    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Work from home" })).toBe(true);
+  it("keeps remote postings that belong to no other country, and drops remote roles placed abroad", () => {
+    expect(isIsraelOrRemote({ city: "Remote", country: "" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "", country: "Remote" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Remote", country: "EMEA" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "", country: "", title: "Engineer (Remote)" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "", country: "", remote: true })).toBe(true);
+    // "Remote - US", "India (remote)": hired there, not here.
+    expect(isIsraelOrRemote({ city: "Remote", country: "United States" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "London", country: "UK", title: "Engineer (Remote)" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Work from home" })).toBe(false);
+    expect(isIsraelOrRemote({ city: "", country: "India", remote: true })).toBe(false);
   });
 
   it("drops non-Israel, non-remote postings", () => {
@@ -56,9 +63,10 @@ describe("isIsraelOrRemote", () => {
     expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Non-remote role, office based" })).toBe(false);
     expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "On-site only" })).toBe(false);
     expect(isIsraelOrRemote({ city: "ברלין", country: "גרמניה", description: "לא מרחוק" })).toBe(false);
-    // A real remote signal next to a negated one still counts.
-    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Not remote-only: hybrid, remote 3 days a week" })).toBe(true);
-    expect(isIsraelOrRemote({ city: "Remote", country: "Germany" })).toBe(true);
+    // A real remote signal next to a negated one still counts (when no other country claims the role).
+    expect(isIsraelOrRemote({ city: "", country: "", description: "Not remote-only: hybrid, remote 3 days a week" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Remote", country: "" })).toBe(true);
+    expect(isIsraelOrRemote({ city: "Remote", country: "Germany" })).toBe(false); // placed in Germany
   });
 
   it("does not read 'acre' / 'Arad' in free text or abroad as Israel, but keeps them as a short Israeli location", () => {
@@ -77,6 +85,6 @@ describe("isIsraelOrRemote", () => {
     expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "WFH is not offered. Office in Mitte." })).toBe(false);
     expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Remote options are currently unavailable" })).toBe(false);
     // A negation in another sentence does not cancel a real remote signal.
-    expect(isIsraelOrRemote({ city: "Berlin", country: "DE", description: "Fully remote. Relocation is not available." })).toBe(true);
+    expect(isIsraelOrRemote({ city: "", country: "", description: "Fully remote. Relocation is not available." })).toBe(true);
   });
 });

@@ -43,12 +43,11 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
 
-  // Case-insensitive exact match so legacy accounts stored with mixed-case
-  // emails still log in. The pattern is escaped + anchored (no ReDoS).
+  // The form says "e-mail or username": either one, case-insensitive exact match, so legacy accounts stored
+  // with mixed-case emails still log in. The pattern is escaped + anchored (no ReDoS).
   const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const user = await User.findOne({
-    email: new RegExp(`^${escaped}$`, "i"),
-  }).select("+password email recruiter admin tokenVersion disabled");
+  const exact = new RegExp(`^${escaped}$`, "i");
+  const user = await User.findOne({ $or: [{ email: exact }, { username: exact }] }).select("+password email recruiter admin tokenVersion disabled");
   if (!user) return fail();
 
   const isValid = await bcrypt.compare(password, user.password);

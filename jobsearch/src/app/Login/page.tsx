@@ -87,7 +87,7 @@ function LoginForm() {
 
       {/* Form column */}
       <div className="flex flex-col px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-10">
-        <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label="JobMatch home">
+        <Link href="/" className="inline-flex items-center gap-2 w-fit" aria-label={t("nav.home")}>
           <LogoMark size={40} className="text-teal" title="JobMatch" />
           <span className="font-semibold text-navy text-lg">JobMatch</span>
         </Link>

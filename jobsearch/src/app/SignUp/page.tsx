@@ -135,6 +135,7 @@ function SignUp() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="jm-input"
+                  required
                 />
               </div>
               <div>
@@ -146,6 +147,7 @@ function SignUp() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="jm-input"
+                  required
                 />
               </div>
               <div>
@@ -157,6 +159,7 @@ function SignUp() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="jm-input"
+                  required
                 />
               </div>
               <div>
@@ -168,6 +171,7 @@ function SignUp() {
                   value={confirmEmail}
                   onChange={(e) => setConfirmEmail(e.target.value)}
                   className="jm-input"
+                  required
                 />
               </div>
               <div>
@@ -188,7 +192,7 @@ function SignUp() {
                 <input
                   type="file"
                   accept=".pdf,.doc,.docx"
-                  onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                  onChange={(e) => { setResumeFile(e.target.files?.[0] || null); if (e.target.files?.[0]) setError(""); }}
                   className="hidden"
                   id="resumeUpload"
                 />
@@ -215,6 +219,7 @@ function SignUp() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="jm-input"
+                  required
                 />
               </div>
               <div>

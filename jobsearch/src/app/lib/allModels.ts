@@ -37,6 +37,7 @@ import ReferralRequestModel from "@/app/models/ReferralRequest";
 import ReferrerModel from "@/app/models/Referrer";
 import ScoreModelModel from "@/app/models/ScoreModel";
 import UsageCounterModel from "@/app/models/UsageCounter";
+import SkillGapReportModel from "@/app/models/SkillGapReport";
 import LlmUsageModel from "@/app/models/LlmUsage";
 import PushSubscriptionModel from "@/app/models/PushSubscription";
 import UserModel from "@/app/models/User";
@@ -89,6 +90,7 @@ export const ALL_MODELS: Record<string, Model<any>> = {
   Referrer: ReferrerModel,
   ScoreModel: ScoreModelModel,
   UsageCounter: UsageCounterModel,
+  SkillGapReport: SkillGapReportModel,
   LlmUsage: LlmUsageModel,
   PushSubscription: PushSubscriptionModel,
   User: UserModel,

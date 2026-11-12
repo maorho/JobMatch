@@ -1,7 +1,17 @@
 /**
- * Relevance filter: we only keep jobs that are in Israel OR remote.
- * Used both at ingestion (runScout) and for pruning the existing collection.
+ * Relevance filter: we only keep jobs that are in Israel, or remote without a
+ * country of their own ("Remote", "EMEA", "Worldwide"). A remote role that the
+ * employer places in another country ("Remote - US", "India (remote)") is
+ * hired there, with that country's contract and hours, so it is out — the
+ * product is for people looking in Israel. Used both at ingestion (runScout)
+ * and for pruning the existing collection.
  */
+/** A country value that is a real other country (not Israel, not a remote/region placeholder, not unknown). */
+const NOT_A_COUNTRY_RE = /^(?:il|isr|israel|ישראל|remote|anywhere|worldwide|global|international|emea|europe|eu|unknown|n\/a|-|)$/i;
+export const isForeignCountry = (country?: string | null): boolean => {
+  const c = (country || "").trim();
+  return !!c && !NOT_A_COUNTRY_RE.test(c);
+};
 
 /**
  * Latin text is matched after `latin()` below: lower-cased, apostrophes
@@ -104,9 +114,11 @@ export function isIsraelOrRemote(j: {
   remote?: boolean;
   description?: string;
 }): boolean {
-  if (j.remote === true) return true;
   const country = (j.country || "").trim();
-  if (/^(il|isr|israel)$/i.test(country)) return true;
+  if (/^(il|isr|israel|ישראל)$/i.test(country)) return true;
+  // Placed in another country: out, whatever the posting says about remote work.
+  if (isForeignCountry(country)) return false;
+  if (j.remote === true) return true;
 
   const hay = `${j.city || ""} ${j.country || ""} ${j.job || j.title || ""} ${(
     j.description || ""
