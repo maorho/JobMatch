@@ -16,6 +16,7 @@ import { GET as feedGET } from "@/app/api/matcher/feed/route";
 import { GET as searchGET } from "@/app/api/jobs/search/route";
 import { GET as explainGET } from "@/app/api/matcher/explain/route";
 import { GET as companiesGET } from "@/app/api/companies/route";
+import { GET as statsGET } from "@/app/api/catalog/stats/route";
 
 setupTestDb();
 
@@ -78,5 +79,25 @@ describe("one match score for the same résumé and posting", () => {
     const listed = await (await searchGET(new NextRequest(`${O}/api/jobs/search?company=Inmanage`))).json();
     expect(listed.total).toBe(2);
     expect((await (await searchGET(new NextRequest(`${O}/api/jobs/search?company=Inmanage&all=1`))).json()).total).toBe(3);
+  });
+
+  it("the hero, the feed's 'of N' and the Companies page count the same roles, in the same scope (not pinned to any number)", async () => {
+    invalidate("catalog-");
+    invalidate("companies:");
+    invalidate("rank:");
+    const stats = await (await statsGET()).json();
+    const feed = await (await feedGET(authed("/api/matcher/feed?limit=5"))).json();
+    const companies = await (await companiesGET(new NextRequest(`${O}/api/companies`))).json();
+    expect(feed.catalogTotal).toBe(stats.jobs);
+    expect(companies.companies.reduce((s: number, c: any) => s + c.jobs, 0)).toBe(stats.jobs);
+    expect(companies.total).toBe(stats.companies);
+    expect(stats.postings).toBeGreaterThanOrEqual(stats.jobs); // raw listings are the larger, separately named number
+  });
+
+  it("a job number or a word about the job in a posting's city never reaches a company card", async () => {
+    await ExternalJobs.insertMany([ext({ job: "Embedded Engineer", company: "Elbit", city: "Datamigration", sourceJobId: "e1" }), ext({ job: "FPGA Engineer", company: "Elbit", city: "משרה 5715", sourceJobId: "e2" }), ext({ job: "RF Engineer", company: "Elbit", city: "Haifa", sourceJobId: "e3" })]);
+    invalidate("companies:");
+    const companies = await (await companiesGET(new NextRequest(`${O}/api/companies?q=Elbit`))).json();
+    expect(companies.companies[0].cities).toEqual(["Haifa"]);
   });
 });

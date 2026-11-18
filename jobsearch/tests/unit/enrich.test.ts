@@ -103,7 +103,10 @@ describe("enrich + titleKey", () => {
 describe("tech-industry roles", () => {
   it("reads the title first, then falls back to the technologies the posting names", () => {
     for (const t of ["Backend Engineer", "Junior Frontend Developer", "Data Analyst", "QA Automation", "DevOps", "Product Manager", "UX Designer", "IT Support Specialist", "Sales Engineer", "Chip Design Verification Engineer", "מפתח/ת Full Stack", "בודק/ת תוכנה", "אנליסט/ית נתונים"]) expect(isTechRole(t), t).toBe(true);
-    for (const t of ["Project Scheduler", "Claims Specialist", "אחות ביטוח", "Sales Development Representative", "Account Executive", "Payroll Manager", "Customer Success Manager", "Influencer and Social Media Lead", "Wholesale Manager", "עובד/ת לאגף אופרטיבי"]) expect(isTechRole(t), t).toBe(false);
+    for (const t of ["Project Scheduler", "Claims Specialist", "אחות ביטוח", "Sales Development Representative", "Account Executive", "Payroll Manager", "Customer Success Manager", "Influencer and Social Media Lead", "Wholesale Manager", "עובד/ת לאגף אופרטיבי", "Marketing Coordinator-Cloud", "Security Guard", "Data Entry Clerk", "Product Marketing Manager"]) expect(isTechRole(t), t).toBe(false);
+    // A domain word carries a title that has no department word; a department word beats it.
+    expect(isTechRole("Cloud Operations Lead")).toBe(true);
+    expect(isTechRole("Cloud Engineer")).toBe(true);
     // No signal in the title: the technologies decide.
     expect(isTechRole("Team Member", ["React", "Node.js"])).toBe(true);
     expect(isTechRole("Team Member", [])).toBe(false);

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { TECH_LISTING } from "@/app/models/ExternalJobs";
 import { stripMarkdown } from "@/app/lib/content/plain";
+import { looksLikePlace } from "@/app/lib/locations/normalizeLocation";
+import { ROLE_KEY } from "@/app/lib/jobs/listing";
 import CompanySource from "@/app/models/CompanySource";
 import { resolveLogoDomain, getLogoUrl } from "@/app/lib/scout/logo";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
@@ -43,7 +45,7 @@ async function computeCompanies(q: string, limit: number) {
         // One row per role (company + title key), then the company totals.
         {
           $group: {
-            _id: { company: "$company", titleKey: { $ifNull: ["$titleKey", { $toString: "$_id" }] } },
+            _id: { company: "$company", titleKey: ROLE_KEY.titleKey },
             junior: { $max: { $cond: [{ $regexMatch: { input: { $ifNull: ["$job", ""] }, regex: /junior|entry[- ]?level|graduate|intern|student/i } }, 1, 0] } },
             remote: { $max: { $cond: [{ $eq: ["$remote", true] }, 1, 0] } },
             cities: { $addToSet: "$city" },
@@ -80,7 +82,8 @@ async function computeCompanies(q: string, limit: number) {
         jobs: r.jobs,
         junior: r.junior,
         remote: r.remote,
-        cities: (r.cities || []).filter((c: string) => c && c !== "Unknown").slice(0, 4),
+        // A job number or a word about the job in a posting's city field is not a city here either (lib/locations/normalizeLocation.ts).
+        cities: (r.cities || []).filter((c: string) => c && c !== "Unknown" && looksLikePlace(c)).slice(0, 4),
         domain,
         logoUrl: getLogoUrl(domain),
         careersUrl: src?.careersUrl || "",

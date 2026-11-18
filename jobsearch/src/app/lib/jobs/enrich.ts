@@ -12,21 +12,27 @@ export type Enrichment = { experienceMin: number | null; experienceMax: number |
 
 // ---------------------------------------------------------------- tech role
 
-const TECH_TITLE_RE =
-  /\b(engineer(?:ing)?|developer|software development|web development|programmer|software|architect|devops|sre|site reliability|qa|quality assurance|test(?:er|ing)?|automation|data(?: scientist| engineer| analyst| science)?|machine learning|ml|ai|nlp|computer vision|algorithm|research(?:er)?|scientist|frontend|front-end|backend|back-end|full[- ]?stack|web|mobile|ios|android|embedded|firmware|fpga|asic|vlsi|hardware|chip|silicon|verification|validation|cloud|security|cyber|infosec|network|sysadmin|system administrator|it\b|helpdesk|help desk|technical|solutions?|product (?:manager|owner|lead|analyst)|ux|ui|designer|technical writer|scrum master|project manager|program manager|delivery manager|cto|r&d|bi\b|analytics|database|dba|platform|infrastructure|integration|implementation|gis|robotics|simulation|signal processing|physicist|mathematician|statistician|bioinformatic|crypto|blockchain|game|unity|unreal|3d|graphics|rf\b|optics|electrical|electronics|mechanical|mechatronic|systems?|control|pcb|layout|cad|plm|erp|sap|salesforce|crm|low[- ]code|no[- ]code|tech lead|team lead(?:er)?|technologist|student|intern)\b|מפתח|מתכנת|מהנדס|בודק|אוטומצי|דאטה|נתונים|אלגורית|ארכיטקט|מנהל\/?ת? מוצר|מעצב|סייבר|אבטחת מידע|תמיכה טכנית|טכנולוג|מערכות|חומרה|תוכנה|אנליסט|סטודנט|מתמחה/i;
+/** Role nouns of the tech industry: with one of these in the title, the role is tech whatever department word sits next to it ("Sales Engineer"). */
+const TECH_ROLE_RE =
+  /\b(engineers?|engineering|developers?|programmers?|architects?|devops|sre|site reliability|qa|quality assurance|testers?|testing|automation|scientists?|data analysts?|business analysts?|systems? analysts?|security analysts?|bi analysts?|analytics|researchers?|designers?|ux|ui|product (?:managers?|owners?|leads?|analysts?)|technical writers?|scrum masters?|project managers?|program managers?|delivery managers?|technical (?:lead|support|account|program|project)|tech lead|team lead(?:er)?s?|technologists?|cto|dba|(?:systems?|database|it|network|salesforce|netsuite|erp|sap|cloud|linux|windows) administrators?|sysadmins?|helpdesk|help desk|it support|solutions? (?:engineers?|architects?|consultants?)|implementation (?:specialists?|consultants?|managers?)|integration (?:specialists?|engineers?)|security operations|vulnerability|penetration|soc analysts?|students?|interns?)\b|מפתח|מתכנת|מהנדס|בודק|ארכיטקט|מנהל\/?ת? מוצר|מעצב|אנליסט|סטודנט|מתמחה|ראש צוות|תמיכה טכנית/i;
+/** Domain words: tech when nothing says otherwise ("Cloud Operations Lead"), but a department word wins over them ("Marketing Coordinator-Cloud"). */
+const TECH_DOMAIN_RE =
+  /\b(software|data(?: science| engineering)?|machine learning|ml|ai|nlp|computer vision|algorithm|frontend|front-end|backend|back-end|full[- ]?stack|web|mobile|ios|android|embedded|firmware|fpga|asic|vlsi|hardware|chip|silicon|verification|validation|cloud|cyber|infosec|information security|application security|network(?:ing)?|infrastructure|platform|database|gis|robotics|simulation|signal processing|physicist|mathematician|statistician|bioinformatic|crypto|blockchain|game|unity|unreal|3d|graphics|rf|optics|electrical|electronics|mechanical|mechatronic|pcb|layout|cad|plm|erp|sap|salesforce|low[- ]code|no[- ]code|r&d|it)\b|אוטומצי|דאטה|נתונים|אלגורית|סייבר|אבטחת מידע|טכנולוג|מערכות|חומרה|תוכנה/i;
 const NON_TECH_TITLE_RE =
-  /\b(nurse|nursing|physician|doctor|dentist|pharmac|therapist|caregiver|social worker|sales|account executive|account manager|business development|sdr|bdr|recruit|talent acquisition|sourcer|hr\b|human resources|people partner|payroll|bookkeep|accountant|accounting|finance|financial|controller|treasury|tax\b|legal|lawyer|attorney|paralegal|compliance|marketing|content (?:writer|creator|manager)|copywriter|social media|community manager|influencer|brand|pr\b|public relations|customer (?:success|support|service|care|experience)|call center|claims|underwrit|insurance|actuar|scheduler|driver|courier|warehouse|logistics|procurement|buyer|purchasing|office manager|receptionist|administrative|admin(?:istrative)? assistant|executive assistant|facilities|janitor|cleaner|chef|cook|barista|cashier|retail|store manager|teacher|tutor|coach|trainer|wholesale|merchandis|video editor|photographer|event|hospitality|security guard|guard|operations manager|operations lead|revenue|partnerships?|channel partner|collections?|credit|loan|mortgage|real estate|property|travel|flight|crew)\b|אח\/ות|אחות|אח\b|רופא|מכירות|אקאונט|גיוס|משאבי אנוש|הנהלת חשבונות|חשב\b|כספים|שיווק|שירות לקוחות|תביעות|ביטוח|נהג|מחסן|רכש|מזכיר|קופאי|מורה|מאבטח|אופרטיבי|שיווק|מכירה/i;
+  /\b(nurse|nursing|physician|doctor|dentist|pharmac|therapist|caregiver|social worker|sales|account executive|account manager|business development|sdr|bdr|recruit|talent acquisition|sourcer|hr\b|human resources|people partner|payroll|bookkeep|accountant|accounting|finance|financial|controller|treasury|tax\b|legal|lawyer|attorney|paralegal|compliance|marketing|content (?:writer|creator|manager)|copywriter|social media|community manager|influencer|brand|pr\b|public relations|customer (?:success|support|service|care|experience)|call center|claims|underwrit|insurance|actuar|scheduler|driver|courier|warehouse|logistics|procurement|buyer|purchasing|office manager|receptionist|administrative|admin(?:istrative)? assistant|executive assistant|facilities|janitor|cleaner|chef|cook|barista|cashier|retail|store manager|teacher|tutor|coach|trainer|wholesale|merchandis|video editor|photographer|event|hospitality|security guard|guard|revenue|partnerships?|channel partner|collections?|credit|loan|mortgage|real estate|property|travel|flight|crew|data entry|clerk|coordinator|billing|stock administrator|equity administrator|office administrator)\b|אח\/ות|אחות|אח\b|רופא|מכירות|אקאונט|גיוס|משאבי אנוש|הנהלת חשבונות|חשב\b|כספים|שיווק|שירות לקוחות|תביעות|ביטוח|נהג|מחסן|רכש|מזכיר|קופאי|מורה|מאבטח|אופרטיבי|מכירה|רכז/i;
 
 /**
- * Is this a tech-industry role? The title decides when it says so either way
- * ("Backend Engineer" yes, "Claims Specialist" no — a tech word wins over a
- * non-tech one, so "Sales Engineer" stays in); a title with no signal counts
- * as tech when the posting names at least two technologies.
+ * Is this a tech-industry role? A tech role noun in the title decides yes
+ * ("Backend Engineer", "Sales Engineer"); else a department word decides no
+ * ("Marketing Coordinator-Cloud", "Security Guard", "Data Entry Clerk");
+ * else a domain word decides yes ("Cloud Operations Lead"); else the posting
+ * is tech when it names at least two technologies.
  */
 export function isTechRole(title: string, tech: string[] = []): boolean {
   const t = title || "";
-  if (TECH_TITLE_RE.test(t)) return true;
+  if (TECH_ROLE_RE.test(t)) return true;
   if (NON_TECH_TITLE_RE.test(t)) return false;
+  if (TECH_DOMAIN_RE.test(t)) return true;
   return tech.length >= 2;
 }
 

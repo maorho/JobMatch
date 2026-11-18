@@ -5,6 +5,7 @@ import { PRIVATE_CACHE, memo, ttl } from "@/app/lib/cache";
 import { connectToDatabase } from "@/app/lib/db";
 import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
 import { parsePostedDays, postedSince } from "@/app/lib/jobs/posted";
+import { catalogRoles } from "@/app/lib/jobs/listing";
 import { parseExperienceBuckets } from "@/app/lib/jobs/structured";
 
 export const runtime = "nodejs";
@@ -50,11 +51,8 @@ export async function GET(req: NextRequest) {
       source: "external" as const,
     }));
 
-    // The open catalogue, for the headline: the personalised list is the best `total` of these (indexed count on `active`).
-    const catalogTotal = await memo("catalog-total", ttl(5 * 60_000), async () => {
-      await connectToDatabase();
-      return ExternalJobs.countDocuments(OPEN_JOBS);
-    });
+    // "X matches of N": N is the hero's number — roles in the default scope (lib/jobs/listing.ts), never raw listings.
+    const catalogTotal = await catalogRoles();
     const relaxed = matches[0]?.profileRelaxed || null; // the same on every row of a list
     return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal, relaxed, ...(postedDays ? { posted: postedDays } : {}) }, { headers: PRIVATE_CACHE });
   } catch (err: any) {

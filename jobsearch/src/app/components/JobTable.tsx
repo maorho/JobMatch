@@ -12,6 +12,7 @@ import type { JobFacets } from "./FilterJobs";
 import { seniorityOf, workModeOf, POSTED_WINDOWS } from "../lib/jobTaxonomy";
 import PushCard from "./PushCard";
 import Link from "next/link";
+import { listHeading } from "../lib/jobs/listHeading";
 import { useT } from "../lib/i18n/LanguageProvider";
 
 
@@ -556,7 +557,11 @@ function JobTable() {
             <div>
               <h2 id="positions" className="jm-title scroll-mt-24">{t("home.positions")}</h2>
               <p className="jm-subtitle">
-                {loading && page === 1 ? t("home.searching") : user && !isSearching && catalogTotal > jobCount ? t("home.bestMatches", { n: jobCount.toLocaleString(), total: catalogTotal.toLocaleString() }) : `${t("home.showing", { n: jobCount.toLocaleString() })}${user && !isSearching ? t("home.rankedSuffix") : ""}`}
+                {(() => {
+                  // One testable rule for this line (lib/jobs/listHeading.ts): never a count before a request completed.
+                  const h = listHeading({ fetchedOnce, loading, page, count: jobCount, catalogTotal, signedIn: !!user, searching: isSearching });
+                  return `${t(h.key, h.vars)}${h.rankedSuffix ? t("home.rankedSuffix") : ""}`;
+                })()}
               </p>
               {user && !isSearching && feedRelaxed && (
                 <p className="text-xs text-amber-700 mt-1">{feedRelaxed === "cities" ? t("home.relaxedCities") : t("home.relaxedWorkModes")} <Link href="/Settings" className="underline underline-offset-2">{t("home.relaxedEdit")}</Link></p>
@@ -673,7 +678,7 @@ function JobTable() {
               </label>
             </div>
             <button type="button" onClick={closeSheet} className="jm-btn jm-btn-primary px-6">
-              {t("home.viewJobs", { n: jobCount.toLocaleString() })}
+              {fetchedOnce && !loading ? t("home.viewJobs", { n: jobCount.toLocaleString() }) : t("home.searching")}
             </button>
           </div>
         </div>

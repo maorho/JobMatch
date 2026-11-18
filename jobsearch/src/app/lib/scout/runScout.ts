@@ -5,7 +5,7 @@ import { getAdapter } from "./adapters";
 import { getLogoUrl, resolveLogoDomain } from "./logo";
 import { isIsraelOrRemote } from "./locationFilter";
 import { NormalizedPosting, toPartialPostings } from "./types";
-import { normalizeLocation } from "@/app/lib/locations/normalizeLocation";
+import { normalizeLocation, looksLikePlace } from "@/app/lib/locations/normalizeLocation";
 import { enrich, titleKey } from "@/app/lib/jobs/enrich";
 import { resetRendererBudget } from "@/app/lib/apply/server";
 
@@ -33,7 +33,7 @@ function repostFields(prior: any): Record<string, unknown> {
 function locationFields(p: NormalizedPosting) {
   const loc = normalizeLocation({ city: p.city, country: p.country });
   return {
-    city: loc.confidence === "low" ? p.city || "" : loc.city,
+    city: loc.confidence === "low" ? (looksLikePlace(p.city || "") ? p.city || "" : "") : loc.city,
     country: loc.country || p.country || "Unknown",
     remote: loc.remote,
     rawLocation: loc.raw,
