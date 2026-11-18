@@ -48,8 +48,9 @@ export const coachAgent = registerAgent({
         let generated = false;
         if (source && (process.env.OPENAI_API_KEY || process.env.NODE_ENV === "test")) {
           const plan = await ensureInterviewPlan({ userId: c.userId, jobId: c.jobId, source });
-          generated = !!plan && !plan.cached;
-          if (plan?.cached) ctx.log("A plan already existed for this job; reusing it.");
+          generated = !!plan && !("pending" in plan) && !plan.cached;
+          if (plan && "pending" in plan) ctx.log("A plan is being generated for this job by another request; not starting a second one.");
+          else if (plan?.cached) ctx.log("A plan already existed for this job; reusing it.");
         } else if (!source) {
           ctx.log("Manually-added job: no posting text to build a plan from.");
         }

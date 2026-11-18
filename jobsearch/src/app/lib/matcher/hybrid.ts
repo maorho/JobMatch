@@ -249,7 +249,8 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
       const cosine = cosineOf.get(id);
       const textual = textOf.get(id);
       const lf = levelFit(profile.level, d.job, d.seniority, d.experienceMin);
-      // Base relevance 0–100: semantic similarity (and lexical relevance when there is a query).
+      // Base relevance 0–100: semantic similarity (and lexical relevance when there is a query). Without a query this
+      // is exactly heuristicScore() (lib/matcher/score.ts), the number the search and the job page show too.
       const semantic = cosine !== undefined ? toMatchScore(cosine) : undefined;
       const lexical = textual !== undefined ? 50 + 50 * textual : undefined;
       const base = semantic !== undefined && lexical !== undefined ? 0.6 * semantic + 0.4 * lexical : semantic ?? lexical ?? 0;

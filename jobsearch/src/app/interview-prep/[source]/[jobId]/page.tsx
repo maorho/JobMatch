@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useCurrentUser } from "../../../lib/hooks/useCurrentUser";
 import { useT } from "../../../lib/i18n/LanguageProvider";
+import type { Key } from "../../../lib/i18n/dict";
 import { EmptyState, Spinner } from "../../../components/ui";
 import VoiceInterview, { type VoiceTurn } from "../../../components/VoiceInterview";
 import ProgressCard from "../../../components/ProgressCard";
@@ -53,7 +54,10 @@ export default function InterviewPrepPage() {
   const { t, lang, dir } = useT();
   const { user, loading: userLoading } = useCurrentUser();
   const [prep, setPrep] = useState<Prep | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [state, setState] = useState<"idle" | "loading" | "pending" | "ready" | "error">("idle");
+  // Progress while the plan is built (~45 s): the step is a function of elapsed time; the request itself gives no events.
+  const [elapsed, setElapsed] = useState(0);
+  const generatingRef = useRef(false);
   const [error, setError] = useState("");
   const [stageKey, setStageKey] = useState<string>("");
   const [tab, setTab] = useState<"plan" | "interview">("plan");
@@ -74,33 +78,71 @@ export default function InterviewPrepPage() {
   const [busy, setBusy] = useState<"" | "start" | "turn" | "finish">("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  const showPlan = (data: Prep) => {
+    setPrep(data);
+    setStageKey(data.plan.stages[0]?.key || "");
+    setState("ready");
+  };
+
   const generate = async (force = false) => {
+    if (generatingRef.current) return; // one request at a time: a double click never starts a second generation
+    generatingRef.current = true;
     setState("loading");
+    setElapsed(0);
     setError("");
     try {
       const res = await fetch("/api/interview/prep", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId, source, force, language: "he" }) });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 202 && data?.pending) return setState("pending"); // another request is building it: poll below
       if (!res.ok) throw new Error(data?.message || data?.error || (res.status === 429 ? t("interview.quota") : t("interview.prepFailed")));
-      setPrep(data);
-      setStageKey(data.plan.stages[0]?.key || "");
-      setState("ready");
+      showPlan(data);
     } catch (e) {
       setError((e as Error).message);
       setState("error");
+    } finally {
+      generatingRef.current = false;
     }
   };
 
+  // First look: the stored plan, a generation already running (poll), or nothing yet (generate).
   useEffect(() => {
     if (!user || state !== "idle") return;
-    fetch(`/api/interview/prep?jobId=${jobId}&source=${source}`).then(async (r) => {
-      if (r.ok) {
-        const data = await r.json();
-        setPrep(data);
-        setStageKey(data.plan.stages[0]?.key || "");
-        setState("ready");
-      } else generate();
-    });
+    fetch(`/api/interview/prep?jobId=${jobId}&source=${source}`, { cache: "no-store" })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data?.found) return showPlan(data);
+        if (r.status === 202 && data?.pending) return setState("pending");
+        if (r.ok && data?.found === false) return generate();
+        throw new Error(data?.error || t("interview.prepFailed"));
+      })
+      .catch((e) => {
+        setError((e as Error).message);
+        setState("error");
+      });
   }, [user, jobId, source, state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // While a plan is being built (here or elsewhere): a clock for the progress steps, and polling in the "pending" case.
+  useEffect(() => {
+    if (state !== "loading" && state !== "pending") return;
+    const tick = setInterval(() => setElapsed((s) => s + 1), 1000);
+    let poll: ReturnType<typeof setInterval> | undefined;
+    if (state === "pending") {
+      poll = setInterval(async () => {
+        const r = await fetch(`/api/interview/prep?jobId=${jobId}&source=${source}`, { cache: "no-store" }).catch(() => null);
+        const data = await r?.json().catch(() => ({}));
+        if (r?.ok && data?.found) showPlan(data);
+        else if (r?.ok && data?.found === false && !data?.pending) generate(); // the other run died: start our own
+      }, 4000);
+    }
+    return () => {
+      clearInterval(tick);
+      if (poll) clearInterval(poll);
+    };
+  }, [state, jobId, source]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const PREP_STEPS: Key[] = ["interview.prep.step1", "interview.prep.step2", "interview.prep.step3", "interview.prep.step4"];
+  const PREP_ETA_SEC = 50;
+  const stepIndex = Math.min(PREP_STEPS.length - 1, Math.floor(elapsed / 12));
 
   const loadHistory = async (prepId: string) => {
     const r = await fetch(`/api/interview/session?prepId=${prepId}`, { cache: "no-store" });
@@ -302,7 +344,28 @@ export default function InterviewPrepPage() {
 
   return (
     <div className="jm-page" dir={dir}>
-      {state === "loading" && <Spinner label={t("interview.building")} />}
+      {(state === "loading" || state === "pending") && (
+        <section className="jm-card p-5 sm:p-6" aria-live="polite">
+          <div className="flex items-center gap-3">
+            <Spinner />
+            <div className="min-w-0">
+              <div className="font-semibold text-navy">{state === "pending" ? t("interview.prep.pending") : t("interview.building")}</div>
+              <div className="text-sm text-ink-600">{elapsed < PREP_ETA_SEC ? t("interview.prep.eta", { s: PREP_ETA_SEC - elapsed }) : t("interview.prep.almost")}</div>
+            </div>
+          </div>
+          <ol className="mt-4 space-y-1.5 text-sm">
+            {PREP_STEPS.map((k, i) => (
+              <li key={k} className={`flex items-center gap-2 ${i < stepIndex ? "text-teal-600" : i === stepIndex ? "text-navy font-medium" : "text-ink-400"}`}>
+                <span aria-hidden>{i < stepIndex ? "✓" : i === stepIndex ? "…" : "○"}</span>
+                {t(k)}
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 h-1.5 rounded-full bg-line overflow-hidden" aria-hidden>
+            <div className="h-full bg-teal transition-all" style={{ width: `${Math.min(95, Math.round((elapsed / PREP_ETA_SEC) * 100))}%` }} />
+          </div>
+        </section>
+      )}
       {state === "error" && (
         <div className="jm-alert jm-alert-err flex flex-wrap items-center justify-between gap-2">
           <span>{error}</span>

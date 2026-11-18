@@ -17,13 +17,19 @@ export async function GET(req: NextRequest) {
   await connectToDatabase();
   const user: any = await User.findById(userId).select("gmail").lean();
   const events = await ApplicationEvent.find({ userId, $or: [{ applied: true }, { status: { $ne: "" } }] }).sort({ emailDate: -1, createdAt: -1 }).limit(30).lean();
+  const configured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) && isSecretBoxConfigured();
+  const linked = !!user?.gmail?.connectedAt;
+  // A link whose last sync failed (revoked token, expired consent) is shown as needing attention, never as "active".
+  const healthy = linked && configured && !user?.gmail?.lastError;
   return NextResponse.json({
-    connected: !!user?.gmail?.connectedAt,
+    connected: healthy,
+    linked,
+    healthy,
     address: user?.gmail?.address || "",
     lastSyncAt: user?.gmail?.lastSyncAt || null,
     lastError: user?.gmail?.lastError || "",
     // The Settings page hides the "connect" button when this is false.
-    configured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) && isSecretBoxConfigured(),
+    configured,
     events,
   });
 }

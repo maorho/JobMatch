@@ -28,7 +28,7 @@ function teaser(text: string, max = 120): string {
 dayjs.extend(relativeTime);
 
 /** What the ranked feed adds to a posting beyond the catalogue row (lib/matcher/hybrid.ts RankedJob). */
-type RankedExtras = { remote?: boolean; why?: string; whyEn?: string; matched?: string[]; gaps?: string[]; variants?: Variant[] };
+type RankedExtras = { remote?: boolean; why?: string; whyEn?: string; matched?: string[]; gaps?: string[]; variants?: Variant[]; reranked?: boolean };
 
 interface JobCardProps {
   job: Job;
@@ -180,8 +180,9 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         {typeof job.matchScore === "number" ? (
           <MatchTooltip why={why} matched={matched} gaps={gaps} label={t("card.why")}>
             <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5 cursor-help" title={job.likelihood ? t("card.matchFull", { score: job.matchScore, pct: job.likelihood.pct }) : t("card.matchTitle")}>
-              <span className="text-base font-semibold text-teal-600 leading-none">{job.matchScore}%</span>
-              <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : t("card.match")}</span>
+              {/* The reranker's verdict shows as "match"; the heuristic (no verdict yet) as an estimate, so the two are never read as the same number. */}
+              <span className="text-base font-semibold text-teal-600 leading-none">{extra.reranked === false ? "≈" : ""}{job.matchScore}%</span>
+              <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : extra.reranked === false ? t("card.matchEstimate") : t("card.match")}</span>
             </span>
           </MatchTooltip>
         ) : (

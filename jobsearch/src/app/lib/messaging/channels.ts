@@ -120,16 +120,20 @@ export async function setChannelPrefs(userId: string, prefs: Partial<ChannelPref
   return next;
 }
 
-export async function channelStatus(userId: string): Promise<{ whatsapp: ChannelLink | null; telegram: ChannelLink | null; prefs: ChannelPrefs; code: string; configured: Record<Channel, boolean>; whatsappNumber: string; telegramBot: string }> {
+export async function channelStatus(userId: string): Promise<{ whatsapp: ChannelLink | null; telegram: ChannelLink | null; prefs: ChannelPrefs; code: string; configured: Record<Channel, boolean>; health: Record<Channel, { configured: boolean; reachable: boolean; detail: string }>; whatsappNumber: string; telegramBot: string }> {
   await connectToDatabase();
   const u: any = await User.findById(userId).select("channels channelPrefs").lean();
   const { code } = await linkCodeFor(userId);
+  // Offered only when the provider answered a live check (lib/messaging/health.ts): a dead token is "not available", not "connect here".
+  const { channelsHealth } = await import("./health");
+  const health = await channelsHealth();
   return {
     whatsapp: u?.channels?.whatsapp?.id ? { id: u.channels.whatsapp.id, label: u.channels.whatsapp.label || "", linkedAt: u.channels.whatsapp.linkedAt } : null,
     telegram: u?.channels?.telegram?.id ? { id: u.channels.telegram.id, label: u.channels.telegram.label || "", linkedAt: u.channels.telegram.linkedAt } : null,
     prefs: { ...DEFAULT_PREFS, ...(u?.channelPrefs || {}) },
     code,
-    configured: { whatsapp: channelConfigured("whatsapp"), telegram: channelConfigured("telegram") },
+    configured: { whatsapp: health.whatsapp.reachable, telegram: health.telegram.reachable },
+    health,
     whatsappNumber: whatsappConfig().displayNumber,
     telegramBot: telegramConfig().botUsername,
   };

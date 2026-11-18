@@ -139,6 +139,7 @@ export const TOOLS: Tool[] = [
       withQuota(ctx.userId!, "mcp_prep", async () => {
         const r = await ensureInterviewPlan({ userId: ctx.userId!, jobId: String(args.id || ""), source: "external", language: args.language === "en" ? "en" : "he" });
         if (!r) return text("Job not found.");
+        if ("pending" in r) return text("The plan is being generated right now (another request started it); ask again in about a minute.");
         return json({ job: r.job, cached: r.cached, practiceUrl: `${siteUrl()}/interview-prep/external/${args.id}`, plan: r.plan });
       }),
   },

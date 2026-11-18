@@ -7,11 +7,10 @@ import Job from "@/app/models/Job";
 import Company from "@/app/models/Company";
 import ExternalJobs, { OPEN_JOBS, TECH_LISTING } from "@/app/models/ExternalJobs";
 import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
-import { getCandidateVector } from "@/app/lib/matcher/candidateProfile";
+import { loadCandidateProfile, type CandidateProfile } from "@/app/lib/matcher/hybrid";
+import { heuristicScore } from "@/app/lib/matcher/score";
+import { rerankForUser } from "@/app/lib/matcher/rerank";
 import { textSearch, isAtlasSearchAvailable } from "@/app/lib/matcher/atlas";
-import { applyLevel, levelFit } from "@/app/lib/matcher/level";
-import User from "@/app/models/User";
-import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
 import { memo, snippet, ttl, PUBLIC_CACHE, PRIVATE_CACHE } from "@/app/lib/cache";
 import { groupVariants, dedupeVariants, type Variant } from "@/app/lib/jobs/variants";
 import {
@@ -55,6 +54,30 @@ const hit = (re: RegExp) => ({ $or: [{ job: re }, { seniority: re }] });
 const miss = (re: RegExp) => ({
   $and: [{ job: { $not: re } }, { seniority: { $not: re } }],
 });
+
+/**
+ * The signed-in person's number on each posting of a page: the cached reranker verdict when there is
+ * one (the same one the feed and the job page show), else the shared heuristic (lib/matcher/score.ts).
+ * `reranked` tells the card which it is.
+ */
+async function scorePage(profile: CandidateProfile | null, docs: any[]): Promise<any[]> {
+  const verdicts = profile?.userId && profile.vector && docs.length
+    ? await rerankForUser({ userId: profile.userId, resumeVersion: profile.resumeVersion, resumeSummary: "", level: profile.level, useLLM: false, jobs: docs.map((d) => ({ _id: String(d._id), job: d.job, company: d.company, description: "" })) }).catch(() => new Map())
+    : new Map();
+  return docs.map((d) => {
+    const { embedding, ...rest } = d;
+    const v = verdicts.get(String(d._id));
+    const heuristic = profile?.vector ? heuristicScore({ vector: profile.vector, level: profile.level }, { ...d, embedding }) : null;
+    const score = v ? v.fit : heuristic;
+    return {
+      ...rest,
+      description: snippet(rest.description),
+      ...(score !== null && score !== undefined ? { matchScore: score, reranked: !!v } : {}),
+      ...(v ? { why: v.why, whyEn: v.whyEn, matched: v.matched, gaps: v.gaps } : {}),
+      source: "external",
+    };
+  });
+}
 
 /** Mongo filter for the selected seniority buckets — same precedence as seniorityOf(). */
 function seniorityFilter(levels: string[]) {
@@ -133,17 +156,11 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
   try {
     await connectToDatabase();
     if (ids.length) {
-      let vector: number[] | null = null;
-      if (userId) vector = await getCandidateVector(userId).catch(() => null);
+      const profile = userId ? await loadCandidateProfile(userId, { light: true }).catch(() => null) : null;
+      const vector = profile?.vector || null;
       const docs: any[] = await (vector ? ExternalJobs.find({ _id: { $in: ids } }).select("+embedding") : ExternalJobs.find({ _id: { $in: ids } })).lean();
       const pos = new Map(ids.map((id, i) => [id, i]));
-      const jobs = docs
-        .sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0))
-        .map((d) => {
-          const { embedding, ...rest } = d;
-          const matchScore = vector && Array.isArray(embedding) && embedding.length ? Math.round(toMatchScore(cosineSimilarity(vector, embedding))) : undefined;
-          return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), source: "external" };
-        });
+      const jobs = await scorePage(profile, docs.sort((a, b) => (pos.get(String(a._id)) ?? 0) - (pos.get(String(b._id)) ?? 0)));
       return { status: 200, payload: { jobs, total: jobs.length, externalTotal: jobs.length, internalTotal: 0, page: 1, pages: 1, personalized: !!vector } };
     }
     // Multi-word queries match jobs containing EVERY word (anywhere in the
@@ -159,9 +176,9 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
 
     // ---------- external (ATS) postings: the bulk, paginated ----------
     // Closed postings never appear in search results or totals.
-    // The catalogue is "tech jobs in Israel": the plain listing shows tech-industry roles. A text query or a
-    // company filter means the person is looking for something specific, so every role is in play then.
-    const extAnd: object[] = [q || company.length || all ? OPEN_JOBS : TECH_LISTING];
+    // The catalogue is "tech jobs in Israel": the listing shows tech-industry roles, also per company (so a company's
+    // number on /Companies is the list its link opens). A text query, or the "all roles" toggle, shows every role.
+    const extAnd: object[] = [q || all ? OPEN_JOBS : TECH_LISTING];
     // Everything that shapes the external filter, for the shared count cache.
     const countKey = `search-count:${JSON.stringify({ q, company, city, country, jobType, seniority, posted: postedDays, exp, tech, all })}`;
     // Relevance-ranked recall from Atlas Search (BM25) when there is a query;
@@ -226,13 +243,8 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
     }
 
     // Personalisation: only pull embeddings when we can actually score.
-    let vector: number[] | null = null;
-    let level: "junior" | "mid" | "senior" = "mid";
-    if (userId) {
-      const [v, u]: [number[] | null, any] = await Promise.all([getCandidateVector(userId).catch(() => null), User.findById(userId).select("level").lean()]);
-      vector = v;
-      if (u?.level) level = u.level;
-    }
+    const profile = userId ? await loadCandidateProfile(userId, { light: true }).catch(() => null) : null;
+    const vector = profile?.vector || null;
 
     const rankPos = rankedIds ? new Map(rankedIds.map((id, i) => [id, i])) : null;
     let externalTotal = 0;
@@ -280,14 +292,9 @@ async function search(req: NextRequest, userId: string | null): Promise<{ status
       externalDocs = await loadPage(pageRows.map((r) => String(r.id)));
     }
 
-    let external = externalDocs.map((d: any) => {
-      const { embedding, ...rest } = d;
-      const variants = variantsOf.get(String(d._id));
-      const matchScore =
-        vector && Array.isArray(embedding) && embedding.length
-          ? Math.round(applyLevel(toMatchScore(cosineSimilarity(vector, embedding)), levelFit(level, d.job, d.seniority, d.experienceMin)))
-          : undefined;
-      return { ...rest, description: snippet(rest.description), ...(matchScore !== undefined ? { matchScore } : {}), ...(variants ? { variants } : {}), source: "external" };
+    let external = (await scorePage(profile, externalDocs)).map((j: any) => {
+      const variants = variantsOf.get(String(j._id));
+      return variants ? { ...j, variants } : j;
     });
     if (vector && !rankPos) {
       external = external.sort(

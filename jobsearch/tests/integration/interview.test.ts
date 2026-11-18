@@ -90,11 +90,37 @@ describe("POST /api/interview/prep", () => {
 
     const get = await j(await prepGET(new NextRequest(`${O}/api/interview/prep?jobId=${jobId}&source=external`, { headers: await cookie(me) })));
     expect(get.body.prepId).toBe(r.body.prepId);
-    expect((await prepGET(new NextRequest(`${O}/api/interview/prep?jobId=${jobId}&source=external`, { headers: await cookie(other) }))).status).toBe(404); // not theirs
+    const notTheirs = await j(await prepGET(new NextRequest(`${O}/api/interview/prep?jobId=${jobId}&source=external`, { headers: await cookie(other) })));
+    expect(notTheirs.status).toBe(200);
+    expect(notTheirs.body).toMatchObject({ ok: true, found: false }); // not theirs: nothing yet, no 404 noise
 
     const forced = await j(await prepPOST(new NextRequest(`${O}/api/interview/prep`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ jobId, source: "external", force: true }) })));
     expect(forced.body.cached).toBe(false);
     expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(8); // regenerated: stages + overview + two stages again
+  });
+
+  it("one generation at a time: a second request while one runs is told to wait, and a crashed one is taken over", async () => {
+    const { ensureInterviewPlan, interviewPlanStatus, GENERATION_LOCK_MS } = await import("@/app/lib/interview/ensurePlan");
+    const job: any = await ExternalJobs.findOne({ sourceJobId: "j2" }).lean();
+    const id = String(job._id);
+    // Someone else's request took the lock a moment ago.
+    await InterviewPrep.create({ userId: me, jobId: id, source: "external", plan: null, generatingAt: new Date() });
+    expect(await interviewPlanStatus(me, id, "external")).toMatchObject({ status: "generating" });
+    const second = await j(await prepPOST(new NextRequest(`${O}/api/interview/prep`, { method: "POST", headers: await cookie(me), body: JSON.stringify({ jobId: id, source: "external" }) })));
+    expect(second.status).toBe(202);
+    expect(second.body.pending).toBe(true);
+    const during = await j(await prepGET(new NextRequest(`${O}/api/interview/prep?jobId=${id}&source=external`, { headers: await cookie(me) })));
+    expect(during.status).toBe(202);
+    expect(during.body).toMatchObject({ found: false, pending: true });
+    const before = calls.filter((m) => m === "gpt-4o").length;
+    expect(await ensureInterviewPlan({ userId: me, jobId: id, source: "external" })).toMatchObject({ pending: true });
+    expect(calls.filter((m) => m === "gpt-4o")).toHaveLength(before); // nothing generated twice
+    // The lock went stale (the run died): the next request takes over and the plan arrives.
+    await InterviewPrep.updateOne({ userId: me, jobId: id, source: "external" }, { $set: { generatingAt: new Date(Date.now() - GENERATION_LOCK_MS - 1000) } });
+    const taken = await ensureInterviewPlan({ userId: me, jobId: id, source: "external" });
+    expect(taken && !("pending" in taken) && taken.cached).toBe(false);
+    expect(await interviewPlanStatus(me, id, "external")).toMatchObject({ status: "ready" });
+    expect(await InterviewPrep.countDocuments({ userId: me, jobId: id })).toBe(1);
   });
 
   it("validates input and auth", async () => {

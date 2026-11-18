@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeLocation, canonicalCountry } from "@/app/lib/locations/normalizeLocation";
+import { normalizeLocation, canonicalCountry, looksLikePlace } from "@/app/lib/locations/normalizeLocation";
 
 const n = (city: string, country = "") => normalizeLocation({ city, country });
 
@@ -114,5 +114,22 @@ describe("normalizeLocation — remote & multi-location strings from Greenhouse/
     expect(n("N/A", "Unknown")).toMatchObject({ city: "", country: "" });
     expect(canonicalCountry("usa")).toBe("United States");
     expect(canonicalCountry("nowhere")).toBe("");
+  });
+});
+
+describe("normalizeLocation — not a place", () => {
+  it("drops job numbers, site codes and words about the job, keeping the country and the raw string", () => {
+    expect(n("משרה 5715", "Israel")).toMatchObject({ city: "", country: "Israel", raw: "משרה 5715, Israel" });
+    expect(n("Job 123", "IL")).toMatchObject({ city: "", country: "Israel" });
+    expect(n("ATL2", "")).toMatchObject({ city: "", country: "" });
+    expect(n("DataMigration", "Israel")).toMatchObject({ city: "", country: "Israel" });
+    expect(n("Relocation", "Israel")).toMatchObject({ city: "", country: "Israel" });
+    expect(n("Temporary", "Israel")).toMatchObject({ city: "" });
+    // Real places still pass, including unknown ones.
+    expect(n("Yokneam", "Israel")).toMatchObject({ city: "Yokneam", country: "Israel" });
+    expect(n("Karmiel", "Israel")).toMatchObject({ city: "Karmiel" });
+    expect(looksLikePlace("Tel Aviv")).toBe(true);
+    expect(looksLikePlace("MOS1")).toBe(false);
+    expect(looksLikePlace("משרה 80")).toBe(false);
   });
 });

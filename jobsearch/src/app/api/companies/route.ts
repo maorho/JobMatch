@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/app/lib/db";
-import ExternalJobs, { OPEN_JOBS } from "@/app/models/ExternalJobs";
+import ExternalJobs, { TECH_LISTING } from "@/app/models/ExternalJobs";
+import { stripMarkdown } from "@/app/lib/content/plain";
 import CompanySource from "@/app/models/CompanySource";
 import { resolveLogoDomain, getLogoUrl } from "@/app/lib/scout/logo";
 import { memo, ttl, PUBLIC_CACHE } from "@/app/lib/cache";
@@ -31,24 +32,37 @@ export async function GET(req: NextRequest) {
 async function computeCompanies(q: string, limit: number) {
   {
     await connectToDatabase();
-    // "Companies with open postings": closed jobs don't count.
-    const match: Record<string, unknown> = { ...OPEN_JOBS, company: { $nin: ["", null] } };
+    // The feed's scope exactly: open tech-industry roles, one per (company, title) — so a company's number here
+    // is the number its "view jobs" link lands on.
+    const match: Record<string, unknown> = { ...TECH_LISTING, company: { $nin: ["", null] } };
     if (q) match.company = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
 
     const [rows, sources] = await Promise.all([
       ExternalJobs.aggregate([
         { $match: match },
+        // One row per role (company + title key), then the company totals.
         {
           $group: {
-            _id: "$company",
-            jobs: { $sum: 1 },
-            junior: { $sum: { $cond: [{ $regexMatch: { input: { $ifNull: ["$job", ""] }, regex: /junior|entry[- ]?level|graduate|intern|student/i } }, 1, 0] } },
-            remote: { $sum: { $cond: [{ $eq: ["$remote", true] }, 1, 0] } },
+            _id: { company: "$company", titleKey: { $ifNull: ["$titleKey", { $toString: "$_id" }] } },
+            junior: { $max: { $cond: [{ $regexMatch: { input: { $ifNull: ["$job", ""] }, regex: /junior|entry[- ]?level|graduate|intern|student/i } }, 1, 0] } },
+            remote: { $max: { $cond: [{ $eq: ["$remote", true] }, 1, 0] } },
             cities: { $addToSet: "$city" },
             domain: { $first: "$companyDomain" },
             latest: { $max: "$postedAt" },
           },
         },
+        {
+          $group: {
+            _id: "$_id.company",
+            jobs: { $sum: 1 },
+            junior: { $sum: "$junior" },
+            remote: { $sum: "$remote" },
+            cities: { $addToSet: "$cities" },
+            domain: { $first: "$domain" },
+            latest: { $max: "$latest" },
+          },
+        },
+        { $set: { cities: { $setUnion: { $reduce: { input: "$cities", initialValue: [], in: { $setUnion: ["$$value", "$$this"] } } } } } },
         { $sort: { jobs: -1, _id: 1 } },
         { $limit: limit },
       ]),
@@ -71,7 +85,7 @@ async function computeCompanies(q: string, limit: number) {
         logoUrl: getLogoUrl(domain),
         careersUrl: src?.careersUrl || "",
         latest: r.latest,
-        summary: profile?.summary || "",
+        summary: stripMarkdown(profile?.summary || ""),
         industry: profile?.industry || "",
         hq: profile?.hq || "",
         size: profile?.size || "",

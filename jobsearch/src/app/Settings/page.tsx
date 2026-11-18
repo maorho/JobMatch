@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const [pw, setPw] = useState({ currentPassword: "", newPassword: "", again: "" });
   const [confirmDelete, setConfirmDelete] = useState("");
 
-  const [gmail, setGmail] = useState<{ connected: boolean; address: string; lastSyncAt: string | null; configured: boolean } | null>(null);
+  const [gmail, setGmail] = useState<{ connected: boolean; linked?: boolean; healthy?: boolean; lastError?: string; address: string; lastSyncAt: string | null; configured: boolean } | null>(null);
   const loadGmail = () => fetch("/api/integrations/gmail").then(async (r) => r.ok && setGmail(await r.json()));
 
   useEffect(() => {
@@ -144,6 +144,15 @@ export default function SettingsPage() {
           </p>
           {gmail?.connected ? (
             <div><button onClick={disconnectGmail} className="jm-btn jm-btn-secondary">{t("settings.gmailDisconnect")}</button></div>
+          ) : gmail?.linked && gmail?.configured ? (
+            // Linked, but the last sync failed (token revoked, consent expired): say so and offer to reconnect.
+            <div className="space-y-2">
+              <p className="jm-alert jm-alert-err">{t("settings.gmailNeedsAttention")}{gmail.lastError ? <span className="block text-xs mt-1" dir="ltr">{gmail.lastError}</span> : null}</p>
+              <div className="flex flex-wrap gap-2">
+                <a href="/api/integrations/gmail/connect" className="jm-btn jm-btn-accent">{t("settings.gmailReconnect")}</a>
+                <button onClick={disconnectGmail} className="jm-btn jm-btn-secondary">{t("settings.gmailDisconnect")}</button>
+              </div>
+            </div>
           ) : gmail?.configured ? (
             <div><a href="/api/integrations/gmail/connect" className="jm-btn jm-btn-accent">{t("settings.gmailConnect")}</a></div>
           ) : (

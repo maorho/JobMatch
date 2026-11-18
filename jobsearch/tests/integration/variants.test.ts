@@ -68,7 +68,8 @@ describe("one card per role, locations as variants", () => {
     expect((await call("limit=10&all=1")).jobs[0].job).toBe("Claims Specialist"); // the newest, so first
     expect((await call("limit=10&all=1")).total).toBe(4);
     expect((await call("q=claims")).jobs.map((j: any) => j.job)).toEqual(["Claims Specialist"]);
-    expect((await call("company=Acme")).jobs.map((j: any) => j.job).sort()).toEqual(["Claims Specialist", "Fullstack Engineer"]);
+    expect((await call("company=Acme")).jobs.map((j: any) => j.job)).toEqual(["Fullstack Engineer"]); // a company filter keeps the tech scope
+    expect((await call("company=Acme&all=1")).jobs.map((j: any) => j.job).sort()).toEqual(["Claims Specialist", "Fullstack Engineer"]);
     // The catalogue stats count the same roles the listing shows.
     const { GET: statsGET } = await import("@/app/api/catalog/stats/route");
     const stats = await (await statsGET()).json();

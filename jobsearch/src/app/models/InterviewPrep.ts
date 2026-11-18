@@ -12,8 +12,10 @@ const InterviewPrepSchema = new mongoose.Schema(
     source: { type: String, enum: ["external", "internal"], required: true },
     jobTitle: { type: String, default: "" },
     company: { type: String, default: "" },
-    plan: { type: mongoose.Schema.Types.Mixed, required: true }, // InterviewPlan (see lib/interview/prepare.ts)
+    plan: { type: mongoose.Schema.Types.Mixed, default: null }, // InterviewPlan (see lib/interview/prepare.ts); null while generating
     model: { type: String, default: "" },
+    /** Generation lock: set when a request starts building the plan, cleared when the plan is stored. A lock older than GENERATION_LOCK_MS is stale. */
+    generatingAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

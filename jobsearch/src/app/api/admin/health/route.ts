@@ -15,6 +15,7 @@ import Maintenance from "@/app/models/Maintenance";
 import { usageToday, limitFor, DEFAULT_LIMITS } from "@/app/lib/ops/quota";
 import { mailTransportName } from "@/app/lib/email/send";
 import { channelConfigured } from "@/app/lib/messaging/channels";
+import { channelsHealth } from "@/app/lib/messaging/health";
 import { featureSnapshot } from "@/app/lib/flags";
 import { siteUrl } from "@/app/lib/seo/site";
 import { describeModels } from "@/app/lib/llm/models";
@@ -97,8 +98,10 @@ export async function GET(req: NextRequest) {
     llm: describeModels(),
     anthropic: !!process.env.ANTHROPIC_API_KEY,
     email: mailTransportName(),
+    // Configured per env, and whether the provider actually answered (lib/messaging/health.ts).
     whatsapp: channelConfigured("whatsapp"),
     telegram: channelConfigured("telegram"),
+    live: await channelsHealth({ fresh: true }).catch(() => null),
     s3: !!(process.env.AWS_ACCESS_KEY_ID && process.env.S3_BUCKET_NAME),
     puppeteer: !!process.env.PUPPETEER_SERVER_URL,
     googleOAuth: !!process.env.GOOGLE_CLIENT_ID,

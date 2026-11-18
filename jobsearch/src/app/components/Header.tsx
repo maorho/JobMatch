@@ -16,7 +16,7 @@ import { useT, LanguageToggle } from "../lib/i18n/LanguageProvider";
 function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, sessionExpired } = useCurrentUser();
+  const { user, sessionExpired, loading: userLoading } = useCurrentUser();
   const { t, dir } = useT();
   const pathname = usePathname();
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -83,7 +83,10 @@ function Header() {
 
           {/* Account menu (desktop) */}
           <div className="relative hidden lg:block" ref={menuRef}>
-            {user ? (
+            {userLoading && !user ? (
+              // Who is signed in is not known yet: hold the space, show neither the account menu nor "sign in".
+              <div className="h-11 w-36 rounded-full bg-white/10 animate-pulse" aria-hidden />
+            ) : user ? (
               <button
                 onClick={() => setMenuOpen((o) => !o)}
                 aria-haspopup="menu"

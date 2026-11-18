@@ -5,8 +5,9 @@ import { getUserIdFromRequest } from "@/app/lib/getUserIdFromRequest";
 import ExternalJobs from "@/app/models/ExternalJobs";
 import { loadCandidateProfile } from "@/app/lib/matcher/hybrid";
 import { rerankForUser, llmRerankEnabled } from "@/app/lib/matcher/rerank";
-import { applyLevel, levelFit } from "@/app/lib/matcher/level";
-import { cosineSimilarity, toMatchScore } from "@/app/lib/matcher/cosine";
+import { levelFit } from "@/app/lib/matcher/level";
+import { heuristicScore } from "@/app/lib/matcher/score";
+import { cosineSimilarity } from "@/app/lib/matcher/cosine";
 import { interviewLikelihood } from "@/app/lib/matcher/likelihood";
 import { seniorityOf } from "@/app/lib/jobTaxonomy";
 import { contactsAtCompany } from "@/app/lib/contacts/linkedin";
@@ -23,11 +24,11 @@ export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId") || "";
   if (!mongoose.Types.ObjectId.isValid(jobId)) return NextResponse.json({ error: "Invalid jobId" }, { status: 400 });
   await connectToDatabase();
-  const [profile, job]: [any, any] = await Promise.all([loadCandidateProfile(userId), ExternalJobs.findById(jobId).select("+embedding job company description city country seniority experienceMin experienceMax").lean()]);
+  const [profile, job]: [any, any] = await Promise.all([loadCandidateProfile(userId), ExternalJobs.findById(jobId).select("+embedding job company description city country seniority experienceMin experienceMax firstSeenAt originalFirstSeenAt").lean()]);
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!profile?.resumeSummary) return NextResponse.json({ ok: true, ready: false, reason: "NO_RESUME" });
   const lf = levelFit(profile.level, job.job, job.seniority, job.experienceMin);
-  const heuristic = profile.vector && Array.isArray(job.embedding) ? Math.round(applyLevel(toMatchScore(cosineSimilarity(profile.vector, job.embedding)), lf)) : null;
+  const heuristic = heuristicScore(profile, job); // the feed's number for this posting (lib/matcher/score.ts)
   const rerankOpts = { userId, resumeVersion: profile.resumeVersion, resumeSummary: profile.resumeSummary, level: profile.level, jobs: [{ _id: jobId, job: job.job, company: job.company, description: job.description || "", city: job.city, country: job.country, seniority: job.seniority, experienceMin: job.experienceMin, experienceMax: job.experienceMax }] };
   // FitCard fetches this on every job-page view, so the cache is read first
   // and the daily cap (lib/ops/quota.ts) is charged only when a fresh LLM

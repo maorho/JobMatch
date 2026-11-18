@@ -223,6 +223,17 @@ wc("Seattle", "United States", "sea"); wc("Warsaw", "Poland", "warszawa"); wc("W
 
 const STREET_RE = /^\d+\s|\b(st\.|street|rd\.|road|ave\.?|avenue|blvd|floor|fl\.|bldg|building|suite)\b/i;
 const JUNK_RE = /^(n\/a|na|none|null|undefined|unknown|tbd|-|—|\.)$/i;
+/**
+ * Things ATS feeds put in the location field that are not places: a job number ("משרה 5715", "Job 123"),
+ * a site code ("ATL2", "MOS1"), or a word about the job itself ("Relocation", "DataMigration", "Temporary").
+ * Such a token is dropped; the raw string is kept on the posting for review.
+ */
+export const NOT_A_PLACE_RE =
+  /^(?:(?:משרה|job|position|req(?:uisition)?|id|ref)\s*#?\s*\d+|\d+|[a-z]{2,4}\d{1,3}|(?:data\s*)?migration|datamigration|relocation|relocate|immediate|urgent|temporary|temp|contract(?:or)?|freelance|internship|student|junior|senior|shift|shifts|flexible|nationwide|multiple|various|several|other|all|any|tbd|n\/a|none|home|home\s*office|site|onsite|on-site|hybrid|remote)$/i;
+export const looksLikePlace = (s: string): boolean => {
+  const t = (s || "").trim();
+  return !!t && !JUNK_RE.test(t) && !NOT_A_PLACE_RE.test(t) && /[\p{L}]/u.test(t) && !/\d{3,}/.test(t);
+};
 const MULTI_SPLIT = /\s*(?:;|\||•|\/|&| or | and )\s*/i;
 const TOKEN_SPLIT = /\s*(?:,|\(|\)|\s[-–—]\s|:)\s*/;
 
@@ -295,7 +306,7 @@ export function normalizeLocation(input: { city?: string; country?: string }): N
       while (words.length > 1 && matchCountry(words[words.length - 1])) tail.unshift(words.pop()!);
       return [...out, words.join(" "), ...tail];
     })
-    .filter((t) => t.length >= 2 && !JUNK_RE.test(t) && !/^\d+\s*days?/i.test(t));
+    .filter((t) => t.length >= 2 && !JUNK_RE.test(t) && !NOT_A_PLACE_RE.test(t) && !/^\d+\s*days?/i.test(t));
 
   let city = "";
   let region: string | undefined;
@@ -350,8 +361,9 @@ export function normalizeLocation(input: { city?: string; country?: string }): N
     if (!region) out.region = US_STATES[city.toLowerCase()];
     city = "";
   }
-  // A token equal to the country is not a city.
+  // A token equal to the country is not a city; neither is a job number, a site code or a word about the job.
   if (city && matchCountry(city) === out.country) city = "";
+  if (city && !looksLikePlace(city)) city = "";
   // Unknown Latin cities get title case so "karmiel"/"KARMIEL" collapse into one facet.
   if (city && !IL_CITIES[city.toLowerCase()] && !WORLD_CITIES[city.toLowerCase()] && /^[\p{Script=Latin}\s'.-]+$/u.test(city)) city = titleCase(city);
   out.city = city;

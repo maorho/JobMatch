@@ -96,7 +96,9 @@ function appendUnique(prev: Job[], next: Job[]): Job[] {
 }
 
 function JobTable() {
-  const { user } = useCurrentUser();
+  const { user, loading: userLoading } = useCurrentUser();
+  // Nothing is "empty" until a list request has actually completed (the first paint shows skeletons, not "no jobs").
+  const [fetchedOnce, setFetchedOnce] = useState(false);
   const { t, lang, dir } = useT();
   const [allJobs, setAllJobs] = useState<Job[]>([]); 
   const [jobs, setJobs] = useState<Job[]>([]); 
@@ -249,7 +251,10 @@ function JobTable() {
     } catch (err) {
       if ((err as Error)?.name !== "AbortError") console.error("❌ Search failed:", err);
     } finally {
-      if (req.isCurrent()) setLoading(false);
+      if (req.isCurrent()) {
+        setLoading(false);
+        setFetchedOnce(true);
+      }
     }
   };
 
@@ -310,7 +315,10 @@ function JobTable() {
     } catch (err) {
       if ((err as Error)?.name !== "AbortError") console.error("❌ Failed to fetch jobs:", err);
     } finally {
-      if (req.isCurrent()) setLoading(false);
+      if (req.isCurrent()) {
+        setLoading(false);
+        setFetchedOnce(true);
+      }
     }
   };
 
@@ -333,6 +341,7 @@ function JobTable() {
   const prevKeyRef = React.useRef(searchKey);
 
   useEffect(() => {
+    if (userLoading) return; // who is asking decides which list to load; wait for the answer instead of loading the guest list first
     const keyChanged = prevKeyRef.current !== searchKey;
     prevKeyRef.current = searchKey;
     if (keyChanged && page !== 1) {
@@ -343,7 +352,7 @@ function JobTable() {
     const t = setTimeout(run, keyChanged ? 350 : 0);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, searchKey]);
+  }, [page, searchKey, userLoading]);
 
   // "Search Jobs" button: search the whole catalog right now (no debounce).
   const handleSearch = () => {
@@ -573,7 +582,7 @@ function JobTable() {
             </div>
           )}
 
-          {loading && page === 1 ? (
+          {(loading && page === 1) || !fetchedOnce ? (
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5" aria-busy="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="jm-card p-5 space-y-4">
