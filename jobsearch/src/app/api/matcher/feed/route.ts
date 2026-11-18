@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
       await connectToDatabase();
       return ExternalJobs.countDocuments(OPEN_JOBS);
     });
-    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal, ...(postedDays ? { posted: postedDays } : {}) }, { headers: PRIVATE_CACHE });
+    const relaxed = matches[0]?.profileRelaxed || null; // the same on every row of a list
+    return NextResponse.json({ personalized: true, jobs, page, pages: Math.max(1, Math.ceil(total / limit)), total, catalogTotal, relaxed, ...(postedDays ? { posted: postedDays } : {}) }, { headers: PRIVATE_CACHE });
   } catch (err: any) {
     console.error("❌ feed error:", err);
     return NextResponse.json(

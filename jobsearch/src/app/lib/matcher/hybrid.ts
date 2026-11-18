@@ -58,6 +58,8 @@ export type RankedJob = {
   titleKey?: string;
   /** The same role at the company's other locations (lib/jobs/variants.ts); this row is the best-scoring one and comes first. */
   variants?: Variant[];
+  /** The search profile left too few matches, so the list was built with it relaxed: first without the work modes, then without the cities. */
+  profileRelaxed?: "workModes" | "cities";
 };
 
 export type RankOptions = {
@@ -116,6 +118,8 @@ const RANK_TTL_MS = 2 * 60_000;
 /** The plain feed: a stored list this old is shown at once while a fresh one is computed in the background (stale-while-revalidate). */
 const STALE_FEED_MAX_AGE_MS = 60 * 60_000;
 
+/** The profile is relaxed (see rankAll) when it keeps fewer than this many of the recalled postings — or, on a small pool, less than 5% of it. */
+const MIN_PROFILE_MATCHES = 10;
 /** Bumped when the scoring changes, so persisted lists computed by the old formula are not served. */
 const RANK_VERSION = 2;
 const rankKey = (profile: CandidateProfile, opts: RankOptions, wantRerank: boolean, minScore: number) =>
@@ -263,7 +267,21 @@ async function rankAll(profile: CandidateProfile, opts: RankOptions & { minScore
   // "What I'm looking for" is a contract, not a hint: wrong role family, wrong seniority band or wrong place → out.
   const sp = profile.searchProfile;
   if (hasSearchProfile(sp)) {
-    const kept = ranked.filter((r) => !profileReject(sp, { job: r.job, city: r.city, country: r.country, remote: r.remote, levelFit: r.levelFit }));
+    // A contract that leaves (almost) nothing is not what the person meant ("Tel Aviv" + "remote only" on a catalogue
+    // with few remote roles): relax it step by step — work modes first, then cities — and say so on every row.
+    const keep = (p: SearchProfile) => ranked.filter((r) => !profileReject(p, { job: r.job, city: r.city, country: r.country, remote: r.remote, levelFit: r.levelFit }));
+    const floor = Math.min(MIN_PROFILE_MATCHES, Math.ceil(ranked.length * 0.05));
+    let kept = keep(sp);
+    let relaxed: RankedJob["profileRelaxed"];
+    if (kept.length < floor && sp.workModes.length) {
+      kept = keep({ ...sp, workModes: [] });
+      relaxed = "workModes";
+    }
+    if (kept.length < floor && sp.cities.length) {
+      kept = keep({ ...sp, workModes: [], cities: [] });
+      relaxed = "cities";
+    }
+    if (relaxed) for (const r of kept) r.profileRelaxed = relaxed;
     ranked.length = 0;
     ranked.push(...kept);
   }

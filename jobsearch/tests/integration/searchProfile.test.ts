@@ -97,6 +97,21 @@ describe("search profile", () => {
     expect(prof?.level).toBe("junior");
   });
 
+  it("a contract that empties the feed is relaxed step by step, and the rows say so", async () => {
+    const { rankForUser } = await import("@/app/lib/matcher/hybrid");
+    const { invalidate } = await import("@/app/lib/cache");
+    // "Hybrid only" + Tel Aviv on a catalogue with no hybrid roles: nothing would survive, so the work mode is dropped (the cities are not).
+    await saveSearchProfile(dana, { roles: ["frontend"], level: "junior", cities: ["Tel Aviv"], workModes: ["Hybrid"], keywords: [] });
+    invalidate(`rank:${dana}:`);
+    const r = await rankForUser(dana, { limit: 10 });
+    expect(r.jobs.length).toBeGreaterThan(0);
+    expect(r.jobs.every((j) => j.profileRelaxed === "workModes")).toBe(true);
+    expect(r.jobs.every((j) => /tel aviv/i.test(j.city || "") || j.remote)).toBe(true); // the cities still hold (remote roles always qualify)
+    // Restore the profile the other tests expect.
+    await saveSearchProfile(dana, { roles: ["frontend"], level: "junior", cities: ["Tel Aviv"], workModes: ["Remote", "Hybrid", "On Site"], keywords: ["React"] });
+    invalidate(`rank:${dana}:`);
+  });
+
   it("the settings API and the onboarding step", async () => {
     const g = await (await spGET(authed("/api/settings/search-profile"))).json();
     expect(g.profile.roles).toEqual(["frontend"]);

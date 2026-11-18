@@ -116,6 +116,7 @@ function JobTable() {
   const [tech, setTech] = useState<string[]>([]);
   const [ids, setIds] = useState<string[]>([]); // a notification's postings (?ids=): exactly those, nothing else
   const [allRoles, setAllRoles] = useState(false); // ?all=1: every role, not only tech-industry ones
+  const [feedRelaxed, setFeedRelaxed] = useState<"" | "workModes" | "cities">(""); // the profile left too few matches and was relaxed
   const [jobCount, setJobCount] = useState(0);
   const [catalogTotal, setCatalogTotal] = useState(0); // every open posting; the feed shows the best `jobCount` of them
   const [showmodal, setShowModal] = useState<boolean>(false);
@@ -294,6 +295,7 @@ function JobTable() {
               }
               // Catalog-wide count, not the page size.
               setJobCount(feedData.total ?? feedJobs.length);
+              setFeedRelaxed(feedData.relaxed || "");
               if (feedData.catalogTotal) setCatalogTotal(feedData.catalogTotal);
               setTotalPages(feedData.pages || 1);
               setLoading(false);
@@ -556,6 +558,9 @@ function JobTable() {
               <p className="jm-subtitle">
                 {loading && page === 1 ? t("home.searching") : user && !isSearching && catalogTotal > jobCount ? t("home.bestMatches", { n: jobCount.toLocaleString(), total: catalogTotal.toLocaleString() }) : `${t("home.showing", { n: jobCount.toLocaleString() })}${user && !isSearching ? t("home.rankedSuffix") : ""}`}
               </p>
+              {user && !isSearching && feedRelaxed && (
+                <p className="text-xs text-amber-700 mt-1">{feedRelaxed === "cities" ? t("home.relaxedCities") : t("home.relaxedWorkModes")} <Link href="/Settings" className="underline underline-offset-2">{t("home.relaxedEdit")}</Link></p>
+              )}
             </div>
             <button type="button" onClick={handleModalOpen} className="jm-btn jm-btn-secondary" aria-haspopup="dialog" aria-expanded={showmodal}>
               <SlidersHorizontal className="h-4 w-4" />
