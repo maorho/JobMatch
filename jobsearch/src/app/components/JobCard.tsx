@@ -22,7 +22,9 @@ function teaser(text: string, max = 120): string {
   const sentence = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "));
   if (sentence >= 50) return head.slice(0, sentence + 1);
   const word = head.lastIndexOf(" ");
-  return (word > 40 ? head.slice(0, word) : head).replace(/[,;:\-–]+$/, "");
+  return (word > 40 ? head.slice(0, word) : head)
+    .replace(/[,;:\-–]+$/, "")
+    .replace(/\s+(?:and|or|with|for|to|of|the|a|an|in|on|at|by|from|as|that|which|ו|או|עם|של|על|את|ב|ל)$/i, "");
 }
 
 dayjs.extend(relativeTime);
@@ -121,17 +123,17 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         </div>
       </div>
 
-      {/* One meta line: where · how · level · when */}
-      <div className="mt-3 flex items-center gap-2 text-xs text-ink-600 min-w-0">
+      {/* Meta: where · how · level · when. One line on a wide card; wraps into rows with air between them on a phone. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-ink-600 min-w-0">
         {variants.length > 1 ? (
-          <span className="inline-flex items-center gap-1 min-w-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <span className="inline-flex items-center gap-1 min-w-0 max-w-full" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
             <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />
             <select
               value={id}
               onChange={(e) => setPicked(e.target.value)}
               aria-label={t("card.chooseLocation")}
               title={t("card.locations", { n: variants.length })}
-              className="h-6 max-w-[11rem] truncate rounded-md border border-line bg-surface px-1.5 text-xs text-ink-600 focus:outline-none focus:ring-2 focus:ring-sky/40"
+              className="h-7 min-w-0 max-w-[12rem] truncate rounded-md border border-line bg-surface px-1.5 text-xs text-ink-600 focus:outline-none focus:ring-2 focus:ring-sky/40"
             >
               {variants.map((v) => (
                 <option key={v._id} value={v._id}>{variantLabel(v) || t("job.otherLocation")}</option>
@@ -140,7 +142,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
             <span className="jm-chip jm-chip-sky shrink-0">{t("card.locations", { n: variants.length })}</span>
           </span>
         ) : meta ? (
-          <span className="inline-flex items-center gap-1 truncate">
+          <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-ink-400" />
             <span className="truncate">{meta}</span>
           </span>
@@ -148,7 +150,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
         {level && <span className={`jm-chip shrink-0 ${level === "Junior" || level === "Intern" ? "jm-chip-sky" : ""}`}>{t(`level.${level}` as Key)}</span>}
         {years && <span className="jm-chip shrink-0" title={t("card.yearsTitle")}>{years}</span>}
         {time && (
-          <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 text-xs text-ink-400">
+          <time dateTime={posted!.toISOString()} title={timeTitle} className="ms-auto inline-flex items-center gap-1 shrink-0 whitespace-nowrap text-xs text-ink-400">
             <Clock className="h-3 w-3" />
             {time}
           </time>
@@ -167,7 +169,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
       {/* Two lines: why it fits (reranked) or the posting's own words */}
       {why ? (
         /* The verdict sentence, wrapping onto a second line when needed, never cut with an ellipsis (it is short by prompt); the tooltip on the badge has the full verdict. */
-        <p className="mt-3 min-h-[2.75rem] text-sm text-ink leading-[1.375rem] [overflow-wrap:anywhere]">{why}</p>
+        <p className="mt-3 min-h-[2.75rem] text-sm text-ink leading-relaxed [overflow-wrap:anywhere]" dir={lang === "he" ? "rtl" : "ltr"}>{why}</p>
       ) : job.description ? (
         /* Without a verdict: the posting's first sentence, ended at a sentence or word boundary — never an ellipsis. */
         <p className="mt-3 text-sm text-ink-600 leading-relaxed min-h-[2.75rem] [overflow-wrap:anywhere]" dir="auto">
@@ -181,7 +183,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, jobIndex }) => {
           <MatchTooltip why={why} matched={matched} gaps={gaps} label={t("card.why")}>
             <span className="inline-flex items-baseline gap-1.5 rounded-full bg-teal-50 px-3 py-1.5 cursor-help" title={job.likelihood ? t("card.matchFull", { score: job.matchScore, pct: job.likelihood.pct }) : t("card.matchTitle")}>
               {/* The reranker's verdict shows as "match"; the heuristic (no verdict yet) as an estimate, so the two are never read as the same number. */}
-              <span className="text-base font-semibold text-teal-600 leading-none">{extra.reranked === false ? "≈" : ""}{job.matchScore}%</span>
+              <span className="text-base font-semibold text-teal-600 leading-none" dir="ltr">{extra.reranked === false ? "≈" : ""}{job.matchScore}%</span>
               <span className="text-xs text-teal-600/80">{job.likelihood ? t("card.interview", { pct: job.likelihood.pct }) : extra.reranked === false ? t("card.matchEstimate") : t("card.match")}</span>
             </span>
           </MatchTooltip>
