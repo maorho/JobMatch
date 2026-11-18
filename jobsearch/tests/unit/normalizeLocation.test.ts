@@ -18,6 +18,11 @@ describe("normalizeLocation — Israel", () => {
     expect(n("מרכז", "Israel")).toMatchObject({ city: "", country: "Israel", region: "Center" });
     expect(n("שפלה", "")).toMatchObject({ country: "Israel", region: "Shfela" });
     expect(n("תל אביב", "")).toMatchObject({ city: "Tel Aviv", country: "Israel" });
+    // Hyphenated Hebrew names are one name, never cut into their first word ("בני", "תל").
+    expect(n("בני-ברק", "Israel")).toMatchObject({ city: "Bnei Brak" });
+    expect(n("תל-אביב-יפו", "Israel")).toMatchObject({ city: "Tel Aviv" });
+    expect(n("תל אביב יפו", "Israel")).toMatchObject({ city: "Tel Aviv" });
+    expect(n("פתח-תקווה", "Israel").city).toMatch(/Petah Tikva|פתח תקווה/);
   });
 
   it("handles 'Israel - Raanana', 'Tel Aviv/ Netanya', hybrid notes and remote-in-Israel", () => {

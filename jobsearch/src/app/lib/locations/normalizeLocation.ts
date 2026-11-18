@@ -132,7 +132,7 @@ function ilCity(name: string, ...aliases: string[]) {
   IL_CITIES[name.toLowerCase()] = name;
   for (const a of aliases) IL_CITIES[a.toLowerCase()] = name;
 }
-ilCity("Tel Aviv", "tel aviv-yafo", "tel-aviv", "tel aviv yafo", "tel-aviv-yafo", "tlv", "תל אביב", "תל-אביב", "תל אביב-יפו", "tel aviv, israel", "tel aviv district", "tel aviv area", "gush dan");
+ilCity("Tel Aviv", "tel aviv-yafo", "tel-aviv", "tel aviv yafo", "tel-aviv-yafo", "tlv", "תל אביב", "תל-אביב", "תל אביב-יפו", "תל אביב יפו", "תל-אביב-יפו", "tel aviv, israel", "tel aviv district", "tel aviv area", "gush dan");
 ilCity("Jerusalem", "ירושלים", "yerushalayim");
 ilCity("Haifa", "חיפה");
 ilCity("Herzliya", "herzliyya", "herzelia", "herzlia", "הרצליה");
@@ -156,7 +156,7 @@ ilCity("Holon", "חולון");
 ilCity("Ashdod", "אשדוד");
 ilCity("Rosh Ha'ayin", "rosh haayin", "rosh ha'ayin", "ראש העין");
 ilCity("Or Yehuda", "אור יהודה");
-ilCity("Bnei Brak", "bne brak", "bnei berak", "bnei-brak", "בני ברק");
+ilCity("Bnei Brak", "bne brak", "bnei berak", "bnei-brak", "בני ברק", "בני-ברק");
 ilCity("Airport City", "airport", "קריית שדה התעופה");
 ilCity("Kiryat Gat", "קריית גת");
 ilCity("Nazareth", "נצרת");
@@ -289,6 +289,11 @@ export function normalizeLocation(input: { city?: string; country?: string }): N
     .flatMap((t) => {
       const k = t.toLowerCase();
       if (IL_CITIES[k] || WORLD_CITIES[k] || COUNTRY_ALIASES[k]) return [t];
+      // "בני-ברק", "תל-אביב-יפו": a Hebrew name written with hyphens is one name — never cut it into "בני" / "תל".
+      if (/[\u0590-\u05ff]/.test(t)) {
+        const spaced = t.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+        return [IL_CITIES[spaced.toLowerCase()] ? spaced : t.replace(/-/g, " ")];
+      }
       // "US-New York" → ["US", "New York"]
       const m = t.match(/^(us|usa|uk|ca|il)-(.+)$/i);
       if (m) return [m[1], clean(m[2])];
